@@ -1,0 +1,51 @@
+/* client/src/App.css */
+
+/* Tailwind CSS এর বেস, কম্পোনেন্ট এবং ইউটিলিটি স্টাইলগুলো ইম্পোর্ট করুন */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* কাস্টম ফন্ট - Inter */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+/* গ্লোবাল বডি স্টাইল */
+body {
+    font-family: 'Inter', sans-serif; /* Inter ফন্ট সেট করুন */
+    background-color: #f8fafc; /* হালকা ধূসর ব্যাকগ্রাউন্ড রঙ */
+    color: #333; /* ডিফল্ট টেক্সট রঙ */
+}
+
+/* কাস্টম স্ক্রলবার স্টাইল (ওয়েবকিট ব্রাউজারগুলির জন্য) */
+::-webkit-scrollbar {
+    width: 8px; /* স্ক্রলবারের প্রস্থ */
+}
+::-webkit-scrollbar-track {
+    background: #f1f1f1; /* ট্র্যাকের ব্যাকগ্রাউন্ড রঙ */
+    border-radius: 10px; /* ট্র্যাকের গোলাকার কোণা */
+}
+::-webkit-scrollbar-thumb {
+    background: #888; /* থাম্বের ব্যাকগ্রাউন্ড রঙ */
+    border-radius: 10px; /* থাম্বের গোলাকার কোণা */
+}
+::-webkit-scrollbar-thumb:hover {
+    background: #555; /* থাম্বের হোভার অবস্থা */
+}
+
+/* থিমের জন্য কাস্টম সবুজ রঙগুলো */
+/* এই ক্লাসগুলো Tailwind এর কনফিগারেশনেও যোগ করা হয়েছে,
+   কিন্তু সরাসরি CSS এও সংজ্ঞায়িত করা যেতে পারে যদি Tailwind JIT না থাকে বা কাস্টম ব্যবহারের প্রয়োজন হয়। */
+.bg-agro-green {
+    background-color: #4CAF50; /* সবুজ রঙ */
+}
+.text-agro-green {
+    color: #4CAF50; /* সবুজ টেক্সট রঙ */
+}
+.border-agro-green {
+    border-color: #4CAF50; /* সবুজ বর্ডার রঙ */
+}
+.hover\:bg-agro-green-dark:hover {
+    background-color: #45a049; /* হোভারের জন্য গাঢ় সবুজ */
+}
+.bg-light-green {
+    background-color: #d4edda; /* হালকা সবুজ রঙ */
+}

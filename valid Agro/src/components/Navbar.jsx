@@ -1,0 +1,204 @@
+import React, { useState } from 'react';
+import {
+  FileText,
+  Package,
+  RotateCcw,
+  Users,
+  UserCheck,
+  BarChart3,
+  Home,
+  Phone,
+  MapPin,
+  Menu,
+  X,
+  PlusCircle,
+  Download,
+  RotateCw,
+  Building2
+} from 'lucide-react';
+import { useAgro } from '../context/AgroContext';
+
+export default function Navbar({ activeTab, setActiveTab }) {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { exportBackupJSON, resetToFactoryData } = useAgro();
+
+  const navItems = [
+    // Public section
+    { id: 'website-home', label: 'হোম পেজ', icon: Home, section: 'public' },
+    { id: 'website-products', label: 'সকল পণ্য', icon: Package, section: 'public' },
+    { id: 'website-about', label: 'কোম্পানি পরিচিতি', icon: Building2, section: 'public' },
+    // ERP / Business Modules
+    { id: 'new-invoice', label: 'নতুন ইনভয়েস', icon: FileText, section: 'erp', highlight: true },
+    { id: 'invoice-list', label: 'ইনভয়েস হিস্ট্রি', icon: FileText, section: 'erp' },
+    { id: 'inventory', label: 'স্টক ও মালামাল ইন', icon: Package, section: 'erp' },
+    { id: 'damage-returns', label: 'ডেমেজ পণ্য ফেরত', icon: RotateCcw, section: 'erp' },
+    { id: 'dealer-ledger', label: 'ডিলার হিসাব ও বাকি', icon: Users, section: 'erp' },
+    { id: 'officer-tracking', label: 'অফিসার সেলস ট্র্যাকিং', icon: UserCheck, section: 'erp' },
+    { id: 'monthly-reports', label: 'মাসিক ইন/আউট রিপোর্ট', icon: BarChart3, section: 'erp' },
+  ];
+
+  const handleNavClick = (tabId) => {
+    setActiveTab(tabId);
+    setMobileMenuOpen(false);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  return (
+    <header className="sticky top-0 z-50 bg-white border-b border-slate-200 shadow-sm no-print">
+      {/* Top Banner with Company Info & Contact */}
+      <div className="bg-emerald-900 text-emerald-100 text-xs sm:text-sm py-1.5 px-4">
+        <div className="container mx-auto flex flex-wrap justify-between items-center gap-2">
+          <div className="flex items-center space-x-4">
+            <span className="flex items-center gap-1.5">
+              <MapPin className="w-3.5 h-3.5 text-emerald-300" />
+              <span>ঠিকানাঃ নিশিন্দারা, বগুড়া।</span>
+            </span>
+            <span className="hidden md:inline-block text-emerald-400">|</span>
+            <span className="hidden md:flex items-center gap-1.5">
+              <Building2 className="w-3.5 h-3.5 text-emerald-300" />
+              <span>মহানন্দা এগ্রো ইন্ডাস্ট্রিজ</span>
+            </span>
+          </div>
+
+          <div className="flex items-center space-x-3 ml-auto">
+            <a
+              href="tel:01867912167"
+              className="flex items-center gap-1.5 bg-emerald-700 hover:bg-emerald-600 px-2.5 py-0.5 rounded-full text-white font-medium transition"
+            >
+              <Phone className="w-3.5 h-3.5" />
+              <span>হটলাইনঃ 01867912167</span>
+            </a>
+
+            {/* Quick backup & reset buttons */}
+            <button
+              onClick={exportBackupJSON}
+              title="ডাটা ব্যাকআপ ডাউনলোড করুন"
+              className="hidden lg:flex items-center gap-1 text-emerald-200 hover:text-white transition px-2 py-0.5 rounded hover:bg-emerald-800"
+            >
+              <Download className="w-3 h-3" />
+              <span>ব্যাকআপ</span>
+            </button>
+            <button
+              onClick={resetToFactoryData}
+              title="ডিফল্ট ডাটায় রিসেট করুন"
+              className="hidden lg:flex items-center gap-1 text-emerald-300 hover:text-white transition px-2 py-0.5 rounded hover:bg-emerald-800"
+            >
+              <RotateCw className="w-3 h-3" />
+              <span>রিসেট</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Main Navigation Bar */}
+      <div className="container mx-auto px-4 py-2.5 flex items-center justify-between">
+        {/* Logo and Brand Title with BOTH logos side-by-side */}
+        <div
+          onClick={() => handleNavClick('website-home')}
+          className="cursor-pointer flex items-center space-x-3 group"
+        >
+          <div className="flex items-center space-x-2 bg-slate-50 p-1.5 rounded-xl border border-slate-200/80 shadow-sm group-hover:shadow transition">
+            <img
+              src="/logos/valid-logo.png"
+              alt="Valid Agro Products Ltd"
+              className="h-9 w-auto object-contain max-w-[50px] transition-transform group-hover:scale-105"
+            />
+            <div className="h-6 w-[1px] bg-slate-300"></div>
+            <img
+              src="/logos/mahananda-logo.png"
+              alt="Mahananda Agro Industries"
+              className="h-9 w-auto object-contain max-w-[42px] transition-transform group-hover:scale-105"
+            />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-base md:text-lg font-black text-slate-800 tracking-tight leading-tight">
+                ভ্যালিড এগ্রো প্রোডাক্ট লিমিটেড
+              </span>
+            </div>
+            <p className="text-[11px] text-emerald-700 font-bold tracking-wide">
+              এন্ড মহানন্দা এগ্রো ইন্ডাস্ট্রিজ • নিশিন্দারা, বগুড়া
+            </p>
+          </div>
+        </div>
+
+        {/* Desktop Quick Nav */}
+        <div className="hidden lg:flex items-center space-x-1 font-medium text-sm">
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = activeTab === item.id;
+            return (
+              <button
+                key={item.id}
+                onClick={() => handleNavClick(item.id)}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg transition-all duration-150 ${
+                  item.highlight
+                    ? 'bg-emerald-700 text-white font-semibold shadow-sm hover:bg-emerald-800 hover:shadow'
+                    : isActive
+                    ? 'bg-emerald-50 text-emerald-800 font-semibold border border-emerald-200'
+                    : 'text-slate-600 hover:text-emerald-700 hover:bg-slate-100'
+                }`}
+              >
+                <Icon className={`w-4 h-4 ${item.highlight ? 'text-white' : isActive ? 'text-emerald-600' : 'text-slate-500'}`} />
+                <span>{item.label}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Mobile menu button */}
+        <div className="lg:hidden flex items-center gap-2">
+          <button
+            onClick={() => handleNavClick('new-invoice')}
+            className="flex items-center gap-1 bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold shadow"
+          >
+            <PlusCircle className="w-3.5 h-3.5" />
+            <span>ইনভয়েস</span>
+          </button>
+
+          <button
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            className="p-2 rounded-lg text-slate-600 hover:bg-slate-100"
+          >
+            {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+          </button>
+        </div>
+      </div>
+
+      {/* Mobile Menu Dropdown */}
+      {mobileMenuOpen && (
+        <div className="lg:hidden border-t border-slate-200 bg-white px-4 py-3 shadow-lg space-y-1">
+          <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider px-2 py-1">
+            ম্যানেজমেন্ট ও ইনভয়েস
+          </div>
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = activeTab === item.id;
+            return (
+              <button
+                key={item.id}
+                onClick={() => handleNavClick(item.id)}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left text-sm font-medium transition ${
+                  isActive
+                    ? 'bg-emerald-50 text-emerald-800 border-l-4 border-emerald-600 font-semibold'
+                    : 'text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                <Icon className="w-4 h-4 text-emerald-600" />
+                <span>{item.label}</span>
+              </button>
+            );
+          })}
+          <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500 px-2">
+            <button onClick={exportBackupJSON} className="flex items-center gap-1 text-emerald-700 font-medium">
+              <Download className="w-3.5 h-3.5" /> ব্যাকআপ ফাইল
+            </button>
+            <button onClick={resetToFactoryData} className="flex items-center gap-1 text-rose-600 font-medium">
+              <RotateCw className="w-3.5 h-3.5" /> রিসেট ডাটা
+            </button>
+          </div>
+        </div>
+      )}
+    </header>
+  );
+}
