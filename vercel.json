@@ -1,8 +1,10 @@
 {
   "buildCommand": "npm run build",
-  "outputDirectory": "valid Agro/dist",
+  "outputDirectory": "dist",
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/valid Agro/api/$1" },
-    { "source": "/(.*)", "destination": "/valid Agro/dist/$1" }
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
   ]
 }
