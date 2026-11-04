@@ -29,7 +29,7 @@ export default function Home({ onNavigate }) {
         
         <div className="max-w-7xl mx-auto relative z-10 grid grid-cols-1 lg:grid-cols-12 gap-7 sm:gap-12 items-center">
           <div className="lg:col-span-7 space-y-4 sm:space-y-6">
-            <div className="inline-flex flex-col gap-1.5 bg-white/95 backdrop-blur-md px-3 sm:px-4 py-2.5 rounded-2xl shadow-xl border border-white/50">
+            <div className="inline-flex flex-col gap-1.5 bg-white/95 backdrop-blur-md px-3 sm:px-4 py-2.5 rounded-2xl shadow-xl border border-white/50 lg:hidden">
               <div className="flex items-center gap-2">
                 <img
                   src="/logos/valid-logo.png"

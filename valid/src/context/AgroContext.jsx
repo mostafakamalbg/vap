@@ -114,6 +114,41 @@ function applyInvoiceStockChanges(products, previousInvoice, nextInvoice) {
   });
 }
 
+function escapeXml(value) {
+  return String(value)
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+function createExcelWorksheet(name, rows) {
+  const columns = [...new Set(rows.flatMap((row) => Object.keys(row || {})))];
+  const tableRows = columns.length > 0
+    ? [
+        columns,
+        ...rows.map((row) => columns.map((column) => {
+          const value = row?.[column];
+          return value != null && typeof value === 'object'
+            ? JSON.stringify(value)
+            : value == null
+              ? ''
+              : String(value);
+        }))
+      ]
+    : [['তথ্য'], ['কোনো তথ্য নেই']];
+
+  const xmlRows = tableRows.map((row) => (
+    `<Row>${row.map((cell) => (
+      `<Cell><Data ss:Type="String" xml:space="preserve">${escapeXml(cell)}</Data></Cell>`
+    )).join('')}</Row>`
+  )).join('');
+
+  return `<Worksheet ss:Name="${name}"><Table>${xmlRows}</Table></Worksheet>`;
+}
+
 export function AgroProvider({ children }) {
   // Version 5 storage keys for continuous serial 1 to 83 dealer codes and 26 products
   const [products, setProducts] = useState(() => {
@@ -517,45 +552,61 @@ export function AgroProvider({ children }) {
 
   // Reset to factory data
   const resetToFactoryData = () => {
-    if (window.confirm('আপনি কি সব ডাটা রিসেট করে মূল তালিকার ৮৩টি ডিলার ও ২৬টি পণ্যে ফিরে যেতে চান?')) {
-      localStorage.removeItem('vap_products_v5');
-      localStorage.removeItem('vap_officers_v5');
-      localStorage.removeItem('vap_dealers_v5');
-      localStorage.removeItem('vap_invoices_v5');
-      localStorage.removeItem('vap_stock_in_v5');
-      localStorage.removeItem('vap_damages_v5');
-      localStorage.removeItem('vap_payments_v5');
+    const confirmed = window.confirm(
+      'সতর্কতা: রিসেট করলে পণ্য, স্টক, ইনভয়েস, ডিলার ও হিসাবসহ সব বর্তমান ডাটা মুছে যাবে এবং মূল ডাটায় ফিরে যাবে। আগে Excel ব্যাকআপ নিন। আপনি কি এগোতে চান?'
+    );
+    if (!confirmed) return;
 
-      setProducts(INITIAL_PRODUCTS);
-      setOfficers(INITIAL_OFFICERS);
-      setDealers(INITIAL_DEALERS);
-      setInvoices(INITIAL_INVOICES);
-      setStockInLogs(INITIAL_STOCK_IN);
-      setDamageLogs(INITIAL_DAMAGES);
-      setPayments(INITIAL_PAYMENTS);
-    }
+    const confirmationText = window.prompt('নিশ্চিত করতে RESET লিখুন।');
+    if (confirmationText !== 'RESET') return;
+
+    localStorage.removeItem('vap_products_v5');
+    localStorage.removeItem('vap_officers_v5');
+    localStorage.removeItem('vap_dealers_v5');
+    localStorage.removeItem('vap_invoices_v5');
+    localStorage.removeItem('vap_stock_in_v5');
+    localStorage.removeItem('vap_damages_v5');
+    localStorage.removeItem('vap_payments_v5');
+
+    setProducts(INITIAL_PRODUCTS);
+    setOfficers(INITIAL_OFFICERS);
+    setDealers(INITIAL_DEALERS);
+    setInvoices(INITIAL_INVOICES);
+    setStockInLogs(INITIAL_STOCK_IN);
+    setDamageLogs(INITIAL_DAMAGES);
+    setPayments(INITIAL_PAYMENTS);
   };
 
-  // Export JSON Backup
-  const exportBackupJSON = () => {
-    const backup = {
-      company: 'Valid Agro Products Ltd. & Mahananda Agro Industries',
-      exportedAt: new Date().toISOString(),
-      products,
-      officers,
-      dealers,
-      invoices,
-      stockInLogs,
-      damageLogs,
-      payments
-    };
-    const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(backup, null, 2));
+  // Export each dataset to its own Excel-compatible worksheet.
+  const exportBackupExcel = () => {
+    const exportedAt = new Date().toISOString();
+    const workbook = `<?xml version="1.0" encoding="UTF-8"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+  xmlns:o="urn:schemas-microsoft-com:office:office"
+  xmlns:x="urn:schemas-microsoft-com:office:excel"
+  xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
+  xmlns:html="http://www.w3.org/TR/REC-html40">
+  ${createExcelWorksheet('Summary', [
+    { Information: 'Valid Agro Products Ltd. & Mahananda Agro Industries' },
+    { Information: `Exported at: ${exportedAt}` }
+  ])}
+  ${createExcelWorksheet('Products', products)}
+  ${createExcelWorksheet('Officers', officers)}
+  ${createExcelWorksheet('Dealers', dealers)}
+  ${createExcelWorksheet('Invoices', invoices)}
+  ${createExcelWorksheet('Stock In', stockInLogs)}
+  ${createExcelWorksheet('Damage Logs', damageLogs)}
+  ${createExcelWorksheet('Payments', payments)}
+</Workbook>`;
+    const backupBlob = new Blob([workbook], { type: 'application/vnd.ms-excel;charset=utf-8' });
+    const backupUrl = URL.createObjectURL(backupBlob);
     const downloadAnchor = document.createElement('a');
-    downloadAnchor.setAttribute('href', dataStr);
-    downloadAnchor.setAttribute('download', `Valid_Agro_Backup_${new Date().toISOString().slice(0, 10)}.json`);
+    downloadAnchor.setAttribute('href', backupUrl);
+    downloadAnchor.setAttribute('download', `Valid_Agro_Backup_${exportedAt.slice(0, 10)}.xls`);
     document.body.appendChild(downloadAnchor);
     downloadAnchor.click();
     downloadAnchor.remove();
+    window.setTimeout(() => URL.revokeObjectURL(backupUrl), 1000);
   };
 
   return (
@@ -582,7 +633,7 @@ export function AgroProvider({ children }) {
         getDealerSummary,
         getOfficerSummary,
         resetToFactoryData,
-        exportBackupJSON
+        exportBackupExcel
       }}
     >
       {children}

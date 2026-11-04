@@ -52,40 +52,56 @@ body {
 .invoice-company-row {
   display: flex;
   align-items: center;
-  gap: 0.6rem;
+  justify-content: space-between;
+  gap: 1rem;
   min-height: 2.75rem;
 }
 
-.invoice-company-row img {
+.invoice-company-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-width: 0;
+}
+
+.invoice-company-brand img {
   width: 2.75rem;
   height: 2.75rem;
   flex: none;
   object-fit: contain;
 }
 
-.invoice-company-row h2,
-.invoice-company-row h3 {
+.invoice-company-brand h2,
+.invoice-company-brand h3 {
   margin: 0;
   line-height: 1.2;
-  white-space: nowrap;
 }
 
-.invoice-company-row h2 {
+.invoice-company-brand h2 {
   color: #0f172a;
-  font-size: 1.25rem;
+  font-size: 1.05rem;
   font-weight: 900;
 }
 
-.invoice-company-row h3 {
+.invoice-company-brand h3 {
   color: #166534;
-  font-size: 1rem;
+  font-size: 0.9rem;
   font-weight: 700;
 }
 
 .invoice-company-contact {
-  margin-left: 3.35rem;
+  margin-top: 0.25rem;
   color: #475569;
   font-size: 0.75rem;
+  text-align: center;
+}
+
+@media (max-width: 639px) {
+  .invoice-company-row {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
 }
 
 .invoice-items-table {
@@ -157,20 +173,24 @@ body {
   }
   .invoice-company-row {
     min-height: 12mm;
+    flex-direction: row;
+    gap: 3mm;
+  }
+  .invoice-company-brand {
     gap: 2mm;
   }
-  .invoice-company-row img {
+  .invoice-company-brand img {
     width: 13mm;
     height: 12mm;
   }
-  .invoice-company-row h2 {
-    font-size: 15pt;
+  .invoice-company-brand h2 {
+    font-size: 11pt;
   }
-  .invoice-company-row h3 {
-    font-size: 12pt;
+  .invoice-company-brand h3 {
+    font-size: 9pt;
   }
   .invoice-company-contact {
-    margin-left: 15mm;
+    margin-left: 0;
     font-size: 8pt;
   }
   .invoice-items-table th,

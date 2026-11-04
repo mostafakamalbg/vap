@@ -20,7 +20,7 @@ import { useAgro } from '../context/AgroContext';
 
 export default function Navbar({ activeTab, setActiveTab }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const { exportBackupJSON, resetToFactoryData } = useAgro();
+  const { exportBackupExcel, resetToFactoryData } = useAgro();
 
   const navItems = [
     // Public section
@@ -28,7 +28,7 @@ export default function Navbar({ activeTab, setActiveTab }) {
     { id: 'website-products', label: 'সকল পণ্য', icon: Package, section: 'public' },
     { id: 'website-about', label: 'কোম্পানি পরিচিতি', icon: Building2, section: 'public' },
     // ERP / Business Modules
-    { id: 'new-invoice', label: 'নতুন ইনভয়েস', icon: FileText, section: 'erp', highlight: true },
+    { id: 'new-invoice', label: 'নতুন ইনভয়েস', icon: FileText, section: 'erp' },
     { id: 'invoice-list', label: 'ইনভয়েস হিস্ট্রি', icon: FileText, section: 'erp' },
     { id: 'inventory', label: 'স্টক ও মালামাল ইন', icon: Package, section: 'erp' },
     { id: 'damage-returns', label: 'ডেমেজ পণ্য ফেরত', icon: RotateCcw, section: 'erp' },
@@ -53,11 +53,6 @@ export default function Navbar({ activeTab, setActiveTab }) {
               <MapPin className="w-3.5 h-3.5 text-emerald-300" />
               <span>ঠিকানাঃ নিশিন্দারা, বগুড়া।</span>
             </span>
-            <span className="hidden md:inline-block text-emerald-400">|</span>
-            <span className="hidden md:flex items-center gap-1.5">
-              <Building2 className="w-3.5 h-3.5 text-emerald-300" />
-              <span>মহানন্দা এগ্রো ইন্ডাস্ট্রিজ</span>
-            </span>
           </div>
 
           <div className="flex items-center space-x-3 ml-auto">
@@ -71,8 +66,8 @@ export default function Navbar({ activeTab, setActiveTab }) {
 
             {/* Quick backup & reset buttons */}
             <button
-              onClick={exportBackupJSON}
-              title="ডাটা ব্যাকআপ ডাউনলোড করুন"
+              onClick={exportBackupExcel}
+              title="Excel ডাটা ব্যাকআপ ডাউনলোড করুন"
               className="hidden lg:flex items-center gap-1 text-emerald-200 hover:text-white transition px-2 py-0.5 rounded hover:bg-emerald-800"
             >
               <Download className="w-3 h-3" />
@@ -96,7 +91,7 @@ export default function Navbar({ activeTab, setActiveTab }) {
           type="button"
           onClick={() => handleNavClick('website-home')}
           aria-label="ভ্যালিড এগ্রো ও মহানন্দা এগ্রো হোম"
-          className="min-w-0 flex flex-col items-start gap-0.5 text-left group"
+          className="min-w-0 flex flex-col lg:flex-row lg:items-center items-start gap-0.5 lg:gap-3 text-left group"
         >
           <span className="flex min-w-0 items-center gap-1.5">
             <img
@@ -121,36 +116,11 @@ export default function Navbar({ activeTab, setActiveTab }) {
           </span>
         </button>
 
-        {/* Desktop Quick Nav */}
-        <div className="hidden lg:flex items-center space-x-1 font-medium text-sm">
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            const isActive = activeTab === item.id;
-            return (
-              <button
-                key={item.id}
-                onClick={() => handleNavClick(item.id)}
-                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg transition-all duration-150 ${
-                  item.highlight
-                    ? 'bg-emerald-700 text-white font-semibold shadow-sm hover:bg-emerald-800 hover:shadow'
-                    : isActive
-                    ? 'bg-emerald-50 text-emerald-800 font-semibold border border-emerald-200'
-                    : 'text-slate-600 hover:text-emerald-700 hover:bg-slate-100'
-                }`}
-              >
-                <Icon className={`w-4 h-4 ${item.highlight ? 'text-white' : isActive ? 'text-emerald-600' : 'text-slate-500'}`} />
-                <span>{item.label}</span>
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Mobile menu button */}
-        <div className="lg:hidden flex items-center gap-2">
+        <div className="flex items-center gap-2">
           <button
             onClick={() => handleNavClick('new-invoice')}
             aria-label="নতুন ইনভয়েস তৈরি করুন"
-            className="flex shrink-0 items-center gap-1 bg-emerald-700 text-white px-2.5 sm:px-3 py-2 rounded-lg text-[11px] sm:text-xs font-semibold shadow"
+            className="flex shrink-0 items-center gap-1 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 px-2.5 sm:px-3 py-2 rounded-lg text-[11px] sm:text-xs font-medium transition"
           >
             <PlusCircle className="w-3.5 h-3.5" />
             <span className="hidden min-[360px]:inline">ইনভয়েস</span>
@@ -166,32 +136,34 @@ export default function Navbar({ activeTab, setActiveTab }) {
         </div>
       </div>
 
-      {/* Mobile Menu Dropdown */}
+      {/* Collapsible navigation for all screen sizes */}
       {mobileMenuOpen && (
-        <div className="lg:hidden border-t border-slate-200 bg-white px-4 py-3 shadow-lg space-y-1">
+        <div className="border-t border-slate-200 bg-white px-4 py-3 shadow-lg">
           <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider px-2 py-1">
             ম্যানেজমেন্ট ও ইনভয়েস
           </div>
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            const isActive = activeTab === item.id;
-            return (
-              <button
-                key={item.id}
-                onClick={() => handleNavClick(item.id)}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left text-sm font-medium transition ${
-                  isActive
-                    ? 'bg-emerald-50 text-emerald-800 border-l-4 border-emerald-600 font-semibold'
-                    : 'text-slate-700 hover:bg-slate-50'
-                }`}
-              >
-                <Icon className="w-4 h-4 text-emerald-600" />
-                <span>{item.label}</span>
-              </button>
-            );
-          })}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-1">
+            {navItems.map((item) => {
+              const Icon = item.icon;
+              const isActive = activeTab === item.id;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => handleNavClick(item.id)}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left text-sm font-medium transition ${
+                    isActive
+                      ? 'bg-emerald-50 text-emerald-800 border-l-4 border-emerald-600 font-semibold'
+                      : 'text-slate-700 hover:bg-slate-50'
+                  }`}
+                >
+                  <Icon className="w-4 h-4 text-emerald-600" />
+                  <span>{item.label}</span>
+                </button>
+              );
+            })}
+          </div>
           <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500 px-2">
-            <button onClick={exportBackupJSON} className="flex items-center gap-1 text-emerald-700 font-medium">
+            <button onClick={exportBackupExcel} className="flex items-center gap-1 text-emerald-700 font-medium">
               <Download className="w-3.5 h-3.5" /> ব্যাকআপ ফাইল
             </button>
             <button onClick={resetToFactoryData} className="flex items-center gap-1 text-rose-600 font-medium">

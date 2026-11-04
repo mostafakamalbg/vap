@@ -10,12 +10,14 @@ export default function InvoicePrintHeader({ invoiceType = 'regular' }) {
   return (
     <div className="invoice-company-header border-b-2 border-emerald-800 pb-3">
       <div className="invoice-company-row">
-        <img src="/logos/valid-logo.png" alt="ভ্যালিড এগ্রো প্রোডাক্টস" />
-        <h2>ভ্যালিড এগ্রো প্রোডাক্ট লিমিটেড</h2>
-      </div>
-      <div className="invoice-company-row">
-        <img src="/logos/mahananda-logo.png" alt="মহানন্দা এগ্রো ইন্ডাস্ট্রিজ" />
-        <h3>মহানন্দা এগ্রো ইন্ডাস্ট্রিজ</h3>
+        <div className="invoice-company-brand">
+          <img src="/logos/valid-logo.png" alt="ভ্যালিড এগ্রো প্রোডাক্টস" />
+          <h2>ভ্যালিড এগ্রো প্রোডাক্ট লিমিটেড</h2>
+        </div>
+        <div className="invoice-company-brand">
+          <img src="/logos/mahananda-logo.png" alt="মহানন্দা এগ্রো ইন্ডাস্ট্রিজ" />
+          <h3>মহানন্দা এগ্রো ইন্ডাস্ট্রিজ</h3>
+        </div>
       </div>
       <div className="invoice-company-contact">
         নিশিন্দারা, বগুড়া • হটলাইন: 01867912167
