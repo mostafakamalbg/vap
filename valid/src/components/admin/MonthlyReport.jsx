@@ -116,19 +116,34 @@ export default function MonthlyReport() {
   // Summary Computations
   let totalSalesValue = 0;
   let totalCartonsSold = 0;
+  let totalDealerReturnCartons = 0;
+  let totalFactoryReturnCartons = 0;
   let totalCollected = 0;
   let totalDueOutstanding = 0;
-  const productCartonOutflow = {};
+  const productCartonStockChange = {};
 
   filteredInvoices.forEach((inv) => {
-    totalSalesValue += Number(inv.grandTotal) || 0;
-    totalCartonsSold += Number(inv.totalCartons) || 0;
-    totalCollected += Number(inv.paidAmount) || 0;
-    totalDueOutstanding += Number(inv.currentDue) || 0;
+    const cartons = Number(inv.totalCartons) || 0;
+    const isDealerReturn = inv.invoiceType === 'dealer_return';
+    const isFactoryReturn = inv.invoiceType === 'factory_damage';
 
-    inv.items.forEach((item) => {
+    if (isDealerReturn) {
+      totalSalesValue -= Number(inv.grandTotal) || 0;
+      totalDealerReturnCartons += cartons;
+    } else if (isFactoryReturn) {
+      totalFactoryReturnCartons += cartons;
+    } else {
+      totalSalesValue += Number(inv.grandTotal) || 0;
+      totalCartonsSold += cartons;
+      totalCollected += Number(inv.paidAmount) || 0;
+      totalDueOutstanding += Number(inv.currentDue) || 0;
+    }
+
+    (inv.items || []).forEach((item) => {
       const key = `${item.productName} (${item.size})`;
-      productCartonOutflow[key] = (productCartonOutflow[key] || 0) + (Number(item.cartons) || 0);
+      const direction = isDealerReturn ? 1 : -1;
+      productCartonStockChange[key] =
+        (productCartonStockChange[key] || 0) + direction * (Number(item.cartons) || 0);
     });
   });
 
@@ -388,7 +403,9 @@ export default function MonthlyReport() {
           <div>
             <p className="text-xs font-semibold text-slate-500 uppercase">মোট কার্টুন সরবরাহ</p>
             <p className="text-2xl font-black text-emerald-800 mt-1 font-mono">{totalCartonsSold} কার্টুন</p>
-            <p className="text-[11px] text-slate-400 mt-0.5">মোট {filteredInvoices.length} টি চালানে</p>
+            <p className="text-[11px] text-slate-400 mt-0.5">
+              ডিলার ফেরত: {totalDealerReturnCartons} • ফ্যাক্টরি ফেরত: {totalFactoryReturnCartons}
+            </p>
           </div>
           <div className="w-10 h-10 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center">
             <Package className="w-5 h-5" />
@@ -397,9 +414,9 @@ export default function MonthlyReport() {
 
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
           <div>
-            <p className="text-xs font-semibold text-slate-500 uppercase">মোট সেলস ভ্যালু</p>
+            <p className="text-xs font-semibold text-slate-500 uppercase">নিট সেলস ভ্যালু</p>
             <p className="text-2xl font-black text-slate-800 mt-1 font-mono">৳{totalSalesValue.toLocaleString()}</p>
-            <p className="text-[11px] text-slate-400 mt-0.5">নিট চালান বিল</p>
+            <p className="text-[11px] text-slate-400 mt-0.5">বিক্রয় − ডিলার ফেরত ক্রেডিট</p>
           </div>
           <div className="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
             <TrendingUp className="w-5 h-5" />
@@ -470,6 +487,7 @@ export default function MonthlyReport() {
           <div>
             <span className="text-slate-500 font-medium">মোট চালান মূল্য:</span>
             <p className="text-base font-black text-slate-900 font-mono">৳{totalSalesValue.toLocaleString()}</p>
+            <p className="text-[10px] text-slate-500">বিক্রয় − ডিলার ফেরত</p>
           </div>
           <div>
             <span className="text-slate-500 font-medium">আদায়কৃত নগদ / চেক:</span>
@@ -485,7 +503,7 @@ export default function MonthlyReport() {
         <div className="space-y-2">
           <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
             <Package className="w-4 h-4 text-emerald-700" />
-            পণ্যভিত্তিক কার্টুন সরবরাহ তালিকা (Product-wise Cartons Dispatched):
+            ইনভয়েসভিত্তিক কার্টুন স্টক পরিবর্তন (+ জমা, − বহিঃপ্রবাহ):
           </h4>
           <div className="border border-slate-200 rounded-lg overflow-x-auto">
             <table className="w-full text-left text-xs">
@@ -493,23 +511,24 @@ export default function MonthlyReport() {
                 <tr>
                   <th className="py-2.5 px-3 w-10">নং</th>
                   <th className="py-2.5 px-3">পণ্যের বিবরণ ও প্যাক সাইজ</th>
-                  <th className="py-2.5 px-3 text-center">সরবরাহকৃত কার্টুন সংখ্যা</th>
+                  <th className="py-2.5 px-3 text-center">নিট স্টক পরিবর্তন</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
-                {Object.keys(productCartonOutflow).map((pKey, idx) => (
+                {Object.keys(productCartonStockChange).map((pKey, idx) => (
                   <tr key={pKey} className="hover:bg-slate-50">
                     <td className="py-2 px-3 font-mono text-slate-400">{idx + 1}</td>
                     <td className="py-2 px-3 font-bold text-slate-800">{pKey}</td>
                     <td className="py-2 px-3 text-center font-bold text-emerald-800 font-mono text-sm">
-                      {productCartonOutflow[pKey]} কার্টুন
+                      {productCartonStockChange[pKey] > 0 ? '+' : ''}
+                      {productCartonStockChange[pKey]} কার্টুন
                     </td>
                   </tr>
                 ))}
-                {Object.keys(productCartonOutflow).length === 0 && (
+                {Object.keys(productCartonStockChange).length === 0 && (
                   <tr>
                     <td colSpan={3} className="py-4 text-center text-slate-400 italic">
-                      নির্বাচিত ফিল্টারে কোনো কার্টুন বিক্রির তথ্য নেই।
+                      নির্বাচিত ফিল্টারে কোনো স্টক পরিবর্তনের ইনভয়েস নেই।
                     </td>
                   </tr>
                 )}

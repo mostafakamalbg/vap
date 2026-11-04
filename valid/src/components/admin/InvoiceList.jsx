@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { useAgro } from '../../context/AgroContext';
 import { toBn, toBnCurrency, toBnDate } from '../../utils/bengali';
+import InvoicePrintHeader from './InvoicePrintHeader';
 
 export default function InvoiceList({ onNewInvoiceClick, onEditInvoice }) {
   const { invoices } = useAgro();
@@ -102,7 +103,7 @@ export default function InvoiceList({ onNewInvoiceClick, onEditInvoice }) {
                       </span>
                     ) : inv.invoiceType === 'factory_damage' ? (
                       <span className="inline-block mt-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded bg-rose-100 text-rose-800">
-                        ড্যামেজ চালান
+                        ফ্যাক্টরি ফেরত
                       </span>
                     ) : (
                       <span className="inline-block mt-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-800">
@@ -176,8 +177,8 @@ export default function InvoiceList({ onNewInvoiceClick, onEditInvoice }) {
 
       {/* Invoice Modal Preview */}
       {selectedInvoice && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 overflow-y-auto">
-          <div className="bg-white rounded-xl shadow-2xl max-w-3xl w-full p-6 space-y-4 my-8">
+        <div className="invoice-print-backdrop fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 overflow-y-auto">
+          <div className="invoice-print bg-white rounded-xl shadow-2xl max-w-3xl w-full p-6 space-y-4 my-8">
             <div className="flex justify-between items-center border-b border-slate-200 pb-3 no-print">
               <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
                 <FileText className="w-5 h-5 text-emerald-700" />
@@ -212,39 +213,7 @@ export default function InvoiceList({ onNewInvoiceClick, onEditInvoice }) {
               </div>
             </div>
 
-            {/* Print Header with Both Logos */}
-            <div className="border-b-2 border-emerald-800 pb-3">
-              <div className="flex items-center justify-between mb-2">
-                <img
-                  src="/logos/valid-logo.png"
-                  alt="Valid Agro"
-                  className="h-16 w-auto object-contain"
-                />
-                <div className="text-center flex-1 px-4">
-                  <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
-                    ভ্যালিড এগ্রো প্রোডাক্ট লিমিটেড
-                  </h2>
-                  <h3 className="text-sm sm:text-base font-bold text-emerald-800">
-                    এন্ড মহানন্দা এগ্রো ইন্ডাস্ট্রিজ
-                  </h3>
-                  <p className="text-[11px] text-slate-600 mt-0.5">
-                    হেড অফিস ও ডিস্ট্রিবিউশন ডিপো: নিশিন্দারা, বগুড়া। • হটলাইন: 01867912167
-                  </p>
-                  <div className="mt-1 inline-block px-3 py-0.5 bg-emerald-100 text-emerald-900 font-bold rounded text-xs border border-emerald-300">
-                    {selectedInvoice.invoiceType === 'dealer_return'
-                      ? 'ডিলার ফেরত / রিটার্ন চালান'
-                      : selectedInvoice.invoiceType === 'factory_damage'
-                      ? 'ফ্যাক্টরি ড্যামেজ / এক্সপায়ার এডজাস্টমেন্ট'
-                      : 'ডিলার সেলস চালান ও ক্যাশ মেমো'}
-                  </div>
-                </div>
-                <img
-                  src="/logos/mahananda-logo.png"
-                  alt="Mahananda Agro"
-                  className="h-16 w-auto object-contain"
-                />
-              </div>
-            </div>
+            <InvoicePrintHeader invoiceType={selectedInvoice.invoiceType} />
 
             {/* Meta - Officer Code ONLY, NO officer name, Bengali numerals */}
             <div className="grid grid-cols-2 gap-4 text-xs py-3 border-b border-slate-200">
@@ -269,21 +238,32 @@ export default function InvoiceList({ onNewInvoiceClick, onEditInvoice }) {
               </div>
             </div>
 
-            {/* Items Table: Exactly 8 columns requested by client in Bengali numerals */}
-            <div className="mt-3">
+            {/* Fixed column proportions keep product names on one line on A4. */}
+            <div className="invoice-table-scroll mt-3 overflow-x-auto">
               <p className="text-[11px] font-bold text-slate-800 uppercase mb-1">সরবরাহকৃত পণ্য ও কার্টুন বিবরণী:</p>
-              <table className="w-full text-xs border-collapse border border-slate-300">
+              <table className="invoice-items-table min-w-[860px] w-full text-xs border-collapse border border-slate-300">
+                <colgroup>
+                  <col style={{ width: '4%' }} />
+                  <col style={{ width: '29%' }} />
+                  <col style={{ width: '11%' }} />
+                  <col style={{ width: '7%' }} />
+                  <col style={{ width: '9%' }} />
+                  <col style={{ width: '12%' }} />
+                  <col style={{ width: '7%' }} />
+                  <col style={{ width: '11%' }} />
+                  <col style={{ width: '10%' }} />
+                </colgroup>
                 <thead>
                   <tr className="bg-slate-100 border-b border-slate-300 font-bold text-slate-800">
-                    <th className="py-2 px-2 text-left w-7 border-r border-slate-200">নং</th>
+                    <th className="py-2 px-2 text-left border-r border-slate-200">নং</th>
                     <th className="py-2 px-2 text-left border-r border-slate-200">পণ্যের নাম</th>
                     <th className="py-2 px-2 text-left border-r border-slate-200">প্যাক সাইজ</th>
-                    <th className="py-2 px-2 text-center border-r border-slate-200">কাটুন সংখ্যা</th>
-                    <th className="py-2 px-2 text-right border-r border-slate-200">ট্রেড প্রইজ</th>
-                    <th className="py-2 px-2 text-right border-r border-slate-200">মোট ট্রেড প্রাইজ</th>
-                    <th className="py-2 px-2 text-center border-r border-slate-200">কমিশন(%)</th>
-                    <th className="py-2 px-2 text-right border-r border-slate-200">কমিশন এ্যামাউন্ট</th>
-                    <th className="py-2 px-2 text-right">নীট মূল্য</th>
+                    <th className="py-2 px-2 text-center border-r border-slate-200">কার্টুন</th>
+                    <th className="py-2 px-2 text-right border-r border-slate-200">কার্টুন দর (৳)</th>
+                    <th className="py-2 px-2 text-right border-r border-slate-200">মোট দর (৳)</th>
+                    <th className="py-2 px-2 text-center border-r border-slate-200">কমিশন %</th>
+                    <th className="py-2 px-2 text-right border-r border-slate-200">কমিশন (৳)</th>
+                    <th className="py-2 px-2 text-right">নিট মূল্য (৳)</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
@@ -298,7 +278,7 @@ export default function InvoiceList({ onNewInvoiceClick, onEditInvoice }) {
                     return (
                       <tr key={idx} className="border-b border-slate-200">
                         <td className="py-1.5 px-2 text-slate-600 border-r border-slate-200">{toBn(idx + 1)}</td>
-                        <td className="py-1.5 px-2 font-bold text-slate-900 border-r border-slate-200">{it.productName}</td>
+                        <td className="invoice-product-name py-1.5 px-2 font-bold text-slate-900 border-r border-slate-200">{it.productName}</td>
                         <td className="py-1.5 px-2 border-r border-slate-200">{it.size}</td>
                         <td className="py-1.5 px-2 text-center font-bold text-slate-900 border-r border-slate-200">{toBn(cartons)}</td>
                         <td className="py-1.5 px-2 text-right border-r border-slate-200">৳{toBnCurrency(cartonPrice)}</td>

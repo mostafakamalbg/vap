@@ -15,22 +15,15 @@ export default function Footer({ onNavigate }) {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 grid grid-cols-1 md:grid-cols-4 gap-8 mb-8">
         {/* Brand */}
         <div className="space-y-3 md:col-span-1">
-          <div className="flex items-center gap-2 bg-white/95 p-2 rounded-xl w-fit">
-            <img
-              src="/logos/valid-logo.png"
-              alt="Valid Agro"
-              className="h-9 w-auto object-contain"
-            />
-            <div className="h-6 w-px bg-slate-300"></div>
-            <img
-              src="/logos/mahananda-logo.png"
-              alt="Mahananda Agro"
-              className="h-9 w-auto object-contain"
-            />
-          </div>
-          <div>
-            <span className="font-bold text-white text-base block">ভ্যালিড এগ্রো প্রোডাক্ট লিঃ</span>
-            <span className="text-xs font-semibold text-emerald-400">এন্ড মহানন্দা এগ্রো ইন্ডাস্ট্রিজ</span>
+          <div className="inline-flex flex-col gap-1 bg-white/95 p-2 rounded-xl">
+            <div className="flex items-center gap-2">
+              <img src="/logos/valid-logo.png" alt="" className="h-7 w-8 object-contain shrink-0" />
+              <span className="font-bold text-slate-900 text-xs">ভ্যালিড এগ্রো প্রোডাক্ট লিমিটেড</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <img src="/logos/mahananda-logo.png" alt="" className="h-7 w-8 object-contain shrink-0" />
+              <span className="text-xs font-semibold text-emerald-800">মহানন্দা এগ্রো ইন্ডাস্ট্রিজ</span>
+            </div>
           </div>
           <p className="text-xs text-slate-400 leading-relaxed">
             আধুনিক ও পরীক্ষিত ফসল সুরক্ষা বালাইনাশক ও সার প্রস্তুতকারক ও পরিবেশক।

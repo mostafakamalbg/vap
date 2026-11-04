@@ -17,18 +17,19 @@ export default function AboutCompany() {
     <div className="py-8 px-4 max-w-7xl mx-auto space-y-12">
       {/* Hero Intro */}
       <div className="text-center max-w-3xl mx-auto space-y-4">
-        <div className="flex items-center justify-center gap-4 bg-white p-3 rounded-2xl shadow-sm border border-slate-200 w-fit mx-auto mb-2">
-          <img
-            src="/logos/valid-logo.png"
-            alt="Valid Agro"
-            className="h-12 w-auto object-contain"
-          />
-          <div className="h-8 w-px bg-slate-300"></div>
-          <img
-            src="/logos/mahananda-logo.png"
-            alt="Mahananda Agro"
-            className="h-12 w-auto object-contain"
-          />
+        <div className="inline-flex flex-col gap-1.5 bg-white p-3 rounded-2xl shadow-sm border border-slate-200 w-fit mx-auto mb-2 text-left">
+          <div className="flex items-center gap-2">
+            <img src="/logos/valid-logo.png" alt="" className="h-8 w-9 object-contain shrink-0" />
+            <span className="whitespace-nowrap text-xs sm:text-sm font-black text-slate-800">
+              ভ্যালিড এগ্রো প্রোডাক্ট লিমিটেড
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <img src="/logos/mahananda-logo.png" alt="" className="h-8 w-9 object-contain shrink-0" />
+            <span className="whitespace-nowrap text-xs sm:text-sm font-bold text-emerald-800">
+              মহানন্দা এগ্রো ইন্ডাস্ট্রিজ
+            </span>
+          </div>
         </div>
 
         <span className="bg-emerald-100 text-emerald-800 text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider">

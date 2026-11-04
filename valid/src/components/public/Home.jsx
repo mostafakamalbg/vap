@@ -24,27 +24,31 @@ export default function Home({ onNavigate }) {
   return (
     <div className="space-y-16 pb-16">
       {/* Hero Section */}
-      <section className="relative overflow-hidden bg-gradient-to-br from-emerald-900 via-emerald-800 to-green-900 text-white py-20 px-4 sm:px-6 lg:px-8">
+      <section className="relative overflow-hidden bg-gradient-to-br from-emerald-900 via-emerald-800 to-green-900 text-white py-10 sm:py-20 px-3 sm:px-6 lg:px-8">
         <div className="absolute inset-0 opacity-10 bg-[radial-gradient(#fff_1px,transparent_1px)] [background-size:16px_16px]"></div>
         
-        <div className="max-w-7xl mx-auto relative z-10 grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
-          <div className="lg:col-span-7 space-y-6">
-            {/* Both Logos featured side-by-side */}
-            <div className="flex items-center gap-3 bg-white/95 backdrop-blur-md px-4 py-2.5 rounded-2xl shadow-xl w-fit border border-white/50">
-              <img
-                src="/logos/valid-logo.png"
-                alt="Valid Agro"
-                className="h-11 sm:h-12 w-auto object-contain"
-              />
-              <div className="h-8 w-px bg-slate-300"></div>
-              <img
-                src="/logos/mahananda-logo.png"
-                alt="Mahananda Agro"
-                className="h-11 sm:h-12 w-auto object-contain"
-              />
-              <div className="hidden sm:block pl-2 border-l border-slate-200">
-                <span className="text-[11px] font-bold text-slate-800 block">যৌথ কৃষি উদ্যোগ</span>
-                <span className="text-[10px] text-emerald-800 font-semibold">নিশিন্দারা, বগুড়া</span>
+        <div className="max-w-7xl mx-auto relative z-10 grid grid-cols-1 lg:grid-cols-12 gap-7 sm:gap-12 items-center">
+          <div className="lg:col-span-7 space-y-4 sm:space-y-6">
+            <div className="inline-flex flex-col gap-1.5 bg-white/95 backdrop-blur-md px-3 sm:px-4 py-2.5 rounded-2xl shadow-xl border border-white/50">
+              <div className="flex items-center gap-2">
+                <img
+                  src="/logos/valid-logo.png"
+                  alt=""
+                  className="h-7 w-8 sm:h-9 sm:w-10 object-contain shrink-0"
+                />
+                <span className="whitespace-nowrap text-[11px] sm:text-sm font-black text-slate-800">
+                  ভ্যালিড এগ্রো প্রোডাক্ট লিমিটেড
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <img
+                  src="/logos/mahananda-logo.png"
+                  alt=""
+                  className="h-7 w-8 sm:h-9 sm:w-10 object-contain shrink-0"
+                />
+                <span className="whitespace-nowrap text-[11px] sm:text-sm font-bold text-emerald-800">
+                  মহানন্দা এগ্রো ইন্ডাস্ট্রিজ
+                </span>
               </div>
             </div>
 
@@ -53,7 +57,7 @@ export default function Home({ onNavigate }) {
               <span>কৃষকের সমৃদ্ধি ও নিরাপদ ফসল সুরক্ষায় নির্ভরযোগ্য নাম</span>
             </div>
 
-            <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black tracking-tight leading-tight">
+            <h1 className="text-[1.65rem] min-[380px]:text-3xl sm:text-5xl lg:text-6xl font-black tracking-tight leading-tight">
               ভ্যালিড এগ্রো প্রোডাক্ট লিমিটেড <br />
               <span className="text-emerald-300 text-2xl sm:text-4xl lg:text-5xl font-bold">
                 এন্ড মহানন্দা এগ্রো ইন্ডাস্ট্রিজ

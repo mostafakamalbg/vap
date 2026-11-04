@@ -131,6 +131,8 @@ export default function StockManagement() {
     }
 
     const sku = `SKU-${Date.now().toString().slice(-4)}`;
+    const packPerBox = Math.max(1, Number(newProdForm.packPerBox) || 1);
+    const initialStock = Math.max(0, Number(newProdForm.initialStock) || 0);
     const newProduct = {
       name: newProdForm.name,
       generic: newProdForm.generic || 'উন্নত কৃষি প্রযুক্তি',
@@ -140,11 +142,12 @@ export default function StockManagement() {
         {
           sku,
           size: newProdForm.size,
-          packPerBox: Number(newProdForm.packPerBox) || 1,
+          packPerBox,
           unit: newProdForm.unit,
           tp: Number(newProdForm.tp) || 0,
           mrp: Number(newProdForm.mrp) || 0,
-          stock: Number(newProdForm.initialStock) || 0
+          stockCartons: Math.floor(initialStock / packPerBox),
+          stock: initialStock
         }
       ]
     };

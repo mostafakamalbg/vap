@@ -6,21 +6,16 @@ import {
   CheckCircle,
   AlertCircle,
   Building2,
-  Phone,
-  Calendar,
-  User,
   ShoppingBag,
-  ArrowRight,
   RefreshCw,
   Lock,
   RotateCcw,
   Truck,
-  AlertTriangle,
   FileEdit,
-  X
 } from 'lucide-react';
-import { useAgro, getNextInvoiceNumber } from '../../context/AgroContext';
+import { getInvoiceStockChanges, useAgro, getNextInvoiceNumber } from '../../context/AgroContext';
 import { toBn, toBnCurrency, toBnDate } from '../../utils/bengali';
+import InvoicePrintHeader from './InvoicePrintHeader';
 
 export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCancelEdit }) {
   const {
@@ -34,7 +29,7 @@ export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCa
     getDealerSummary
   } = useAgro();
 
-  // Invoice Mode: 'regular' (রেগুলার বিক্রয়) | 'dealer_return' (ডিলার ফেরত) | 'factory_damage' (ফ্যাক্টরি ড্যামেজ)
+  // factory_damage remains the stored value for compatibility with existing invoices.
   const [invoiceType, setInvoiceType] = useState('regular');
 
   // Unique Invoice ID & Date
@@ -337,6 +332,20 @@ export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCa
       return;
     }
 
+    const stockChanges = getInvoiceStockChanges(editInvoiceData, { invoiceType, items: preparedItems });
+    for (const change of stockChanges.values()) {
+      const product = products.find((entry) => entry.id === change.productId);
+      const variant = product?.variants.find((entry) => entry.sku === change.sku);
+      if (!variant) continue;
+
+      const remainingCartons = (Number(variant.stockCartons) || 0) + change.cartons;
+      const remainingPieces = (Number(variant.stock) || 0) + change.pieces;
+      if (remainingCartons < 0 || remainingPieces < 0) {
+        alert(`স্টকে পর্যাপ্ত পণ্য নেই: ${product.name} (${variant.size})`);
+        return;
+      }
+    }
+
     const assignedOfficer = officers.find(
       (o) => String(o.code) === String(dealerDetails.officerCode) || o.id === dealerDetails.officerId
     );
@@ -373,7 +382,7 @@ export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCa
           ? 'চালানের মালামাল সঠিক কার্টুন সংখ্যায় বুঝে দেওয়া হলো।'
           : invoiceType === 'dealer_return'
           ? 'ডিলার ফেরত পণ্য গ্রহণ ও লেজারে ক্রেডিট সমন্বয়।'
-          : 'ফ্যাক্টরি ড্যামেজ / এক্সপায়ার পণ্য অবলোপন সমন্বয়।'
+          : 'ফ্যাক্টরিতে ফেরত পাঠানো পণ্যের স্টক সমন্বয়।'
       )
     };
 
@@ -442,7 +451,7 @@ export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCa
   };
 
   return (
-    <div className="py-6 px-4 max-w-7xl mx-auto space-y-6">
+    <div className="py-4 sm:py-6 px-3 sm:px-4 max-w-7xl mx-auto space-y-4 sm:space-y-6">
       {/* Top Banner & Mode */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-5 rounded-xl border border-slate-200 shadow-sm no-print">
         <div>
@@ -495,52 +504,26 @@ export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCa
       )}
 
       {/* Main Invoice Builder */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-6 no-print">
-        {/* Requirement 3: Three Invoice Types Selector */}
-        <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
-          <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
-            ইনভয়েস টাইপ নির্বাচন করুন (Select Invoice Type):
-          </label>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <button
-              type="button"
-              onClick={() => setInvoiceType('regular')}
-              className={`flex items-center justify-center gap-2 p-3 rounded-lg border text-xs font-bold transition ${
-                invoiceType === 'regular'
-                  ? 'bg-emerald-700 text-white border-emerald-700 shadow'
-                  : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
-              }`}
-            >
-              <ShoppingBag className="w-4 h-4" />
-              <span>১. রেগুলার বিক্রয় চালান</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setInvoiceType('dealer_return')}
-              className={`flex items-center justify-center gap-2 p-3 rounded-lg border text-xs font-bold transition ${
-                invoiceType === 'dealer_return'
-                  ? 'bg-amber-600 text-white border-amber-600 shadow'
-                  : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
-              }`}
-            >
-              <RotateCcw className="w-4 h-4" />
-              <span>২. ডিলার ফেরত চালান (রিটার্ন)</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setInvoiceType('factory_damage')}
-              className={`flex items-center justify-center gap-2 p-3 rounded-lg border text-xs font-bold transition ${
-                invoiceType === 'factory_damage'
-                  ? 'bg-rose-700 text-white border-rose-700 shadow'
-                  : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
-              }`}
-            >
-              <AlertTriangle className="w-4 h-4" />
-              <span>৩. ফ্যাক্টরি ড্যামেজ / এক্সপায়ার</span>
-            </button>
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 sm:p-6 space-y-5 sm:space-y-6 no-print">
+        <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_minmax(220px,0.8fr)] items-center gap-3 p-3 sm:p-4 bg-slate-50 rounded-xl border border-slate-200">
+          <div>
+            <label htmlFor="invoice-type" className="block text-sm font-bold text-slate-800">
+              ইনভয়েস টাইপ নির্বাচন করুন
+            </label>
+            <p className="text-xs text-slate-500 mt-0.5">
+              একই ফর্মে রেগুলার, ডিলার ফেরত ও ফ্যাক্টরি ফেরত চালান তৈরি করুন।
+            </p>
           </div>
+          <select
+            id="invoice-type"
+            value={invoiceType}
+            onChange={(e) => setInvoiceType(e.target.value)}
+            className="w-full bg-white border-2 border-emerald-600 rounded-lg px-3 py-2.5 text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-200"
+          >
+            <option value="regular">রেগুলার ইনভয়েস</option>
+            <option value="dealer_return">ডিলার ফেরত</option>
+            <option value="factory_damage">ফ্যাক্টরি ফেরত</option>
+          </select>
         </div>
 
         {/* Invoice Meta Grid */}
@@ -650,7 +633,7 @@ export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCa
                   ? 'চালান পণ্য তালিকা (এক ক্লিকে পণ্য ও প্যাক সাইজ নির্বাচন)'
                   : invoiceType === 'dealer_return'
                   ? 'ডিলার ফেরত পণ্য তালিকা (রিটার্ন কার্টুন ও প্যাক)'
-                  : 'ফ্যাক্টরি ড্যামেজ পণ্য তালিকা'}
+                  : 'ফ্যাক্টরিতে ফেরত পাঠানো পণ্যের তালিকা'}
               </h3>
               <p className="text-[11px] text-slate-500">
                 একবার সিলেক্ট করলেই প্যাক সাইজ ও রেট বসে যাবে। আপনি শুধু কার্টুন সংখ্যা লিখবেন।
@@ -989,7 +972,7 @@ export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCa
           <div className="bg-slate-50 border border-slate-200 rounded-xl p-5 space-y-2.5 text-xs">
             <div className="flex justify-between items-center border-b border-slate-200 pb-2">
               <h4 className="font-bold text-slate-800 text-sm">
-                হিসাব বিবরণী ({invoiceType === 'regular' ? 'নিয়মিত চালান' : invoiceType === 'dealer_return' ? 'রিটার্ন ক্রেডিট' : 'ফ্যাক্টরি ড্যামেজ'})
+                হিসাব বিবরণী ({invoiceType === 'regular' ? 'নিয়মিত চালান' : invoiceType === 'dealer_return' ? 'রিটার্ন ক্রেডিট' : 'ফ্যাক্টরি ফেরত'})
               </h4>
               <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
                 invoiceType === 'regular' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-900'
@@ -1072,16 +1055,16 @@ export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCa
         </div>
 
         {/* Action Buttons */}
-        <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">
+        <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-3 pt-4 border-t border-slate-200">
           <button
             onClick={() => handleSaveInvoice(false)}
-            className="px-5 py-2.5 rounded-lg border border-emerald-700 text-emerald-800 hover:bg-emerald-50 font-bold text-xs transition"
+            className="w-full sm:w-auto px-5 py-2.5 rounded-lg border border-emerald-700 text-emerald-800 hover:bg-emerald-50 font-bold text-xs transition"
           >
             {editInvoiceData ? 'পরিবর্তন সংরক্ষণ করুন' : 'শুধু ইনভয়েস সংরক্ষণ করুন'}
           </button>
           <button
             onClick={() => handleSaveInvoice(true)}
-            className="flex items-center gap-2 bg-emerald-700 hover:bg-emerald-800 text-white px-6 py-2.5 rounded-lg font-black text-xs shadow-md transition"
+            className="w-full sm:w-auto flex justify-center items-center gap-2 bg-emerald-700 hover:bg-emerald-800 text-white px-6 py-2.5 rounded-lg font-black text-xs shadow-md transition"
           >
             <Printer className="w-4 h-4" />
             <span>{editInvoiceData ? 'আপডেট ও চালান প্রিন্ট' : 'সংরক্ষণ ও চালান প্রিন্ট করুন'}</span>
@@ -1090,51 +1073,8 @@ export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCa
       </div>
 
       {/* Requirement 11 & Requirement 1: Official Printable Invoice */}
-      <div className={`print-container bg-white p-8 max-w-4xl mx-auto rounded-lg border border-slate-200 ${previewInvoice ? 'block' : 'hidden print:block'}`}>
-        {/* Header with BOTH Logos Side by Side */}
-        <div className="border-b-2 border-emerald-800 pb-3">
-          <div className="flex items-center justify-between gap-4">
-            {/* Logo 1: Valid Agro Products */}
-            <img
-              src="/logos/valid-logo.png"
-              alt="Valid Agro Products"
-              className="h-16 w-auto object-contain max-w-[80px]"
-            />
-
-            {/* Central Company Information */}
-            <div className="text-center flex-1">
-              <h2 className="text-2xl font-black text-slate-900 tracking-tight">
-                ভ্যালিড এগ্রো প্রোডাক্ট লিমিটেড
-              </h2>
-              <h3 className="text-base font-bold text-emerald-800">
-                এন্ড মহানন্দা এগ্রো ইন্ডাস্ট্রিজ
-              </h3>
-              <p className="text-xs text-slate-600 mt-0.5">
-                হেড অফিস ও ডিস্ট্রিবিউশন হাব: নিশিন্দারা, বগুড়া।
-              </p>
-              <p className="text-xs font-semibold text-slate-700">
-                হটলাইন: 01867912167 • উন্নত ফসল সুরক্ষা ও বালাইনাশক
-              </p>
-            </div>
-
-            {/* Logo 2: Mahananda Agro Industries */}
-            <img
-              src="/logos/mahananda-logo.png"
-              alt="Mahananda Agro Industries"
-              className="h-16 w-auto object-contain max-w-[80px]"
-            />
-          </div>
-
-          <div className="text-center mt-2">
-            <span className="inline-block bg-emerald-800 text-white px-4 py-0.5 rounded text-xs font-bold uppercase tracking-wider">
-              {previewInvoice?.invoiceType === 'dealer_return'
-                ? 'ডিলার ফেরত চালান ও ক্রেডিট মেমো'
-                : previewInvoice?.invoiceType === 'factory_damage'
-                ? 'ফ্যাক্টরি ড্যামেজ / এক্সপায়ার সমন্বয় চালান'
-                : 'ডিলার বিক্রয় চালান ও মেমো কপি'}
-            </span>
-          </div>
-        </div>
+      <div className={`print-container invoice-print bg-white p-8 max-w-4xl mx-auto rounded-lg border border-slate-200 ${previewInvoice ? 'block' : 'hidden print:block'}`}>
+        <InvoicePrintHeader invoiceType={previewInvoice?.invoiceType || invoiceType} />
 
         {/* Invoice Meta Grid: Requirement 1 - ONLY officerCode displayed, NO officer name, Bengali numerals */}
         <div className="grid grid-cols-2 gap-4 py-3 text-xs border-b border-slate-200">
@@ -1156,21 +1096,32 @@ export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCa
           </div>
         </div>
 
-        {/* Items Table: Exactly 8 columns requested by client in Bengali numerals */}
+        {/* Fixed column proportions keep product names on one line on A4. */}
         <div className="mt-3">
           <p className="text-[11px] font-bold text-slate-800 uppercase mb-1">সরবরাহকৃত পণ্য ও কার্টুন বিবরণী:</p>
-          <table className="w-full text-xs border-collapse border border-slate-300">
+          <table className="invoice-items-table w-full text-xs border-collapse border border-slate-300">
+            <colgroup>
+              <col style={{ width: '4%' }} />
+              <col style={{ width: '29%' }} />
+              <col style={{ width: '11%' }} />
+              <col style={{ width: '7%' }} />
+              <col style={{ width: '9%' }} />
+              <col style={{ width: '12%' }} />
+              <col style={{ width: '7%' }} />
+              <col style={{ width: '11%' }} />
+              <col style={{ width: '10%' }} />
+            </colgroup>
             <thead>
               <tr className="bg-slate-100 border-b border-slate-300 font-bold text-slate-800">
-                <th className="py-2 px-2 text-left w-7 border-r border-slate-200">নং</th>
+                <th className="py-2 px-2 text-left border-r border-slate-200">নং</th>
                 <th className="py-2 px-2 text-left border-r border-slate-200">পণ্যের নাম</th>
                 <th className="py-2 px-2 text-left border-r border-slate-200">প্যাক সাইজ</th>
-                <th className="py-2 px-2 text-center border-r border-slate-200">কাটুন সংখ্যা</th>
-                <th className="py-2 px-2 text-right border-r border-slate-200">ট্রেড প্রইজ</th>
-                <th className="py-2 px-2 text-right border-r border-slate-200">মোট ট্রেড প্রাইজ</th>
-                <th className="py-2 px-2 text-center border-r border-slate-200">কমিশন(%)</th>
-                <th className="py-2 px-2 text-right border-r border-slate-200">কমিশন এ্যামাউন্ট</th>
-                <th className="py-2 px-2 text-right">নীট মূল্য</th>
+                <th className="py-2 px-2 text-center border-r border-slate-200">কার্টুন</th>
+                <th className="py-2 px-2 text-right border-r border-slate-200">কার্টুন দর (৳)</th>
+                <th className="py-2 px-2 text-right border-r border-slate-200">মোট দর (৳)</th>
+                <th className="py-2 px-2 text-center border-r border-slate-200">কমিশন %</th>
+                <th className="py-2 px-2 text-right border-r border-slate-200">কমিশন (৳)</th>
+                <th className="py-2 px-2 text-right">নিট মূল্য (৳)</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
@@ -1185,7 +1136,7 @@ export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCa
                 return (
                   <tr key={idx} className="border-b border-slate-200">
                     <td className="py-1.5 px-2 text-slate-600 border-r border-slate-200">{toBn(idx + 1)}</td>
-                    <td className="py-1.5 px-2 font-bold text-slate-900 border-r border-slate-200">{it.productName}</td>
+                    <td className="invoice-product-name py-1.5 px-2 font-bold text-slate-900 border-r border-slate-200">{it.productName}</td>
                     <td className="py-1.5 px-2 border-r border-slate-200">{it.size}</td>
                     <td className="py-1.5 px-2 text-center font-bold text-slate-900 border-r border-slate-200">{toBn(cartons)}</td>
                     <td className="py-1.5 px-2 text-right border-r border-slate-200">৳{toBnCurrency(cartonPrice)}</td>

@@ -91,36 +91,35 @@ export default function Navbar({ activeTab, setActiveTab }) {
       </div>
 
       {/* Main Navigation Bar */}
-      <div className="container mx-auto px-4 py-2.5 flex items-center justify-between">
-        {/* Logo and Brand Title with BOTH logos side-by-side */}
-        <div
+      <div className="container mx-auto px-3 sm:px-4 py-2 flex items-center justify-between gap-2">
+        <button
+          type="button"
           onClick={() => handleNavClick('website-home')}
-          className="cursor-pointer flex items-center space-x-3 group"
+          aria-label="ভ্যালিড এগ্রো ও মহানন্দা এগ্রো হোম"
+          className="min-w-0 flex flex-col items-start gap-0.5 text-left group"
         >
-          <div className="flex items-center space-x-2 bg-slate-50 p-1.5 rounded-xl border border-slate-200/80 shadow-sm group-hover:shadow transition">
+          <span className="flex min-w-0 items-center gap-1.5">
             <img
               src="/logos/valid-logo.png"
-              alt="Valid Agro Products Ltd"
-              className="h-9 w-auto object-contain max-w-[50px] transition-transform group-hover:scale-105"
+              alt=""
+              className="h-7 w-8 sm:h-8 sm:w-9 shrink-0 object-contain"
             />
-            <div className="h-6 w-[1px] bg-slate-300"></div>
+            <span className="whitespace-nowrap text-[10px] min-[360px]:text-[11px] sm:text-sm font-black text-slate-800 tracking-tight leading-tight">
+              ভ্যালিড এগ্রো প্রোডাক্ট লিমিটেড
+            </span>
+          </span>
+          <span className="flex min-w-0 items-center gap-1.5">
             <img
               src="/logos/mahananda-logo.png"
-              alt="Mahananda Agro Industries"
-              className="h-9 w-auto object-contain max-w-[42px] transition-transform group-hover:scale-105"
+              alt=""
+              className="h-6 w-8 sm:h-7 sm:w-9 shrink-0 object-contain"
             />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-base md:text-lg font-black text-slate-800 tracking-tight leading-tight">
-                ভ্যালিড এগ্রো প্রোডাক্ট লিমিটেড
-              </span>
-            </div>
-            <p className="text-[11px] text-emerald-700 font-bold tracking-wide">
-              এন্ড মহানন্দা এগ্রো ইন্ডাস্ট্রিজ • নিশিন্দারা, বগুড়া
-            </p>
-          </div>
-        </div>
+            <span className="whitespace-nowrap text-[10px] min-[360px]:text-[11px] sm:text-xs font-bold text-emerald-800 leading-tight">
+              মহানন্দা এগ্রো ইন্ডাস্ট্রিজ
+              <span className="hidden sm:inline"> • নিশিন্দারা, বগুড়া</span>
+            </span>
+          </span>
+        </button>
 
         {/* Desktop Quick Nav */}
         <div className="hidden lg:flex items-center space-x-1 font-medium text-sm">
@@ -150,15 +149,17 @@ export default function Navbar({ activeTab, setActiveTab }) {
         <div className="lg:hidden flex items-center gap-2">
           <button
             onClick={() => handleNavClick('new-invoice')}
-            className="flex items-center gap-1 bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold shadow"
+            aria-label="নতুন ইনভয়েস তৈরি করুন"
+            className="flex shrink-0 items-center gap-1 bg-emerald-700 text-white px-2.5 sm:px-3 py-2 rounded-lg text-[11px] sm:text-xs font-semibold shadow"
           >
             <PlusCircle className="w-3.5 h-3.5" />
-            <span>ইনভয়েস</span>
+            <span className="hidden min-[360px]:inline">ইনভয়েস</span>
           </button>
 
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="p-2 rounded-lg text-slate-600 hover:bg-slate-100"
+            aria-label={mobileMenuOpen ? 'মেনু বন্ধ করুন' : 'মেনু খুলুন'}
+            className="shrink-0 p-2 rounded-lg text-slate-600 hover:bg-slate-100"
           >
             {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
           </button>
