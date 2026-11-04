@@ -3,8 +3,8 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "npm run dev --prefix \"valid Agro\"",
-    "build": "npm run build --prefix \"valid Agro\"",
-    "preview": "npm run preview --prefix \"valid Agro\""
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
   }
 }
