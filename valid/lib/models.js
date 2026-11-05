@@ -13,6 +13,7 @@ const InvoiceSchema = new mongoose.Schema({
   officerId: String,
   officerCode: String,
   officerName: String,
+  invoiceType: { type: String, default: 'regular' },
   items: Array,
   returnAdjustments: Array,
   totalCartons: Number,
@@ -81,7 +82,50 @@ const DamageSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now }
 });
 
+const UserSchema = new mongoose.Schema({
+  name: { type: String, required: true, trim: true },
+  email: { type: String, required: true, unique: true, lowercase: true, trim: true },
+  passwordHash: { type: String, required: true, select: false },
+  role: { type: String, enum: ['admin', 'officer'], required: true },
+  status: { type: String, enum: ['pending', 'active', 'rejected'], default: 'pending' },
+  officerId: String,
+  officerCode: String,
+  phone: String,
+  createdAt: { type: Date, default: Date.now }
+});
+UserSchema.index({ officerId: 1 }, { unique: true, sparse: true });
+UserSchema.index({ officerCode: 1 }, { unique: true, sparse: true });
+
+const BusinessRecordSchema = new mongoose.Schema({
+  type: { type: String, required: true },
+  recordId: { type: String, required: true },
+  data: { type: mongoose.Schema.Types.Mixed, required: true }
+});
+BusinessRecordSchema.index({ type: 1, recordId: 1 }, { unique: true });
+
+const OrderSchema = new mongoose.Schema({
+  id: { type: String, required: true, unique: true },
+  officerId: { type: String, required: true },
+  officerCode: String,
+  officerName: String,
+  items: { type: Array, required: true },
+  note: String,
+  status: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },
+  decisionNote: String,
+  createdAt: { type: Date, default: Date.now },
+  decidedAt: Date
+});
+
+const AdminSeatSchema = new mongoose.Schema({
+  _id: { type: Number, min: 1, max: 2 },
+  email: { type: String, required: true }
+});
+
 export const Invoice = mongoose.models.Invoice || mongoose.model('Invoice', InvoiceSchema);
 export const Dealer = mongoose.models.Dealer || mongoose.model('Dealer', DealerSchema);
 export const Product = mongoose.models.Product || mongoose.model('Product', ProductSchema);
 export const Damage = mongoose.models.Damage || mongoose.model('Damage', DamageSchema);
+export const User = mongoose.models.User || mongoose.model('User', UserSchema);
+export const BusinessRecord = mongoose.models.BusinessRecord || mongoose.model('BusinessRecord', BusinessRecordSchema);
+export const Order = mongoose.models.Order || mongoose.model('Order', OrderSchema);
+export const AdminSeat = mongoose.models.AdminSeat || mongoose.model('AdminSeat', AdminSeatSchema);

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ShieldCheck,
   TrendingUp,
@@ -15,11 +15,38 @@ import {
 } from 'lucide-react';
 import { useAgro } from '../../context/AgroContext';
 
+const heroSlides = [
+  {
+    image: 'https://images.unsplash.com/photo-1500382017468-9049fed747ef?auto=format&fit=crop&w=1100&q=85',
+    alt: 'সবুজ ফসলের মাঠ',
+    title: 'সবুজ ফসল, সমৃদ্ধ কৃষক',
+    detail: 'কৃষির প্রতিটি মৌসুমে পাশে আছি'
+  },
+  {
+    image: 'https://images.unsplash.com/photo-1592982537447-7440770cbfc9?auto=format&fit=crop&w=1100&q=85',
+    alt: 'কৃষকের মাঠে কাজ',
+    title: 'কৃষকের সাফল্যই আমাদের লক্ষ্য',
+    detail: 'ফসল সুরক্ষায় নির্ভরযোগ্য পণ্য ও সহায়তা'
+  },
+  {
+    image: 'https://images.unsplash.com/photo-1416879595882-3373a0480b5b?auto=format&fit=crop&w=1100&q=85',
+    alt: 'সতেজ সবুজ গাছের চারা',
+    title: 'ফসল সুরক্ষায় মানসম্মত সমাধান',
+    detail: 'সঠিক পণ্য বাছাইয়ে ডিলার ও কৃষকের পাশে'
+  }
+];
+
 export default function Home({ onNavigate }) {
   const { products } = useAgro();
+  const [activeSlide, setActiveSlide] = useState(0);
+  const featured = products;
 
-  // Top featured products from the user's list
-  const featured = products.slice(0, 6);
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setActiveSlide((current) => (current + 1) % heroSlides.length);
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   return (
     <div className="space-y-16 pb-16">
@@ -29,26 +56,32 @@ export default function Home({ onNavigate }) {
         
         <div className="max-w-7xl mx-auto relative z-10 grid grid-cols-1 lg:grid-cols-12 gap-7 sm:gap-12 items-center">
           <div className="lg:col-span-7 space-y-4 sm:space-y-6">
-            <div className="inline-flex flex-col gap-1.5 bg-white/95 backdrop-blur-md px-3 sm:px-4 py-2.5 rounded-2xl shadow-xl border border-white/50 lg:hidden">
-              <div className="flex items-center gap-2">
-                <img
-                  src="/logos/valid-logo.png"
-                  alt=""
-                  className="h-7 w-8 sm:h-9 sm:w-10 object-contain shrink-0"
-                />
-                <span className="whitespace-nowrap text-[11px] sm:text-sm font-black text-slate-800">
-                  ভ্যালিড এগ্রো প্রোডাক্ট লিমিটেড
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <img
-                  src="/logos/mahananda-logo.png"
-                  alt=""
-                  className="h-7 w-8 sm:h-9 sm:w-10 object-contain shrink-0"
-                />
-                <span className="whitespace-nowrap text-[11px] sm:text-sm font-bold text-emerald-800">
-                  মহানন্দা এগ্রো ইন্ডাস্ট্রিজ
-                </span>
+            <div className="relative h-40 w-full max-w-md overflow-hidden rounded-2xl border border-white/30 bg-emerald-950 shadow-2xl sm:h-52">
+              {heroSlides.map((slide, index) => (
+                <div
+                  key={slide.image}
+                  className={`absolute inset-0 transition-opacity duration-700 ${activeSlide === index ? 'opacity-100' : 'pointer-events-none opacity-0'}`}
+                  aria-hidden={activeSlide !== index}
+                >
+                  <img src={slide.image} alt={slide.alt} className="h-full w-full object-cover" />
+                  <div className="absolute inset-0 bg-gradient-to-r from-emerald-950/85 via-emerald-950/35 to-transparent" />
+                  <div className="absolute bottom-8 left-4 right-3 text-white sm:bottom-9 sm:left-6">
+                    <p className="text-sm font-black sm:text-lg">{slide.title}</p>
+                    <p className="mt-1 text-[10px] text-emerald-50 sm:text-xs">{slide.detail}</p>
+                  </div>
+                </div>
+              ))}
+              <div className="absolute bottom-3 left-4 flex gap-1.5 sm:left-6">
+                {heroSlides.map((slide, index) => (
+                  <button
+                    key={slide.image}
+                    type="button"
+                    aria-label={`${index + 1} নম্বর স্লাইড দেখুন`}
+                    aria-pressed={activeSlide === index}
+                    onClick={() => setActiveSlide(index)}
+                    className={`h-1.5 rounded-full transition-all ${activeSlide === index ? 'w-6 bg-amber-400' : 'w-2 bg-white/70'}`}
+                  />
+                ))}
               </div>
             </div>
 
@@ -226,7 +259,7 @@ export default function Home({ onNavigate }) {
             onClick={() => onNavigate('website-products')}
             className="flex items-center gap-1.5 text-emerald-700 hover:text-emerald-800 font-bold text-sm"
           >
-            <span>সকল ২৩টি পণ্য দেখুন</span>
+            <span>সকল {products.length}টি পণ্য দেখুন</span>
             <ArrowRight className="w-4 h-4" />
           </button>
         </div>
@@ -276,10 +309,10 @@ export default function Home({ onNavigate }) {
                   </p>
                 </div>
                 <button
-                  onClick={() => onNavigate('new-invoice')}
+                  onClick={() => onNavigate('website-products')}
                   className="bg-emerald-50 group-hover:bg-emerald-700 group-hover:text-white text-emerald-800 px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1"
                 >
-                  <span>ইনভয়েস করুন</span>
+                  <span>পণ্য দেখুন</span>
                   <ArrowRight className="w-3.5 h-3.5" />
                 </button>
               </div>
@@ -343,6 +376,36 @@ export default function Home({ onNavigate }) {
                 ডিলার হতে কল করুন: 01867912167
               </a>
             </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="overflow-hidden rounded-2xl border border-emerald-100 bg-white shadow-sm">
+          <div className="grid gap-8 bg-gradient-to-r from-emerald-50 to-white p-6 sm:p-10 md:grid-cols-[1fr_auto] md:items-center">
+            <div>
+              <span className="text-xs font-bold uppercase tracking-wider text-emerald-700">কৃষক ও ডিলারদের পাশে</span>
+              <h2 className="mt-2 text-2xl font-black text-slate-900 sm:text-3xl">আপনাদের আস্থাই আমাদের অনুপ্রেরণা</h2>
+              <p className="mt-3 max-w-2xl text-sm leading-relaxed text-slate-600">
+                পণ্য, সরবরাহ ও মাঠপর্যায়ের সহায়তা নিয়ে আপনার প্রকৃত অভিজ্ঞতা আমাদের জানান।
+                আপনাদের মতামত ভবিষ্যতে সেবার মান উন্নত করতে সাহায্য করবে।
+              </p>
+            </div>
+            <a href="tel:01867912167" className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-700 px-5 py-3 text-sm font-bold text-white shadow transition hover:bg-emerald-800">
+              <Phone className="h-4 w-4" /> মতামত জানাতে কল করুন
+            </a>
+          </div>
+          <div className="grid divide-y divide-slate-100 md:grid-cols-3 md:divide-x md:divide-y-0">
+            {[
+              ['কৃষকের পাশে', 'ফসল সুরক্ষায় প্রয়োজনীয় পণ্য ও তথ্য'],
+              ['ডিলারের আস্থা', 'স্বচ্ছ বিক্রয় ও অর্ডার ব্যবস্থাপনা'],
+              ['দ্রুত সহায়তা', 'যোগাযোগ ও সরবরাহে নির্ভরযোগ্য সেবা']
+            ].map(([title, detail]) => (
+              <div key={title} className="p-5 sm:p-6">
+                <div className="mb-2 flex items-center gap-2 text-amber-500"><Award className="h-4 w-4" /><span className="text-xs font-bold text-slate-700">{title}</span></div>
+                <p className="text-xs leading-relaxed text-slate-500">{detail}</p>
+              </div>
+            ))}
           </div>
         </div>
       </section>

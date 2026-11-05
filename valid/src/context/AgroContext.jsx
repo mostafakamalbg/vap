@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useMemo } from 'react';
+import { createContext, useContext, useState, useEffect, useMemo, useRef } from 'react';
 import {
   INITIAL_PRODUCTS,
   INITIAL_OFFICERS,
@@ -149,7 +149,24 @@ function createExcelWorksheet(name, rows) {
   return `<Worksheet ss:Name="${name}"><Table>${xmlRows}</Table></Worksheet>`;
 }
 
+async function readJsonResponse(response) {
+  let result;
+  try {
+    result = await response.json();
+  } catch {
+    throw new Error('সার্ভার থেকে সঠিক প্রতিক্রিয়া পাওয়া যায়নি।');
+  }
+  if (!response.ok) throw new Error(result.error || 'অনুরোধ সম্পন্ন করা যায়নি।');
+  return result;
+}
+
 export function AgroProvider({ children }) {
+  const [currentUser, setCurrentUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [authError, setAuthError] = useState('');
+  const [cloudError, setCloudError] = useState('');
+  const [cloudReady, setCloudReady] = useState(false);
+
   // Version 5 storage keys for continuous serial 1 to 83 dealer codes and 26 products
   const [products, setProducts] = useState(() => {
     const saved = localStorage.getItem('vap_products_v5');
@@ -185,6 +202,16 @@ export function AgroProvider({ children }) {
     const saved = localStorage.getItem('vap_payments_v5');
     return saved ? JSON.parse(saved) : INITIAL_PAYMENTS;
   });
+  const localRecordsRef = useRef({
+    products,
+    officers,
+    dealers,
+    invoices,
+    stockInLogs,
+    damageLogs,
+    payments
+  });
+  const syncQueueRef = useRef({});
 
   // Save to LocalStorage
   useEffect(() => {
@@ -215,23 +242,154 @@ export function AgroProvider({ children }) {
     localStorage.setItem('vap_payments_v5', JSON.stringify(payments));
   }, [payments]);
 
-  // Optional: Attempt to load from MongoDB Atlas API on mount
   useEffect(() => {
-    async function loadFromApi() {
+    let cancelled = false;
+    fetch('/api/auth/me')
+      .then(async (response) => {
+        if (response.status === 401) return null;
+        const result = await readJsonResponse(response);
+        return result.user;
+      })
+      .then((user) => {
+        if (!cancelled) setCurrentUser(user);
+      })
+      .catch((error) => {
+        if (!cancelled) setAuthError(error.message);
+      })
+      .finally(() => {
+        if (!cancelled) setAuthLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  const login = async (credentials) => {
+    const response = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(credentials)
+    });
+    const result = await readJsonResponse(response);
+    setCurrentUser(result.user);
+    setAuthError('');
+    return result.user;
+  };
+
+  const registerOfficer = async (registration) => {
+    const response = await fetch('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(registration)
+    });
+    return readJsonResponse(response);
+  };
+
+  const logout = async () => {
+    const response = await fetch('/api/auth/logout', { method: 'POST' });
+    await readJsonResponse(response);
+    setCurrentUser(null);
+    setCloudError('');
+  };
+
+  const refreshSharedRecords = async (type) => {
+    const response = await fetch(`/api/records?type=${encodeURIComponent(type)}`);
+    const records = await readJsonResponse(response);
+    const setters = {
+      products: setProducts,
+      officers: setOfficers,
+      dealers: setDealers,
+      invoices: setInvoices,
+      stockInLogs: setStockInLogs,
+      damageLogs: setDamageLogs,
+      payments: setPayments
+    };
+    if (!Array.isArray(records) || !setters[type]) {
+      throw new Error('সার্ভার থেকে সঠিক ডেটা পাওয়া যায়নি।');
+    }
+    setters[type](records);
+    return records;
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    setCloudReady(false);
+    setCloudError('');
+    if (!currentUser) return () => { cancelled = true; };
+
+    const localRecords = localRecordsRef.current;
+    const setters = {
+      products: setProducts,
+      officers: setOfficers,
+      dealers: setDealers,
+      invoices: setInvoices,
+      stockInLogs: setStockInLogs,
+      damageLogs: setDamageLogs,
+      payments: setPayments
+    };
+
+    async function loadSharedRecords() {
       try {
-        const res = await fetch('/api/invoices');
-        if (res.ok) {
-          const data = await res.json();
-          if (Array.isArray(data) && data.length > 0) {
-            setInvoices(data);
+        for (const [type, setter] of Object.entries(setters)) {
+          const response = await fetch(`/api/records?type=${encodeURIComponent(type)}`);
+          const records = await readJsonResponse(response);
+          if (!Array.isArray(records)) throw new Error(`সার্ভার থেকে ${type} ডেটা সঠিকভাবে পাওয়া যায়নি।`);
+
+          if (records.length > 0 || currentUser.role === 'officer') {
+            if (!cancelled) setter(records);
+          } else if (localRecords[type].length > 0) {
+            const saveResponse = await fetch(`/api/records?type=${encodeURIComponent(type)}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(localRecords[type])
+            });
+            await readJsonResponse(saveResponse);
           }
         }
-      } catch (err) {
-        // Silently fallback to localStorage
+        if (!cancelled) {
+          setCloudReady(true);
+        }
+      } catch (error) {
+        if (!cancelled) setCloudError(error.message);
       }
     }
-    loadFromApi();
-  }, []);
+
+    loadSharedRecords();
+    return () => { cancelled = true; };
+  }, [currentUser]);
+
+  useEffect(() => {
+    if (currentUser?.role !== 'admin' || !cloudReady) return;
+    const syncRecords = (type, records) => {
+      const previousSync = syncQueueRef.current[type] || Promise.resolve();
+      const sync = previousSync.catch(() => {}).then(async () => {
+        const response = await fetch(`/api/records?type=${encodeURIComponent(type)}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(records)
+        });
+        await readJsonResponse(response);
+      }).catch((error) => {
+        setCloudError(error.message);
+      });
+      syncQueueRef.current[type] = sync;
+    };
+    syncRecords('products', products);
+    syncRecords('officers', officers);
+    syncRecords('dealers', dealers);
+    syncRecords('invoices', invoices);
+    syncRecords('stockInLogs', stockInLogs);
+    syncRecords('damageLogs', damageLogs);
+    syncRecords('payments', payments);
+  }, [
+    currentUser,
+    cloudReady,
+    products,
+    officers,
+    dealers,
+    invoices,
+    stockInLogs,
+    damageLogs,
+    payments
+  ]);
 
   // Helper: Flattened list of all product variants for 1-click selection with pack sizes
   const allProductVariants = useMemo(() => {
@@ -280,12 +438,6 @@ export function AgroProvider({ children }) {
     setInvoices((prev) => [invoiceToSave, ...prev]);
 
     // Send to MongoDB Atlas API
-    fetch('/api/invoices', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(invoiceToSave)
-    }).catch(() => {});
-
     setProducts((prevProducts) => applyInvoiceStockChanges(prevProducts, null, invoiceToSave));
 
     // If loose damage or returns exist inside this invoice, log them
@@ -360,13 +512,6 @@ export function AgroProvider({ children }) {
     setInvoices((prev) =>
       prev.map((inv) => (inv.id === finalInvoice.id ? finalInvoice : inv))
     );
-
-    // Sync to API
-    fetch('/api/invoices', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(finalInvoice)
-    }).catch(() => {});
 
     return finalInvoice;
   };
@@ -577,9 +722,23 @@ export function AgroProvider({ children }) {
     setPayments(INITIAL_PAYMENTS);
   };
 
-  // Export each dataset to its own Excel-compatible worksheet.
-  const exportBackupExcel = () => {
+  const exportBackup = (format = 'excel') => {
     const exportedAt = new Date().toISOString();
+    const dateSuffix = exportedAt.slice(0, 10);
+    const dataSets = [
+      ['Products', products],
+      ['Officers', officers],
+      ['Dealers', dealers],
+      ['Invoices', invoices],
+      ['Stock In', stockInLogs],
+      ['Damage Logs', damageLogs],
+      ['Payments', payments]
+    ];
+    let fileName;
+    let mimeType;
+    let contents;
+
+    if (format === 'excel') {
     const workbook = `<?xml version="1.0" encoding="UTF-8"?>
 <Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
   xmlns:o="urn:schemas-microsoft-com:office:office"
@@ -590,24 +749,47 @@ export function AgroProvider({ children }) {
     { Information: 'Valid Agro Products Ltd. & Mahananda Agro Industries' },
     { Information: `Exported at: ${exportedAt}` }
   ])}
-  ${createExcelWorksheet('Products', products)}
-  ${createExcelWorksheet('Officers', officers)}
-  ${createExcelWorksheet('Dealers', dealers)}
-  ${createExcelWorksheet('Invoices', invoices)}
-  ${createExcelWorksheet('Stock In', stockInLogs)}
-  ${createExcelWorksheet('Damage Logs', damageLogs)}
-  ${createExcelWorksheet('Payments', payments)}
+  ${dataSets.map(([name, records]) => createExcelWorksheet(name, records)).join('\n')}
 </Workbook>`;
-    const backupBlob = new Blob([workbook], { type: 'application/vnd.ms-excel;charset=utf-8' });
+      fileName = `Valid_Agro_Backup_${dateSuffix}.xls`;
+      mimeType = 'application/vnd.ms-excel;charset=utf-8';
+      contents = workbook;
+    } else {
+      const tables = dataSets.map(([name, records]) => {
+        const columns = [...new Set(records.flatMap((record) => Object.keys(record || {})))];
+        const headings = columns.length ? columns : ['তথ্য'];
+        const rows = records.length ? records : [{}];
+        return `<h2>${escapeXml(name)}</h2><table><thead><tr>${headings.map((column) => `<th>${escapeXml(column)}</th>`).join('')}</tr></thead><tbody>${rows.map((record) => (
+          `<tr>${headings.map((column) => {
+            const value = record?.[column];
+            const cell = value != null && typeof value === 'object' ? JSON.stringify(value) : value ?? '';
+            return `<td>${escapeXml(cell)}</td>`;
+          }).join('')}</tr>`
+        )).join('')}</tbody></table>`;
+      }).join('');
+      contents = `<!doctype html><html><head><meta charset="utf-8"><title>Valid Agro Backup</title><style>body{font-family:Arial,sans-serif}table{border-collapse:collapse;margin-bottom:24px;width:100%}th,td{border:1px solid #999;padding:6px;text-align:left;vertical-align:top}th{background:#e8f5e9}td{word-break:break-word}</style></head><body><h1>Valid Agro Backup</h1><p>${escapeXml(exportedAt)}</p>${tables}</body></html>`;
+
+      if (format === 'google-docs') {
+        fileName = `Valid_Agro_Backup_${dateSuffix}.html`;
+        mimeType = 'text/html;charset=utf-8';
+      } else {
+        fileName = `Valid_Agro_Backup_${dateSuffix}.doc`;
+        mimeType = 'application/msword;charset=utf-8';
+      }
+    }
+
+    const backupBlob = new Blob([contents], { type: mimeType });
     const backupUrl = URL.createObjectURL(backupBlob);
     const downloadAnchor = document.createElement('a');
-    downloadAnchor.setAttribute('href', backupUrl);
-    downloadAnchor.setAttribute('download', `Valid_Agro_Backup_${exportedAt.slice(0, 10)}.xls`);
+    downloadAnchor.href = backupUrl;
+    downloadAnchor.download = fileName;
     document.body.appendChild(downloadAnchor);
     downloadAnchor.click();
     downloadAnchor.remove();
     window.setTimeout(() => URL.revokeObjectURL(backupUrl), 1000);
   };
+
+  const exportBackupExcel = () => exportBackup('excel');
 
   return (
     <AgroContext.Provider
@@ -633,7 +815,17 @@ export function AgroProvider({ children }) {
         getDealerSummary,
         getOfficerSummary,
         resetToFactoryData,
-        exportBackupExcel
+        exportBackupExcel,
+        exportBackup,
+        currentUser,
+        authLoading,
+        authError,
+        cloudError,
+        cloudReady,
+        login,
+        registerOfficer,
+        logout,
+        refreshSharedRecords
       }}
     >
       {children}

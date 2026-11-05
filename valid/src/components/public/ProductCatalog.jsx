@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { useAgro } from '../../context/AgroContext';
 
-export default function ProductCatalog({ onSelectProductForInvoice }) {
+export default function ProductCatalog({ onSelectProductForInvoice, actionLabel = 'চালানে যোগ করুন' }) {
   const { products } = useAgro();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('ALL');
@@ -125,7 +125,7 @@ export default function ProductCatalog({ onSelectProductForInvoice }) {
                   className="bg-emerald-700 hover:bg-emerald-800 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1 shadow"
                 >
                   <FileText className="w-3.5 h-3.5" />
-                  <span>চালানে যোগ করুন</span>
+                  <span>{actionLabel}</span>
                 </button>
               )}
             </div>
