@@ -11,9 +11,12 @@
     "provision:admin": "node --env-file-if-exists=.env scripts/provision-admin.mjs"
   },
   "dependencies": {
+    "dotenv": "^16.6.1",
+    "exceljs": "^4.4.0",
     "lucide-react": "^1.60.0",
     "mongodb": "^7.7.0",
     "mongoose": "^9.11.2",
+    "pdfkit": "^0.17.2",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"
   },

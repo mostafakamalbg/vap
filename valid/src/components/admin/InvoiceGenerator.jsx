@@ -1,1247 +1,364 @@
-import React, { useState, useEffect } from 'react';
-import {
-  Plus,
-  Trash2,
-  Printer,
-  CheckCircle,
-  AlertCircle,
-  Building2,
-  ShoppingBag,
-  RefreshCw,
-  Lock,
-  RotateCcw,
-  Truck,
-  FileEdit,
-} from 'lucide-react';
-import { getInvoiceStockChanges, useAgro, getNextInvoiceNumber } from '../../context/AgroContext';
-import { toBn, toBnCurrency, toBnDate } from '../../utils/bengali';
+import React, { useMemo, useState } from 'react';
+import { ArrowLeft, Printer, Save, Trash2 } from 'lucide-react';
+import { getNextInvoiceNumber, useAgro } from '../../context/AgroContext';
+import { INVOICE_SESSIONS } from '../../../shared/sessions';
+import { toBnCurrency } from '../../utils/bengali';
 import InvoicePrintHeader from './InvoicePrintHeader';
+
+const today = () => new Date().toISOString().slice(0, 10);
+const emptyItem = () => ({
+  productKey: '',
+  productId: '',
+  productName: '',
+  sku: '',
+  size: '',
+  cartons: 1,
+  packPerBox: 1,
+  cartonPrice: 0,
+  unitPrice: 0,
+  commission: 0
+});
 
 export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCancelEdit }) {
   const {
-    products,
-    dealers,
-    officers,
-    invoices,
     allProductVariants,
     createInvoice,
     updateInvoice,
+    invoices,
+    officers,
+    dealers,
     getDealerSummary
   } = useAgro();
+  const [form, setForm] = useState(() => ({
+    id: editInvoiceData?.id || '',
+    date: editInvoiceData?.date || today(),
+    session: INVOICE_SESSIONS.includes(editInvoiceData?.session)
+      ? editInvoiceData.session
+      : INVOICE_SESSIONS[0],
+    officerId: editInvoiceData?.officerId || officers[0]?.id || '',
+    dealerId: editInvoiceData?.dealerId || dealers[0]?.id || '',
+    paidAmount: String(editInvoiceData?.paidAmount ?? ''),
+    transportCost: String(editInvoiceData?.transportCost ?? ''),
+    paymentMethod: editInvoiceData?.paymentMethod || 'নগদ জমা',
+    transport: editInvoiceData?.transport || '',
+    note: editInvoiceData?.note || '',
+    items: editInvoiceData?.items?.length
+      ? editInvoiceData.items.map((item) => ({
+          ...emptyItem(),
+          ...item,
+          productKey: `${item.productId}::${item.sku}`,
+          cartons: item.cartons ?? item.quantity ?? 1,
+          cartonPrice: Number(item.cartonPrice ?? (Number(item.unitPrice) * Number(item.packPerBox || 1))),
+          commission: Number(item.commission) || 0
+        }))
+      : [emptyItem()]
+  }));
+  const [savedInvoice, setSavedInvoice] = useState(editInvoiceData || null);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
 
-  // factory_damage remains the stored value for compatibility with existing invoices.
-  const [invoiceType, setInvoiceType] = useState('regular');
+  const selectedOfficer = officers.find((officer) => officer.id === form.officerId);
+  const selectedDealer = dealers.find((dealer) => dealer.id === form.dealerId);
+  const dealerSummary = selectedDealer ? getDealerSummary(selectedDealer.id) : null;
+  const items = useMemo(() => form.items.map((item) => {
+    const quantity = Math.max(0, Number(item.cartons) || 0);
+    const lineTotal = quantity * (Number(item.cartonPrice) || 0);
+    return { ...item, cartons: quantity, quantity, total: lineTotal };
+  }), [form.items]);
 
-  // Unique Invoice ID & Date
-  const [invoiceId, setInvoiceId] = useState('');
-  const [invoiceDate, setInvoiceDate] = useState(new Date().toISOString().slice(0, 10));
+  const subtotal = items.reduce((sum, item) => sum + item.total, 0);
+  const commissionAmount = items.reduce(
+    (sum, item) => sum + item.total * (Number(item.commission) || 0) / 100,
+    0
+  );
+  const transportCost = Math.max(0, Number(form.transportCost) || 0);
+  const totalAmount = Math.max(0, subtotal - commissionAmount + transportCost);
+  const previousDue = editInvoiceData
+    ? Number(editInvoiceData.previousDue) || 0
+    : Number(dealerSummary?.currentDue) || 0;
+  const netPayable = totalAmount + previousDue;
+  const paidAmount = Math.max(0, Number(form.paidAmount) || 0);
+  const dueAmount = Math.max(0, netPayable - paidAmount);
 
-  // Dealer selection & auto-populated fields
-  const [selectedDealerId, setSelectedDealerId] = useState('');
-  const [dealerDetails, setDealerDetails] = useState({
-    code: '',
-    shopName: '',
-    proprietor: '',
-    address: '',
-    phone: '',
-    zone: '',
-    officerCode: '',
-    officerId: '',
-    transport: ''
-  });
+  const updateForm = (key, value) => {
+    setForm((current) => ({ ...current, [key]: value }));
+    setSavedInvoice(null);
+    setSuccess('');
+  };
 
-  // Regular / Return Carton Items (Single select for product + pack size)
-  const [items, setItems] = useState([]);
+  const updateItem = (index, key, value) => {
+    setForm((current) => ({
+      ...current,
+      items: current.items.map((item, itemIndex) => (
+        itemIndex === index ? { ...item, [key]: value } : item
+      ))
+    }));
+    setSavedInvoice(null);
+    setSuccess('');
+  };
 
-  // Loose / Retail pieces adjustment (খুচরা বোতল / প্যাক)
-  const [looseItems, setLooseItems] = useState([]);
+  const selectProduct = (index, productKey) => {
+    const variant = allProductVariants.find((entry) => entry.key === productKey);
+    setForm((current) => ({
+      ...current,
+      items: current.items.map((item, itemIndex) => (
+        itemIndex === index
+          ? {
+              ...item,
+              productKey,
+              productId: variant?.productId || '',
+              productName: variant?.productName || '',
+              sku: variant?.sku || '',
+              size: variant?.size || '',
+              packPerBox: variant?.packPerBox || 1,
+              cartonPrice: variant?.cartonPrice || 0,
+              unitPrice: variant?.tp || 0,
+              commission: variant?.commission || 0
+            }
+          : item
+      ))
+    }));
+    setSavedInvoice(null);
+    setSuccess('');
+  };
 
-  // Adjustments & Final Settlement
-  const [transportCost, setTransportCost] = useState(0);
-  const [paidAmount, setPaidAmount] = useState(0);
-  const [paymentMethod, setPaymentMethod] = useState('নগদ জমা');
-  const [note, setNote] = useState('');
-  const [successMessage, setSuccessMessage] = useState('');
-  const [previewInvoice, setPreviewInvoice] = useState(null);
+  const addItem = () => setForm((current) => ({ ...current, items: [...current.items, emptyItem()] }));
+  const removeItem = (index) => setForm((current) => ({
+    ...current,
+    items: current.items.length === 1
+      ? [emptyItem()]
+      : current.items.filter((_, itemIndex) => itemIndex !== index)
+  }));
 
-  // Initialize or populate from editInvoiceData
-  useEffect(() => {
-    if (editInvoiceData) {
-      setInvoiceId(editInvoiceData.id);
-      setInvoiceDate(editInvoiceData.date || new Date().toISOString().slice(0, 10));
-      setInvoiceType(editInvoiceData.invoiceType || 'regular');
-      setSelectedDealerId(editInvoiceData.dealerId || '');
-      setDealerDetails({
-        code: editInvoiceData.dealerCode || '',
-        shopName: editInvoiceData.dealerName || '',
-        proprietor: editInvoiceData.dealerProprietor || '',
-        address: editInvoiceData.dealerAddress || '',
-        phone: editInvoiceData.dealerPhone || '',
-        zone: editInvoiceData.zone || '',
-        officerCode: editInvoiceData.officerCode || '5',
-        officerId: editInvoiceData.officerId || 'OFF-05',
-        transport: editInvoiceData.transport || ''
-      });
-      setItems(editInvoiceData.items || []);
-      setLooseItems(editInvoiceData.returnAdjustments || []);
-      setTransportCost(Number(editInvoiceData.transportCost) || 0);
-      setPaidAmount(Number(editInvoiceData.paidAmount) || 0);
-      setPaymentMethod(editInvoiceData.paymentMethod || 'নগদ জমা');
-      setNote(editInvoiceData.note || '');
-    } else {
-      // Auto-assign guaranteed unique invoice ID
-      const { candidateId } = getNextInvoiceNumber(invoices);
-      setInvoiceId(candidateId);
-      // Initialize with first product variant
-      if (allProductVariants.length > 0 && items.length === 0) {
-        const first = allProductVariants[0];
-        setItems([
-          {
-            variantKey: first.key,
-            productId: first.productId,
-            productName: first.productName,
-            sku: first.sku,
-            size: first.size,
-            packPerBox: first.packPerBox,
-            unit: first.unit,
-            cartonPrice: first.cartonPrice,
-            cartons: 1, // Minimum 1 carton by default
-            commissionPercent: 20
-          }
-        ]);
-      }
-    }
-  }, [editInvoiceData, invoices, allProductVariants]);
-
-  // When a dealer is selected, auto-fill all fields instantly
-  const handleDealerSelect = (dlrId) => {
-    setSelectedDealerId(dlrId);
-    if (!dlrId) {
-      setDealerDetails({
-        code: '',
-        shopName: '',
-        proprietor: '',
-        address: '',
-        phone: '',
-        zone: '',
-        officerCode: '',
-        officerId: '',
-        transport: ''
-      });
+  const handleSubmit = (event) => {
+    event.preventDefault();
+    setError('');
+    const invalidItem = items.some((item) => (
+      !item.productId
+      || !Number.isSafeInteger(item.cartons)
+      || item.cartons <= 0
+      || !Number.isFinite(item.total)
+      || item.total <= 0
+    ));
+    if (!form.session || !selectedOfficer || !selectedDealer || invalidItem) {
+      setError('সেশন, অফিসার, ডিলার এবং প্রতিটি পণ্যের সঠিক তথ্য পূরণ করুন।');
       return;
     }
 
-    const d = dealers.find((item) => item.id === dlrId || item.code === dlrId);
-    if (d) {
-      setDealerDetails({
-        code: d.code || '',
-        shopName: d.shopName || '',
-        proprietor: d.proprietor || '',
-        address: d.address || '',
-        phone: d.phone || '',
-        zone: d.zone || '',
-        officerCode: d.officerCode || '5',
-        officerId: d.assignedOfficerId || 'OFF-05',
-        transport: d.transport || ''
-      });
-    }
-  };
-
-  // Selected dealer previous due balance
-  const currentDealerSummary = selectedDealerId ? getDealerSummary(selectedDealerId) : null;
-  const previousDue = currentDealerSummary ? currentDealerSummary.currentDue : 0;
-
-  // Single-step Product Variant Selection handler
-  const handleSelectProductVariant = (index, variantKey) => {
-    const selectedVar = allProductVariants.find((v) => v.key === variantKey);
-    if (!selectedVar) return;
-
-    const updated = [...items];
-    updated[index] = {
-      ...updated[index],
-      variantKey,
-      productId: selectedVar.productId,
-      productName: selectedVar.productName,
-      sku: selectedVar.sku,
-      size: selectedVar.size,
-      packPerBox: selectedVar.packPerBox,
-      unit: selectedVar.unit,
-      cartonPrice: selectedVar.cartonPrice,
-      commissionPercent: updated[index]?.commissionPercent || 20,
-      cartons: Math.max(1, Number(updated[index]?.cartons) || 1)
-    };
-    setItems(updated);
-  };
-
-  // Add Item Line
-  const handleAddItem = () => {
-    const first = allProductVariants[0];
-    if (!first) return;
-
-    setItems([
-      ...items,
-      {
-        variantKey: first.key,
-        productId: first.productId,
-        productName: first.productName,
-        sku: first.sku,
-        size: first.size,
-        packPerBox: first.packPerBox,
-        unit: first.unit,
-        cartonPrice: first.cartonPrice,
-        cartons: 1, // Minimum 1 carton
-        commissionPercent: 20
-      }
-    ]);
-  };
-
-  // Remove Item
-  const handleRemoveItem = (index) => {
-    if (items.length > 1) {
-      setItems(items.filter((_, i) => i !== index));
-    }
-  };
-
-  // Update item field (cartons, or editable fields if Return / Factory Damage)
-  const handleItemFieldChange = (index, field, value) => {
-    const updated = [...items];
-    const current = { ...updated[index] };
-
-    if (field === 'cartons') {
-      current.cartons = Math.max(1, Number(value) || 1);
-    } else if (field === 'cartonPrice') {
-      current.cartonPrice = Number(value) || 0;
-    } else if (field === 'commissionPercent') {
-      current.commissionPercent = Number(value) || 0;
-    } else if (field === 'size') {
-      current.size = value;
-    }
-
-    updated[index] = current;
-    setItems(updated);
-  };
-
-  // Add loose / retail damaged piece
-  const handleAddLooseItem = () => {
-    const first = allProductVariants[0];
-    setLooseItems([
-      ...looseItems,
-      {
-        id: `loose-${Date.now()}`,
-        productId: first?.productId || '',
-        sku: first?.sku || '',
-        productName: first?.productName || '',
-        size: first?.size || '',
-        quantity: 1,
-        price: first?.tp || 0,
-        commissionPercent: 0,
-        reason: invoiceType === 'regular' ? 'মেয়াদোত্তীর্ণ ১ বোতল ফেরত' : 'ড্যামেজ / নষ্ট প্যাক'
-      }
-    ]);
-  };
-
-  const handleRemoveLooseItem = (index) => {
-    setLooseItems(looseItems.filter((_, i) => i !== index));
-  };
-
-  const handleLooseFieldChange = (index, field, value) => {
-    const updated = [...looseItems];
-    const current = { ...updated[index], [field]: value };
-
-    if (field === 'variantKey') {
-      const selected = allProductVariants.find((v) => v.key === value);
-      if (selected) {
-        current.variantKey = value;
-        current.productId = selected.productId;
-        current.productName = selected.productName;
-        current.sku = selected.sku;
-        current.size = selected.size;
-        current.price = selected.tp;
-      }
-    }
-
-    updated[index] = current;
-    setLooseItems(updated);
-  };
-
-  // Compute Totals
-  const isReturnOrDamage = invoiceType === 'dealer_return' || invoiceType === 'factory_damage';
-
-  const preparedItems = items.map((item) => {
-    const cartons = Number(item.cartons) || 1;
-    const packPerBox = Number(item.packPerBox) || 1;
-    const totalPieces = cartons * packPerBox;
-    const cartonPrice = Number(item.cartonPrice) || 0;
-    const subtotal = cartons * cartonPrice;
-    const commissionPercent = Number(item.commissionPercent) ?? 20;
-    const commissionAmount = Math.round((subtotal * commissionPercent) / 100);
-    const lineNetTotal = Math.max(0, subtotal - commissionAmount);
-
-    return {
-      ...item,
-      cartons,
-      totalPieces,
-      cartonPrice,
+    const { candidateId, seqNumber } = getNextInvoiceNumber(invoices);
+    const invoice = {
+      ...(editInvoiceData || {}),
+      id: editInvoiceData?.id || candidateId,
+      invoiceNo: editInvoiceData?.invoiceNo || editInvoiceData?.id || candidateId,
+      seqNumber: editInvoiceData?.seqNumber || seqNumber,
+      session: form.session,
+      date: form.date,
+      officerId: selectedOfficer.id,
+      officerCode: String(selectedOfficer.code || ''),
+      officerName: selectedOfficer.name,
+      dealerId: selectedDealer.id,
+      dealerCode: String(selectedDealer.code || ''),
+      dealerName: selectedDealer.shopName,
+      dealerProprietor: selectedDealer.proprietor || '',
+      dealerAddress: selectedDealer.address || '',
+      dealerPhone: selectedDealer.phone || '',
+      items: items.map((item) => ({
+        productId: item.productId,
+        productName: item.productName,
+        sku: item.sku,
+        size: item.size,
+        packPerBox: Number(item.packPerBox) || 1,
+        cartons: item.cartons,
+        quantity: item.cartons,
+        totalPieces: item.cartons * (Number(item.packPerBox) || 1),
+        cartonPrice: Number(item.cartonPrice) || 0,
+        unitPrice: Number(item.unitPrice) || 0,
+        commission: Number(item.commission) || 0,
+        total: item.total
+      })),
+      totalCartons: items.reduce((sum, item) => sum + item.cartons, 0),
       subtotal,
-      commissionPercent,
       commissionAmount,
-      total: lineNetTotal
-    };
-  });
-
-  const preparedLoose = looseItems.map((it) => {
-    const qty = Number(it.quantity) || 1;
-    const price = Number(it.price) || 0;
-    const subtotal = qty * price;
-    const commPct = Number(it.commissionPercent) || 0;
-    const commAmt = Math.round((subtotal * commPct) / 100);
-    const total = subtotal - commAmt;
-    return {
-      ...it,
-      quantity: qty,
-      price,
-      total,
-      commissionPercent: commPct,
-      commissionAmount: commAmt
-    };
-  });
-
-  const totalCartons = preparedItems.reduce((acc, curr) => acc + curr.cartons, 0);
-  const totalSubtotal = preparedItems.reduce((acc, curr) => acc + curr.subtotal, 0);
-  const totalCommission = preparedItems.reduce((acc, curr) => acc + curr.commissionAmount, 0);
-  const netGoodsValue = totalSubtotal - totalCommission;
-
-  const totalLooseValue = preparedLoose.reduce((acc, curr) => acc + curr.total, 0);
-
-  // If Regular Invoice: loose items are deducted as returns
-  // If Return / Damage Invoice: all items constitute the return credit
-  let invoiceNetBill = 0;
-  if (invoiceType === 'regular') {
-    invoiceNetBill = Math.max(0, netGoodsValue - totalLooseValue + (Number(transportCost) || 0));
-  } else {
-    invoiceNetBill = netGoodsValue + totalLooseValue;
-  }
-
-  const grandTotalPayable = invoiceType === 'regular' ? (invoiceNetBill + previousDue) : invoiceNetBill;
-  const currentRemainingDue = Math.max(0, grandTotalPayable - (Number(paidAmount) || 0));
-
-  // Save / Update Invoice
-  const handleSaveInvoice = (shouldPrint = true) => {
-    if (!selectedDealerId) {
-      alert('অনুগ্রহ করে একজন ডিলার নির্বাচন করুন');
-      return;
-    }
-
-    const stockChanges = getInvoiceStockChanges(editInvoiceData, { invoiceType, items: preparedItems });
-    for (const change of stockChanges.values()) {
-      const product = products.find((entry) => entry.id === change.productId);
-      const variant = product?.variants.find((entry) => entry.sku === change.sku);
-      if (!variant) continue;
-
-      const remainingCartons = (Number(variant.stockCartons) || 0) + change.cartons;
-      const remainingPieces = (Number(variant.stock) || 0) + change.pieces;
-      if (remainingCartons < 0 || remainingPieces < 0) {
-        alert(`স্টকে পর্যাপ্ত পণ্য নেই: ${product.name} (${variant.size})`);
-        return;
-      }
-    }
-
-    const assignedOfficer = officers.find(
-      (o) => String(o.code) === String(dealerDetails.officerCode) || o.id === dealerDetails.officerId
-    );
-
-    const invoicePayload = {
-      id: invoiceId,
-      date: invoiceDate,
-      invoiceType,
-      dealerId: selectedDealerId,
-      dealerCode: dealerDetails.code,
-      dealerName: dealerDetails.shopName,
-      dealerProprietor: dealerDetails.proprietor,
-      dealerAddress: dealerDetails.address,
-      dealerPhone: dealerDetails.phone,
-      officerId: assignedOfficer?.id || 'OFF-05',
-      officerCode: dealerDetails.officerCode || assignedOfficer?.code || '5',
-      officerName: assignedOfficer?.name || '',
-      items: preparedItems,
-      returnAdjustments: preparedLoose,
-      totalCartons,
-      subtotal: totalSubtotal,
-      commissionAmount: totalCommission,
-      returnAdjustmentTotal: totalLooseValue,
-      transportCost: Number(transportCost) || 0,
-      grandTotal: invoiceNetBill,
-      previousDue: invoiceType === 'regular' ? previousDue : 0,
-      netPayable: grandTotalPayable,
-      paidAmount: Number(paidAmount) || 0,
-      currentDue: currentRemainingDue,
-      paymentMethod,
-      transport: dealerDetails.transport,
-      note: note || (
-        invoiceType === 'regular'
-          ? 'চালানের মালামাল সঠিক কার্টুন সংখ্যায় বুঝে দেওয়া হলো।'
-          : invoiceType === 'dealer_return'
-          ? 'ডিলার ফেরত পণ্য গ্রহণ ও লেজারে ক্রেডিট সমন্বয়।'
-          : 'ফ্যাক্টরিতে ফেরত পাঠানো পণ্যের স্টক সমন্বয়।'
-      )
+      transportCost,
+      totalAmount,
+      grandTotal: totalAmount,
+      previousDue,
+      netPayable,
+      paidAmount,
+      currentDue: dueAmount,
+      dueAmount,
+      paymentMethod: form.paymentMethod,
+      transport: form.transport,
+      note: form.note.trim()
     };
 
-    let saved;
-    if (editInvoiceData) {
-      saved = updateInvoice(invoicePayload);
-      setSuccessMessage(`ইনভয়েস #${saved.id} সফলভাবে আপডেট ও সংরক্ষিত হয়েছে!`);
-    } else {
-      saved = createInvoice(invoicePayload);
-      setSuccessMessage(`নতুন ইনভয়েস #${saved.id} সফলভাবে তৈরি হয়েছে!`);
-      // Auto assign next unique ID immediately
-      const { candidateId } = getNextInvoiceNumber([...invoices, saved]);
-      setInvoiceId(candidateId);
-    }
-
-    setPreviewInvoice(saved);
-
-    if (shouldPrint) {
-      setTimeout(() => {
-        window.print();
-      }, 500);
-    }
-  };
-
-  // Reset form
-  const handleResetForm = () => {
-    if (onCancelEdit) onCancelEdit();
-    const { candidateId } = getNextInvoiceNumber(invoices);
-    setInvoiceId(candidateId);
-    setInvoiceDate(new Date().toISOString().slice(0, 10));
-    setInvoiceType('regular');
-    setSelectedDealerId('');
-    setDealerDetails({
-      code: '',
-      shopName: '',
-      proprietor: '',
-      address: '',
-      phone: '',
-      zone: '',
-      officerCode: '',
-      officerId: '',
-      transport: ''
-    });
-    setLooseItems([]);
-    setTransportCost(0);
-    setPaidAmount(0);
-    setNote('');
-    setSuccessMessage('');
-    if (allProductVariants.length > 0) {
-      const first = allProductVariants[0];
-      setItems([
-        {
-          variantKey: first.key,
-          productId: first.productId,
-          productName: first.productName,
-          sku: first.sku,
-          size: first.size,
-          packPerBox: first.packPerBox,
-          unit: first.unit,
-          cartonPrice: first.cartonPrice,
-          cartons: 1,
-          commissionPercent: 20
-        }
-      ]);
+    try {
+      const saved = editInvoiceData ? updateInvoice(invoice) : createInvoice(invoice);
+      setSavedInvoice(saved);
+      setSuccess(editInvoiceData ? 'ইনভয়েস আপডেট হয়েছে।' : 'ইনভয়েস তৈরি হয়েছে।');
+    } catch (saveError) {
+      setError(saveError.message || 'ইনভয়েস সংরক্ষণ করা যায়নি।');
     }
   };
 
   return (
-    <div className="py-4 sm:py-6 px-3 sm:px-4 max-w-7xl mx-auto space-y-4 sm:space-y-6">
-      {/* Top Banner & Mode */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-5 rounded-xl border border-slate-200 shadow-sm no-print">
+    <div className="mx-auto max-w-6xl space-y-6 px-4 py-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
         <div>
-          <div className="flex items-center gap-2">
-            <span className="w-9 h-9 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center">
-              <ShoppingBag className="w-5 h-5" />
-            </span>
-            <h1 className="text-xl sm:text-2xl font-bold text-slate-800">
-              {editInvoiceData ? `ইনভয়েস এডিট ও আপডেট: #${invoiceId}` : 'বিক্রয় চালান ও ইনভয়েস তৈরি'}
-            </h1>
-          </div>
-          <p className="text-slate-500 text-xs sm:text-sm mt-0.5">
-            ১-ক্লিক পণ্য ও প্যাক সাইজ নির্বাচন • ৩ ধরনের ইনভয়েস টাইপ • প্রিন্টে শুধু অফিসার কোড
-          </p>
+          <h1 className="text-2xl font-bold text-slate-800">{editInvoiceData ? 'ইনভয়েস সম্পাদনা' : 'নতুন ইনভয়েস'}</h1>
+          <p className="mt-1 text-sm text-slate-500">ইনভয়েস নং: {editInvoiceData?.id || getNextInvoiceNumber(invoices).candidateId}</p>
         </div>
-
-        <div className="flex items-center gap-2">
-          {onViewInvoices && (
-            <button
-              onClick={onViewInvoices}
-              className="px-3.5 py-2 text-xs font-bold rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 transition"
-            >
-              ইনভয়েস হিস্ট্রি
+        <div className="flex gap-2">
+          {onCancelEdit && (
+            <button type="button" onClick={onCancelEdit} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700">
+              <ArrowLeft className="mr-2 inline h-4 w-4" /> ফিরে যান
             </button>
           )}
-          <button
-            onClick={handleResetForm}
-            className="px-3 py-2 text-xs font-bold rounded-lg text-slate-600 hover:bg-slate-100 flex items-center gap-1.5 transition"
-          >
-            <RefreshCw className="w-3.5 h-3.5" />
-            <span>{editInvoiceData ? 'এডিট বাতিল' : 'নতুন ফর্ম'}</span>
-          </button>
+          {onViewInvoices && (
+            <button type="button" onClick={onViewInvoices} className="rounded-lg bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700">
+              ইনভয়েস তালিকা
+            </button>
+          )}
         </div>
       </div>
 
-      {successMessage && (
-        <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 p-4 rounded-xl flex items-center justify-between no-print">
-          <div className="flex items-center gap-2">
-            <CheckCircle className="w-5 h-5 text-emerald-600" />
-            <span className="font-semibold text-sm">{successMessage}</span>
-          </div>
-          <button
-            onClick={() => window.print()}
-            className="flex items-center gap-1.5 bg-emerald-700 hover:bg-emerald-800 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow"
-          >
-            <Printer className="w-4 h-4" />
-            চালান প্রিন্ট
-          </button>
-        </div>
-      )}
+      {error && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm font-semibold text-rose-700">{error}</p>}
+      {success && <p role="status" className="rounded-lg bg-emerald-50 p-3 text-sm font-semibold text-emerald-800">{success}</p>}
 
-      {/* Main Invoice Builder */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 sm:p-6 space-y-5 sm:space-y-6 no-print">
-        <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_minmax(220px,0.8fr)] items-center gap-3 p-3 sm:p-4 bg-slate-50 rounded-xl border border-slate-200">
-          <div>
-            <label htmlFor="invoice-type" className="block text-sm font-bold text-slate-800">
-              ইনভয়েস টাইপ নির্বাচন করুন
-            </label>
-            <p className="text-xs text-slate-500 mt-0.5">
-              একই ফর্মে রেগুলার, ডিলার ফেরত ও ফ্যাক্টরি ফেরত চালান তৈরি করুন।
-            </p>
-          </div>
-          <select
-            id="invoice-type"
-            value={invoiceType}
-            onChange={(e) => setInvoiceType(e.target.value)}
-            className="w-full bg-white border-2 border-emerald-600 rounded-lg px-3 py-2.5 text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-200"
-          >
-            <option value="regular">রেগুলার ইনভয়েস</option>
-            <option value="dealer_return">ডিলার ফেরত</option>
-            <option value="factory_damage">ফ্যাক্টরি ফেরত</option>
-          </select>
-        </div>
-
-        {/* Invoice Meta Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-slate-50/70 rounded-xl border border-slate-200">
-          <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">
-              ইনভয়েস নং (অটোমেটিক ও ডুপ্লিকেট-মুক্ত)
-            </label>
-            <input
-              type="text"
-              value={invoiceId}
-              readOnly
-              className="w-full bg-white border border-emerald-400 rounded-lg px-3 py-2 text-sm font-mono font-black text-emerald-800"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">তারিখ (Date)</label>
-            <input
-              type="date"
-              value={invoiceDate}
-              onChange={(e) => setInvoiceDate(e.target.value)}
-              className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-800 font-semibold"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">
-              ডিলার নির্বাচন করুন ({dealers.length} জন ডিলার) *
-            </label>
-            <select
-              value={selectedDealerId}
-              onChange={(e) => handleDealerSelect(e.target.value)}
-              className="w-full bg-white border-2 border-emerald-600 rounded-lg px-3 py-2 text-sm text-slate-900 font-bold"
-            >
-              <option value="">-- ডিলার নির্বাচন করুন --</option>
-              {dealers.map((d) => (
-                <option key={d.id} value={d.id}>
-                  [কোড: {d.code}] {d.shopName} - {d.proprietor} ({d.zone})
-                </option>
-              ))}
+      <form onSubmit={handleSubmit} className="space-y-6">
+        <section className="grid gap-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:grid-cols-2 lg:grid-cols-4">
+          <label className="text-sm font-semibold text-slate-700">
+            ইনভয়েস নং
+            <input value={editInvoiceData?.id || getNextInvoiceNumber(invoices).candidateId} readOnly className="mt-1 w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2" />
+          </label>
+          <label className="text-sm font-semibold text-slate-700">
+            তারিখ <span className="text-rose-600">*</span>
+            <input type="date" required value={form.date} onChange={(event) => updateForm('date', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" />
+          </label>
+          <label className="text-sm font-semibold text-slate-700">
+            সেলস অফিসার <span className="text-rose-600">*</span>
+            <select required value={form.officerId} onChange={(event) => updateForm('officerId', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2">
+              <option value="">অফিসার নির্বাচন করুন</option>
+              {officers.map((officer) => <option key={officer.id} value={officer.id}>{officer.name} (ID: {officer.id})</option>)}
             </select>
-          </div>
-        </div>
+          </label>
+          <label className="text-sm font-semibold text-slate-700">
+            ডিলার <span className="text-rose-600">*</span>
+            <select required value={form.dealerId} onChange={(event) => updateForm('dealerId', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2">
+              <option value="">ডিলার নির্বাচন করুন</option>
+              {dealers.map((dealer) => <option key={dealer.id} value={dealer.id}>{dealer.shopName} (ID: {dealer.id})</option>)}
+            </select>
+          </label>
+          <label className="text-sm font-semibold text-slate-700 sm:col-span-2 lg:col-span-4">
+            সেশন <span className="text-rose-600">*</span>
+            <select required value={form.session} onChange={(event) => updateForm('session', event.target.value)} className="mt-1 w-full rounded-lg border-2 border-emerald-600 bg-emerald-50 px-3 py-3 text-base font-bold text-emerald-900">
+              <option value="">সেশন নির্বাচন করুন</option>
+              {INVOICE_SESSIONS.map((session) => <option key={session} value={session}>{session}</option>)}
+            </select>
+          </label>
+        </section>
 
-        {/* Auto-populated Dealer Information Banner */}
-        {selectedDealerId && (
-          <div className="bg-emerald-50/80 border border-emerald-200 rounded-xl p-4 text-xs space-y-3">
-            <div className="flex items-center justify-between border-b border-emerald-200 pb-2">
-              <span className="font-bold text-emerald-900 text-sm flex items-center gap-1.5">
-                <Building2 className="w-4 h-4 text-emerald-700" />
-                ডিলার স্বয়ংক্রিয় তথ্য (Auto-Populated)
-              </span>
-              <span className="bg-emerald-700 text-white font-mono font-black px-2.5 py-0.5 rounded text-xs">
-                ডিলার কোড: {dealerDetails.code}
-              </span>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
-              <div>
-                <span className="text-slate-500 font-semibold">প্রতিষ্ঠানের নাম:</span>
-                <p className="font-bold text-slate-800 text-sm">{dealerDetails.shopName}</p>
-              </div>
-              <div>
-                <span className="text-slate-500 font-semibold">প্রোপাইটর / মালিকের নাম:</span>
-                <p className="font-bold text-slate-800 text-sm">{dealerDetails.proprietor}</p>
-              </div>
-              <div>
-                <span className="text-slate-500 font-semibold">মোবাইল নাম্বার:</span>
-                <p className="font-bold text-emerald-700 font-mono text-sm">{dealerDetails.phone}</p>
-              </div>
-              <div>
-                <span className="text-slate-500 font-semibold">ঠিকানা ও এলাকা:</span>
-                <p className="font-medium text-slate-800">{dealerDetails.address}</p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-emerald-200 text-[11px]">
-              <div>
-                <span className="text-slate-500 font-semibold">অফিসার কোড:</span>
-                <p className="font-bold text-slate-800 font-mono text-xs">
-                  কোড: {dealerDetails.officerCode}
-                </p>
-              </div>
-              <div>
-                <span className="text-slate-500 font-semibold">পরিবহনের মাধ্যম:</span>
-                <p className="font-semibold text-slate-700 flex items-center gap-1">
-                  <Truck className="w-3.5 h-3.5 text-slate-400" />
-                  {dealerDetails.transport || 'সাধারণ পরিবহন / গোডাউন ডেলিভারি'}
-                </p>
-              </div>
-              <div className="text-right">
-                <span className="text-slate-500 font-semibold">পূর্বের অবশিষ্ট বাকি:</span>
-                <p className="font-black text-rose-700 text-sm font-mono">৳{previousDue.toLocaleString()}</p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Requirement 2: Combined 1-Click Product + Pack Size Selection Table */}
-        <div className="space-y-3">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+        <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 p-5">
             <div>
-              <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2">
-                <ShoppingBag className="w-4 h-4 text-emerald-700" />
-                {invoiceType === 'regular'
-                  ? 'চালান পণ্য তালিকা (এক ক্লিকে পণ্য ও প্যাক সাইজ নির্বাচন)'
-                  : invoiceType === 'dealer_return'
-                  ? 'ডিলার ফেরত পণ্য তালিকা (রিটার্ন কার্টুন ও প্যাক)'
-                  : 'ফ্যাক্টরিতে ফেরত পাঠানো পণ্যের তালিকা'}
-              </h3>
-              <p className="text-[11px] text-slate-500">
-                একবার সিলেক্ট করলেই প্যাক সাইজ ও রেট বসে যাবে। আপনি শুধু কার্টুন সংখ্যা লিখবেন।
-              </p>
+              <h2 className="text-lg font-bold text-slate-800">পণ্যের তালিকা</h2>
+              <p className="text-xs text-slate-500">পরিমাণ কার্টনে; একক মূল্য কার্টনপ্রতি।</p>
             </div>
-
-            <div className="flex items-center gap-2">
-              {invoiceType === 'regular' && (
-                <span className="text-xs text-slate-500 flex items-center gap-1 bg-slate-100 px-2 py-1 rounded">
-                  <Lock className="w-3 h-3 text-amber-600" />
-                  <span>ফিক্সড রেট</span>
-                </span>
-              )}
-              {isReturnOrDamage && (
-                <span className="text-xs text-amber-800 flex items-center gap-1 bg-amber-100 px-2.5 py-1 rounded font-bold">
-                  <FileEdit className="w-3.5 h-3.5" />
-                  <span>দর ও কমিশন এডিটেবল</span>
-                </span>
-              )}
-            </div>
+            <button type="button" onClick={addItem} className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white">+ পণ্য যোগ করুন</button>
           </div>
-
-          <div className="border border-slate-200 rounded-lg overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-100 text-slate-700 font-bold uppercase">
-                <tr>
-                  <th className="py-3 px-3 w-8">#</th>
-                  <th className="py-3 px-3 min-w-[240px]">পণ্যের নাম ও প্যাক সাইজ</th>
-                  <th className="py-3 px-3 text-center w-24">কাটুন সংখ্যা</th>
-                  <th className="py-3 px-3 text-right w-28">ট্রেড প্রইজ (৳)</th>
-                  <th className="py-3 px-3 text-right w-28">মোট ট্রেড প্রাইজ (৳)</th>
-                  <th className="py-3 px-3 text-center w-20">কমিশন (%)</th>
-                  <th className="py-3 px-3 text-right w-28">কমিশন এ্যামাউন্ট (৳)</th>
-                  <th className="py-3 px-3 text-right w-28">নীট মূল্য (৳)</th>
-                  <th className="py-3 px-2 text-center w-10">মুছুন</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200">
-                {items.map((item, index) => {
-                  const currentVarKey = item.variantKey || `${item.productId}::${item.sku}`;
-                  const cartons = Number(item.cartons) || 1;
-                  const cartonPrice = Number(item.cartonPrice) || 0;
-                  const subtotal = cartons * cartonPrice;
-                  const commPct = Number(item.commissionPercent) ?? 20;
-                  const commAmt = Math.round((subtotal * commPct) / 100);
-                  const lineNetTotal = Math.max(0, subtotal - commAmt);
-
-                  return (
-                    <tr key={index} className="hover:bg-slate-50">
-                      <td className="py-3 px-3 font-mono text-slate-400">{index + 1}</td>
-
-                      {/* Single dropdown for product + pack size */}
-                      <td className="py-3 px-3">
-                        <select
-                          value={currentVarKey}
-                          onChange={(e) => handleSelectProductVariant(index, e.target.value)}
-                          className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 font-bold text-slate-800 text-xs focus:ring-1 focus:ring-emerald-500"
-                        >
-                          {allProductVariants.map((v) => (
-                            <option key={v.key} value={v.key}>
-                              {v.displayText}
-                            </option>
-                          ))}
-                        </select>
-                        <div className="text-[10px] text-slate-400 mt-0.5">
-                          বক্সে থাকে: {item.packPerBox} {item.unit || 'বোতল'} | মোট {cartons * (Number(item.packPerBox) || 1)} পিস
-                        </div>
-                      </td>
-
-                      {/* Carton count input */}
-                      <td className="py-3 px-3 text-center">
-                        <input
-                          type="number"
-                          min="1"
-                          value={item.cartons}
-                          onChange={(e) => handleItemFieldChange(index, 'cartons', e.target.value)}
-                          className="w-20 bg-white border-2 border-emerald-500 rounded px-2 py-1 text-center font-bold text-emerald-800 text-sm mx-auto block"
-                        />
-                      </td>
-
-                      {/* Carton Price (Read-only for regular, Editable for return/damage) */}
-                      <td className="py-3 px-3 text-right">
-                        {isReturnOrDamage ? (
-                          <input
-                            type="number"
-                            min="0"
-                            value={item.cartonPrice}
-                            onChange={(e) => handleItemFieldChange(index, 'cartonPrice', e.target.value)}
-                            className="w-24 bg-amber-50 border border-amber-300 rounded px-2 py-1 font-mono font-bold text-amber-900 text-right ml-auto block"
-                          />
-                        ) : (
-                          <div className="relative">
-                            <input
-                              type="text"
-                              value={`৳${cartonPrice.toLocaleString()}`}
-                              disabled
-                              readOnly
-                              title="কোম্পানি নির্ধারিত ফিক্সড রেট"
-                              className="w-full bg-slate-100 border border-slate-200 text-slate-600 rounded px-2 py-1 font-mono font-bold text-right cursor-not-allowed text-xs"
-                            />
-                            <Lock className="w-3 h-3 text-slate-400 absolute left-2 top-1/2 -translate-y-1/2" />
-                          </div>
-                        )}
-                      </td>
-
-                      {/* Mot Trade Price */}
-                      <td className="py-3 px-3 text-right font-mono font-bold text-slate-800 text-xs">
-                        ৳{subtotal.toLocaleString()}
-                      </td>
-
-                      {/* Commission % (Editable for return/damage) */}
-                      <td className="py-3 px-3 text-center">
-                        {isReturnOrDamage ? (
-                          <input
-                            type="number"
-                            min="0"
-                            max="100"
-                            value={item.commissionPercent}
-                            onChange={(e) => handleItemFieldChange(index, 'commissionPercent', e.target.value)}
-                            className="w-16 bg-amber-50 border border-amber-300 rounded px-1.5 py-1 text-center font-bold text-amber-900 ml-auto block"
-                          />
-                        ) : (
-                          <span className="font-semibold text-emerald-700 font-mono">
-                            {commPct}%
-                          </span>
-                        )}
-                      </td>
-
-                      {/* Commission Amount */}
-                      <td className="py-3 px-3 text-right font-mono font-medium text-rose-700 text-xs">
-                        ৳{commAmt.toLocaleString()}
-                      </td>
-
-                      {/* Net line total */}
-                      <td className="py-3 px-3 text-right font-mono font-black text-slate-800 text-sm">
-                        ৳{lineNetTotal.toLocaleString()}
-                      </td>
-
-                      {/* Remove item */}
-                      <td className="py-3 px-2 text-center">
-                        <button
-                          onClick={() => handleRemoveItem(index)}
-                          disabled={items.length === 1}
-                          className={`p-1.5 rounded ${
-                            items.length === 1 ? 'text-slate-300' : 'text-rose-500 hover:bg-rose-50'
-                          }`}
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+          <div className="space-y-4 p-5">
+            {form.items.map((item, index) => (
+              <div key={`invoice-item-${index}`} className="grid gap-3 rounded-lg border border-slate-200 p-4 sm:grid-cols-2 lg:grid-cols-[minmax(220px,2fr)_1fr_1fr_1fr_auto] lg:items-end">
+                <label className="text-sm font-semibold text-slate-700">
+                  পণ্য <span className="text-rose-600">*</span>
+                  <select required value={item.productKey} onChange={(event) => selectProduct(index, event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2">
+                    <option value="">পণ্য নির্বাচন করুন</option>
+                    {allProductVariants.map((variant) => <option key={variant.key} value={variant.key}>{variant.displayText}</option>)}
+                  </select>
+                </label>
+                <label className="text-sm font-semibold text-slate-700">
+                  পরিমাণ (কার্টন) <span className="text-rose-600">*</span>
+                  <input type="number" min="1" step="1" required value={item.cartons} onChange={(event) => updateItem(index, 'cartons', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" />
+                </label>
+                <label className="text-sm font-semibold text-slate-700">
+                  একক মূল্য (৳/কার্টন)
+                  <input type="number" min="0" step="0.01" required value={item.cartonPrice} onChange={(event) => updateItem(index, 'cartonPrice', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" />
+                </label>
+                <div className="text-sm font-semibold text-slate-700">
+                  মোট
+                  <p className="mt-1 rounded-lg bg-slate-50 px-3 py-2 font-bold text-slate-900">৳{toBnCurrency(items[index]?.total)}</p>
+                </div>
+                <button type="button" aria-label="পণ্য সরান" onClick={() => removeItem(index)} className="rounded-lg p-2 text-rose-600 hover:bg-rose-50">
+                  <Trash2 className="h-5 w-5" />
+                </button>
+              </div>
+            ))}
           </div>
+        </section>
 
-          <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-            <button
-              onClick={handleAddItem}
-              className="flex items-center gap-1.5 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 px-3.5 py-1.5 rounded-lg text-xs font-bold border border-emerald-200 transition"
-            >
-              <Plus className="w-4 h-4" />
-              <span>+ অন্য পণ্য ও প্যাক সাইজ যোগ করুন</span>
-            </button>
-
-            {/* Requirement 4: Button to add loose/retail damaged piece with editable price */}
-            <button
-              onClick={handleAddLooseItem}
-              className="flex items-center gap-1.5 bg-amber-50 text-amber-900 hover:bg-amber-100 px-3.5 py-1.5 rounded-lg text-xs font-bold border border-amber-300 transition"
-            >
-              <RotateCcw className="w-3.5 h-3.5 text-amber-700" />
-              <span>+ খুচরা পণ্য / এক্সপায়ার বোতল ফেরত এড করুন</span>
-            </button>
+        <section className="grid gap-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm lg:grid-cols-2">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="text-sm font-semibold text-slate-700">
+              পরিবহন খরচ (৳)
+              <input type="number" min="0" step="0.01" value={form.transportCost} onChange={(event) => updateForm('transportCost', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" />
+            </label>
+            <label className="text-sm font-semibold text-slate-700">
+              পরিশোধিত (৳)
+              <input type="number" min="0" step="0.01" value={form.paidAmount} onChange={(event) => updateForm('paidAmount', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" />
+            </label>
+            <label className="text-sm font-semibold text-slate-700">
+              পেমেন্ট পদ্ধতি
+              <select value={form.paymentMethod} onChange={(event) => updateForm('paymentMethod', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2">
+                <option>নগদ জমা</option><option>ব্যাংক</option><option>মোবাইল ব্যাংকিং</option>
+              </select>
+            </label>
+            <label className="text-sm font-semibold text-slate-700">
+              পরিবহন
+              <input value={form.transport} onChange={(event) => updateForm('transport', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" />
+            </label>
+            <label className="text-sm font-semibold text-slate-700 sm:col-span-2">
+              নোট
+              <textarea rows="2" value={form.note} onChange={(event) => updateForm('note', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" />
+            </label>
           </div>
-        </div>
-
-        {/* Loose / Retail Damaged Items Adjustment Table */}
-        {looseItems.length > 0 && (
-          <div className="p-4 bg-amber-50/70 border border-amber-300 rounded-xl space-y-3">
-            <div className="flex justify-between items-center">
-              <div>
-                <h4 className="font-bold text-amber-900 text-sm flex items-center gap-1.5">
-                  <RotateCcw className="w-4 h-4 text-amber-700" />
-                  খুচরা বোতল / মেয়াদোত্তীর্ণ পণ্য ফেরত সমন্বয় তালিকা (সম্পূর্ণ এডিটেবল দর ও সংখ্যা)
-                </h4>
-                <p className="text-[11px] text-amber-800">
-                  ডিলার হতে ১-২ বোতল খোলা ফেরত আসলে বা ক্ষতিপূরণ সমন্বয় করতে এখানে রেট ও পিস নিজের মতো এডিট করুন।
-                </p>
-              </div>
-            </div>
-
-            <div className="border border-amber-200 rounded-lg overflow-x-auto bg-white">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-amber-100 text-amber-900 font-bold uppercase">
-                  <tr>
-                    <th className="p-2 min-w-[200px]">পণ্য ও প্যাক সাইজ</th>
-                    <th className="p-2 text-center w-28">সংখ্যা (বোতল/পিস)</th>
-                    <th className="p-2 text-right w-32">সমন্বয় দর (Editable ৳)</th>
-                    <th className="p-2 text-center w-24">কমিশন (%)</th>
-                    <th className="p-2 text-right w-32">মোট সমন্বয় (৳)</th>
-                    <th className="p-2">ক্ষতির কারণ / মন্তব্য</th>
-                    <th className="p-2 text-center w-10">মুছুন</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-amber-100">
-                  {looseItems.map((loose, lIdx) => {
-                    const lSubtotal = (Number(loose.quantity) || 1) * (Number(loose.price) || 0);
-                    const lCommAmt = Math.round((lSubtotal * (Number(loose.commissionPercent) || 0)) / 100);
-                    const lNet = lSubtotal - lCommAmt;
-
-                    return (
-                      <tr key={loose.id || lIdx} className="hover:bg-amber-50/50">
-                        <td className="p-2">
-                          <select
-                            value={loose.variantKey || `${loose.productId}::${loose.sku}`}
-                            onChange={(e) => handleLooseFieldChange(lIdx, 'variantKey', e.target.value)}
-                            className="w-full border border-amber-300 rounded p-1 font-semibold text-xs"
-                          >
-                            {allProductVariants.map((v) => (
-                              <option key={v.key} value={v.key}>
-                                {v.productName} — {v.size}
-                              </option>
-                            ))}
-                          </select>
-                        </td>
-
-                        <td className="p-2 text-center">
-                          <input
-                            type="number"
-                            min="1"
-                            value={loose.quantity}
-                            onChange={(e) => handleLooseFieldChange(lIdx, 'quantity', e.target.value)}
-                            className="w-20 border border-amber-300 rounded p-1 text-center font-bold text-amber-900 text-xs mx-auto block"
-                          />
-                        </td>
-
-                        {/* EDITABLE PRICE */}
-                        <td className="p-2 text-right">
-                          <input
-                            type="number"
-                            min="0"
-                            value={loose.price}
-                            onChange={(e) => handleLooseFieldChange(lIdx, 'price', e.target.value)}
-                            className="w-28 border border-amber-400 bg-amber-50 rounded p-1 text-right font-mono font-bold text-amber-900 text-xs ml-auto block"
-                          />
-                        </td>
-
-                        {/* EDITABLE COMMISSION % */}
-                        <td className="p-2 text-center">
-                          <input
-                            type="number"
-                            min="0"
-                            max="100"
-                            value={loose.commissionPercent}
-                            onChange={(e) => handleLooseFieldChange(lIdx, 'commissionPercent', e.target.value)}
-                            className="w-16 border border-amber-300 rounded p-1 text-center font-mono font-bold text-xs mx-auto block"
-                          />
-                        </td>
-
-                        <td className="p-2 text-right font-mono font-black text-rose-700">
-                          - ৳{lNet.toLocaleString()}
-                        </td>
-
-                        <td className="p-2">
-                          <input
-                            type="text"
-                            value={loose.reason}
-                            placeholder="যেমন: মেয়াদোত্তীর্ণ ১ বোতল"
-                            onChange={(e) => handleLooseFieldChange(lIdx, 'reason', e.target.value)}
-                            className="w-full border border-slate-200 rounded p-1 text-xs"
-                          />
-                        </td>
-
-                        <td className="p-2 text-center">
-                          <button
-                            onClick={() => handleRemoveLooseItem(lIdx)}
-                            className="text-rose-500 hover:text-rose-700"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+          <div className="space-y-3 rounded-lg bg-slate-50 p-5 text-sm">
+            <div className="flex justify-between"><span>পণ্যের মোট</span><strong>৳{toBnCurrency(subtotal)}</strong></div>
+            <div className="flex justify-between"><span>কমিশন</span><strong>− ৳{toBnCurrency(commissionAmount)}</strong></div>
+            <div className="flex justify-between"><span>পরিবহন</span><strong>৳{toBnCurrency(transportCost)}</strong></div>
+            <div className="flex justify-between border-t border-slate-300 pt-3 text-base"><strong>মোট বিল</strong><strong>৳{toBnCurrency(totalAmount)}</strong></div>
+            <div className="flex justify-between"><span>পূর্বের বকেয়া</span><span>৳{toBnCurrency(previousDue)}</span></div>
+            <div className="flex justify-between"><span>পরিশোধিত</span><span>৳{toBnCurrency(paidAmount)}</span></div>
+            <div className="flex justify-between border-t border-slate-300 pt-3 text-base text-rose-700"><strong>বর্তমান বকেয়া</strong><strong>৳{toBnCurrency(dueAmount)}</strong></div>
           </div>
-        )}
+        </section>
 
-        {/* Financial Summary & Settlement Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 pt-4 border-t border-slate-200">
-          <div className="space-y-4">
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">চালান মন্তব্য ও শর্তাবলী</label>
-              <textarea
-                rows={2}
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                placeholder="যেমন: পীরগঞ্জ ডিপো হতে কাভার্ড ভ্যান মারফত মাল পাঠানো হলো..."
-                className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs"
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">পেমেন্ট মাধ্যম</label>
-                <select
-                  value={paymentMethod}
-                  onChange={(e) => setPaymentMethod(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-medium"
-                >
-                  <option value="নগদ জমা">নগদ জমা (Cash)</option>
-                  <option value="ব্যাংক চেক">ব্যাংক চেক (Cheque)</option>
-                  <option value="ব্যাংক ডিপোজিট">ব্যাংক ডিপোজিট</option>
-                  <option value="বিকাশ / নগদ">বিকাশ / নগদ</option>
-                  <option value="বাকি চালান">সম্পূর্ণ বাকি চালান (Credit)</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">তাৎক্ষণিক জমা / ক্যাশ আদায় (৳)</label>
-                <input
-                  type="number"
-                  min="0"
-                  value={paidAmount}
-                  onChange={(e) => setPaidAmount(e.target.value)}
-                  className="w-full bg-emerald-50 border border-emerald-400 rounded-lg px-2.5 py-1.5 text-sm font-black text-emerald-800"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Right Summary Card */}
-          <div className="bg-slate-50 border border-slate-200 rounded-xl p-5 space-y-2.5 text-xs">
-            <div className="flex justify-between items-center border-b border-slate-200 pb-2">
-              <h4 className="font-bold text-slate-800 text-sm">
-                হিসাব বিবরণী ({invoiceType === 'regular' ? 'নিয়মিত চালান' : invoiceType === 'dealer_return' ? 'রিটার্ন ক্রেডিট' : 'ফ্যাক্টরি ফেরত'})
-              </h4>
-              <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                invoiceType === 'regular' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-900'
-              }`}>
-                {invoiceType === 'regular' ? 'সেলস চালান' : 'রিটার্ন / সমন্বয়'}
-              </span>
-            </div>
-
-            <div className="flex justify-between text-slate-600">
-              <span>মোট কার্টুন সংখ্যা:</span>
-              <span className="font-bold text-slate-900 font-mono text-sm">{totalCartons} কার্টুন</span>
-            </div>
-
-            <div className="flex justify-between text-slate-600">
-              <span>মোট ট্রেড প্রাইজ (কার্টুন মূল্য):</span>
-              <span className="font-semibold text-slate-800 font-mono">৳{totalSubtotal.toLocaleString()}</span>
-            </div>
-
-            <div className="flex justify-between text-emerald-700 font-semibold">
-              <span>ট্রেড কমিশন:</span>
-              <span className="font-mono">- ৳{totalCommission.toLocaleString()}</span>
-            </div>
-
-            {totalLooseValue > 0 && invoiceType === 'regular' && (
-              <div className="flex justify-between text-rose-600 font-bold bg-amber-50 p-1.5 rounded border border-amber-200">
-                <span>মেয়াদোত্তীর্ণ / ফেরত মাল সমন্বয়:</span>
-                <span className="font-mono">- ৳{totalLooseValue.toLocaleString()}</span>
-              </div>
-            )}
-
-            {invoiceType === 'regular' && (
-              <div className="flex justify-between items-center text-slate-600">
-                <span className="flex items-center gap-1.5">
-                  <span>লেবার / পরিবহন খরচ (৳):</span>
-                  <input
-                    type="number"
-                    min="0"
-                    value={transportCost}
-                    onChange={(e) => setTransportCost(e.target.value)}
-                    className="w-20 bg-white border border-slate-300 rounded px-1.5 py-0.5 text-right font-bold text-xs"
-                  />
-                </span>
-                <span className="font-semibold text-slate-800 font-mono">+ ৳{Number(transportCost || 0).toLocaleString()}</span>
-              </div>
-            )}
-
-            <div className="border-t border-slate-200 pt-1.5 flex justify-between font-bold text-slate-900 text-sm">
-              <span>চালানের নিট বিল / ক্রেডিট:</span>
-              <span className="font-mono text-emerald-800 font-black">৳{invoiceNetBill.toLocaleString()}</span>
-            </div>
-
-            {previousDue > 0 && invoiceType === 'regular' && (
-              <div className="flex justify-between text-rose-600">
-                <span>পূর্বের অবশিষ্ট বাকি:</span>
-                <span className="font-mono font-semibold">+ ৳{previousDue.toLocaleString()}</span>
-              </div>
-            )}
-
-            {invoiceType === 'regular' && (
-              <div className="flex justify-between bg-slate-200/70 p-2 rounded font-bold text-slate-800">
-                <span>সর্বমোট নিট দেয়:</span>
-                <span className="font-mono">৳{grandTotalPayable.toLocaleString()}</span>
-              </div>
-            )}
-
-            <div className="flex justify-between text-emerald-700 font-bold">
-              <span>নগদ / চেক আদায়:</span>
-              <span className="font-mono">- ৳{Number(paidAmount || 0).toLocaleString()}</span>
-            </div>
-
-            <div className="border-t-2 border-slate-300 pt-2 flex justify-between text-base font-black">
-              <span className={currentRemainingDue > 0 ? 'text-rose-700' : 'text-emerald-700'}>
-                অবশিষ্ট বকেয়া (Current Due):
-              </span>
-              <span className={`font-mono ${currentRemainingDue > 0 ? 'text-rose-700' : 'text-emerald-700'}`}>
-                ৳{currentRemainingDue.toLocaleString()}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Action Buttons */}
-        <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-3 pt-4 border-t border-slate-200">
-          <button
-            onClick={() => handleSaveInvoice(false)}
-            className="w-full sm:w-auto px-5 py-2.5 rounded-lg border border-emerald-700 text-emerald-800 hover:bg-emerald-50 font-bold text-xs transition"
-          >
-            {editInvoiceData ? 'পরিবর্তন সংরক্ষণ করুন' : 'শুধু ইনভয়েস সংরক্ষণ করুন'}
-          </button>
-          <button
-            onClick={() => handleSaveInvoice(true)}
-            className="w-full sm:w-auto flex justify-center items-center gap-2 bg-emerald-700 hover:bg-emerald-800 text-white px-6 py-2.5 rounded-lg font-black text-xs shadow-md transition"
-          >
-            <Printer className="w-4 h-4" />
-            <span>{editInvoiceData ? 'আপডেট ও চালান প্রিন্ট' : 'সংরক্ষণ ও চালান প্রিন্ট করুন'}</span>
+        <div className="flex justify-end gap-3">
+          <button type="submit" className="rounded-lg bg-emerald-700 px-5 py-3 font-bold text-white hover:bg-emerald-800">
+            <Save className="mr-2 inline h-4 w-4" /> {editInvoiceData ? 'আপডেট করুন' : 'ইনভয়েস সংরক্ষণ করুন'}
           </button>
         </div>
-      </div>
+      </form>
 
-      {/* Requirement 11 & Requirement 1: Official Printable Invoice */}
-      <div className={`print-container invoice-print bg-white p-8 max-w-4xl mx-auto rounded-lg border border-slate-200 ${previewInvoice ? 'block' : 'hidden print:block'}`}>
-        <InvoicePrintHeader invoiceType={previewInvoice?.invoiceType || invoiceType} />
-
-        {/* Invoice Meta Grid: Requirement 1 - ONLY officerCode displayed, NO officer name, Bengali numerals */}
-        <div className="grid grid-cols-2 gap-4 py-3 text-xs border-b border-slate-200">
-          <div className="space-y-1">
-            <p><span className="font-bold">ডিলার কোড:</span> <span className="font-bold text-emerald-800">{toBn(previewInvoice?.dealerCode || dealerDetails.code)}</span></p>
-            <p><span className="font-bold">প্রতিষ্ঠানের নাম:</span> {previewInvoice?.dealerName || dealerDetails.shopName}</p>
-            <p><span className="font-bold">প্রোপাইটর:</span> {previewInvoice?.dealerProprietor || dealerDetails.proprietor}</p>
-            <p><span className="font-bold">ঠিকানা:</span> {previewInvoice?.dealerAddress || dealerDetails.address}</p>
-            <p><span className="font-bold">মোবাইল:</span> {toBn(previewInvoice?.dealerPhone || dealerDetails.phone)}</p>
+      {savedInvoice && (
+        <section className="space-y-4">
+          <div className="no-print flex justify-end">
+            <button type="button" onClick={() => window.print()} className="rounded-lg bg-slate-800 px-4 py-2 font-semibold text-white">
+              <Printer className="mr-2 inline h-4 w-4" /> ইনভয়েস প্রিন্ট / PDF
+            </button>
           </div>
-          <div className="space-y-1 text-right">
-            <p><span className="font-bold">চালান নং:</span> <span className="font-black text-emerald-800 text-sm">{toBn(previewInvoice?.id || invoiceId)}</span></p>
-            <p><span className="font-bold">তারিখ:</span> {toBnDate(previewInvoice?.date || invoiceDate)}</p>
-            {/* REQUIREMENT 1: ONLY OFFICER CODE SHOWS, NOT OFFICER NAME */}
-            <p className="bg-slate-100 inline-block px-2.5 py-0.5 rounded border border-slate-200">
-              <span className="font-bold text-slate-700">অফিসার কোড:</span> <span className="font-black text-emerald-800">{toBn(previewInvoice?.officerCode || dealerDetails.officerCode)}</span>
-            </p>
-            <p><span className="font-bold">পরিবহন মাধ্যম:</span> {previewInvoice?.transport || dealerDetails.transport || 'সাধারণ পরিবহন'}</p>
+          <div className="rounded-xl border border-slate-200 bg-slate-100 p-3 sm:p-6">
+            <InvoicePrintHeader invoice={savedInvoice} />
           </div>
-        </div>
-
-        {/* Fixed column proportions keep product names on one line on A4. */}
-        <div className="mt-3">
-          <p className="text-[11px] font-bold text-slate-800 uppercase mb-1">সরবরাহকৃত পণ্য ও কার্টুন বিবরণী:</p>
-          <table className="invoice-items-table w-full text-xs border-collapse border border-slate-300">
-            <colgroup>
-              <col style={{ width: '4%' }} />
-              <col style={{ width: '29%' }} />
-              <col style={{ width: '11%' }} />
-              <col style={{ width: '7%' }} />
-              <col style={{ width: '9%' }} />
-              <col style={{ width: '12%' }} />
-              <col style={{ width: '7%' }} />
-              <col style={{ width: '11%' }} />
-              <col style={{ width: '10%' }} />
-            </colgroup>
-            <thead>
-              <tr className="bg-slate-100 border-b border-slate-300 font-bold text-slate-800">
-                <th className="py-2 px-2 text-left border-r border-slate-200">নং</th>
-                <th className="py-2 px-2 text-left border-r border-slate-200">পণ্যের নাম</th>
-                <th className="py-2 px-2 text-left border-r border-slate-200">প্যাক সাইজ</th>
-                <th className="py-2 px-2 text-center border-r border-slate-200">কার্টুন</th>
-                <th className="py-2 px-2 text-right border-r border-slate-200">কার্টুন দর (৳)</th>
-                <th className="py-2 px-2 text-right border-r border-slate-200">মোট দর (৳)</th>
-                <th className="py-2 px-2 text-center border-r border-slate-200">কমিশন %</th>
-                <th className="py-2 px-2 text-right border-r border-slate-200">কমিশন (৳)</th>
-                <th className="py-2 px-2 text-right">নিট মূল্য (৳)</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200">
-              {(previewInvoice?.items || preparedItems).map((it, idx) => {
-                const cartons = Number(it.cartons) || 1;
-                const cartonPrice = Number(it.cartonPrice) || 0;
-                const subtotal = it.subtotal ?? (cartons * cartonPrice);
-                const commPct = Number(it.commissionPercent) ?? 20;
-                const commAmt = it.commissionAmount ?? Math.round((subtotal * commPct) / 100);
-                const lineNetTotal = it.total ?? (subtotal - commAmt);
-
-                return (
-                  <tr key={idx} className="border-b border-slate-200">
-                    <td className="py-1.5 px-2 text-slate-600 border-r border-slate-200">{toBn(idx + 1)}</td>
-                    <td className="invoice-product-name py-1.5 px-2 font-bold text-slate-900 border-r border-slate-200">{it.productName}</td>
-                    <td className="py-1.5 px-2 border-r border-slate-200">{it.size}</td>
-                    <td className="py-1.5 px-2 text-center font-bold text-slate-900 border-r border-slate-200">{toBn(cartons)}</td>
-                    <td className="py-1.5 px-2 text-right border-r border-slate-200">৳{toBnCurrency(cartonPrice)}</td>
-                    <td className="py-1.5 px-2 text-right font-medium border-r border-slate-200">৳{toBnCurrency(subtotal)}</td>
-                    <td className="py-1.5 px-2 text-center border-r border-slate-200">{toBn(commPct)}%</td>
-                    <td className="py-1.5 px-2 text-right text-rose-700 border-r border-slate-200">৳{toBnCurrency(commAmt)}</td>
-                    <td className="py-1.5 px-2 text-right font-bold text-emerald-900">৳{toBnCurrency(lineNetTotal)}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Loose / Return Table in Print */}
-        {(previewInvoice?.returnAdjustments?.length > 0 || preparedLoose.length > 0) && (
-          <div className="mt-3">
-            <p className="text-[11px] font-bold text-amber-900 uppercase mb-1">মেয়াদ উত্তীর্ণ / ফেরত পণ্য সমন্বয় (বিল কর্তন):</p>
-            <table className="w-full text-xs border border-amber-200 bg-amber-50/30">
-              <thead>
-                <tr className="bg-amber-100 text-amber-900 font-bold">
-                  <th className="p-1.5 text-left">ফেরত পণ্য ও সাইজ</th>
-                  <th className="p-1.5 text-center">সংখ্যা</th>
-                  <th className="p-1.5 text-right">দর (৳)</th>
-                  <th className="p-1.5 text-right">সমন্বয় কর্তন (৳)</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-amber-100">
-                {(previewInvoice?.returnAdjustments || preparedLoose).map((loose, rIdx) => (
-                  <tr key={rIdx}>
-                    <td className="p-1.5">{loose.productName} — {loose.size}</td>
-                    <td className="p-1.5 text-center font-bold">{toBn(loose.quantity)} বোতল/পিস</td>
-                    <td className="p-1.5 text-right">৳{toBnCurrency(loose.price)}</td>
-                    <td className="p-1.5 text-right font-bold text-rose-700">- ৳{toBnCurrency(loose.total)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        {/* Financial Summary */}
-        <div className="grid grid-cols-2 gap-6 mt-4 pt-4 border-t border-slate-300 text-xs">
-          <div>
-            <p className="font-bold text-slate-700">চালান মন্তব্য:</p>
-            <p className="text-slate-600 italic">{previewInvoice?.note || note || 'মালামাল সঠিক কার্টুন সংখ্যায় বুঝিয়া পাইলাম।'}</p>
-            <p className="font-bold text-slate-700 mt-2">পেমেন্ট মেথড: <span className="font-normal">{previewInvoice?.paymentMethod || paymentMethod}</span></p>
-            <p className="text-[11px] text-slate-400 mt-4 leading-tight">
-              * বিক্রিত পণ্য ডিলার কর্তৃক সঠিকভাবে বুঝে নেওয়া হলো।
-            </p>
-          </div>
-
-          <div className="space-y-1 text-right font-medium">
-            <div className="flex justify-between">
-              <span>মোট কাটুন:</span>
-              <span className="font-bold text-slate-900">{toBn(previewInvoice?.totalCartons || totalCartons)} কাটুন</span>
-            </div>
-            <div className="flex justify-between">
-              <span>মোট ট্রেড প্রাইজ:</span>
-              <span>৳{toBnCurrency(previewInvoice?.subtotal || totalSubtotal)}</span>
-            </div>
-            <div className="flex justify-between text-emerald-700">
-              <span>ট্রেড কমিশন:</span>
-              <span>- ৳{toBnCurrency(previewInvoice?.commissionAmount || totalCommission)}</span>
-            </div>
-            {(Number(previewInvoice?.returnAdjustmentTotal || totalLooseValue)) > 0 && (
-              <div className="flex justify-between text-rose-600 font-bold">
-                <span>ফেরত মাল সমন্বয় কর্তন:</span>
-                <span>- ৳{toBnCurrency(previewInvoice?.returnAdjustmentTotal || totalLooseValue)}</span>
-              </div>
-            )}
-            <div className="flex justify-between font-bold text-slate-900 border-t border-slate-200 pt-1">
-              <span>চালানের নিট বিল:</span>
-              <span className="font-bold text-emerald-800">৳{toBnCurrency(previewInvoice?.grandTotal || invoiceNetBill)}</span>
-            </div>
-            {(Number(previewInvoice?.previousDue || previousDue)) > 0 && (
-              <div className="flex justify-between text-slate-600">
-                <span>পূর্বের বকেয়া:</span>
-                <span>+ ৳{toBnCurrency(previewInvoice?.previousDue || previousDue)}</span>
-              </div>
-            )}
-            <div className="flex justify-between text-emerald-700 font-bold">
-              <span>নগদ / চেক জমা:</span>
-              <span>- ৳{toBnCurrency(previewInvoice?.paidAmount || paidAmount)}</span>
-            </div>
-            <div className="flex justify-between text-sm font-black text-rose-700 border-t-2 border-slate-300 pt-1">
-              <span>বর্তমান অবশিষ্ট বকেয়া:</span>
-              <span>৳{toBnCurrency(previewInvoice?.currentDue ?? currentRemainingDue)}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Bottom Signatures: Exactly as requested by user */}
-        <div className="grid grid-cols-3 gap-6 pt-16 text-center text-xs">
-          <div className="border-t border-slate-500 pt-1.5 font-bold text-slate-800">
-            পরিবেশক/পক্ষের স্বাক্ষর ও তাং
-          </div>
-          <div className="border-t border-slate-500 pt-1.5 font-bold text-slate-800">
-            সেলস অফিসারের স্বাক্ষর ও তাং
-          </div>
-          <div className="border-t border-slate-500 pt-1.5 font-bold text-slate-800">
-            কোম্পানীর পক্ষে লজিস্টিক অফিসারের স্বাক্ষর ও তাং
-          </div>
-        </div>
-      </div>
+        </section>
+      )}
+      <style>{`
+        @media print {
+          body * { visibility: hidden !important; }
+          .invoice-print-sheet, .invoice-print-sheet * { visibility: visible !important; }
+          .invoice-print-sheet { position: absolute; inset: 0; width: 100%; max-width: none; padding: 20px; }
+          @page { size: A4; margin: 10mm; }
+        }
+      `}</style>
     </div>
   );
 }

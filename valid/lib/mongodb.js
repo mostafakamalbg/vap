@@ -1,39 +1,23 @@
+import 'dotenv/config';
 import mongoose from 'mongoose';
 
-const MONGODB_URI = process.env.MONGODB_URI;
-
-let cached = global.mongoose;
-
-if (!cached) {
-  cached = global.mongoose = { conn: null, promise: null };
-}
+const globalConnection = globalThis;
 
 export default async function dbConnect() {
-  if (!MONGODB_URI) {
-    return null;
-  }
+  const uri = process.env.MONGO_URI;
+  if (!uri) return false;
+  if (mongoose.connection.readyState === 1) return true;
 
-  if (cached.conn) {
-    return cached.conn;
-  }
-
-  if (!cached.promise) {
-    const opts = {
-      bufferCommands: false,
-    };
-
-    cached.promise = mongoose.connect(MONGODB_URI, opts).then((mongooseInstance) => {
-      return mongooseInstance;
+  if (mongoose.connection.readyState !== 2 || !globalConnection.mongoConnectionPromise) {
+    globalConnection.mongoConnectionPromise = mongoose.connect(uri, {
+      maxPoolSize: 10,
+      serverSelectionTimeoutMS: 10000
+    }).catch((error) => {
+      globalConnection.mongoConnectionPromise = null;
+      throw error;
     });
   }
 
-  try {
-    cached.conn = await cached.promise;
-  } catch (e) {
-    cached.promise = null;
-    console.error('MongoDB connection error:', e);
-    return null;
-  }
-
-  return cached.conn;
+  await globalConnection.mongoConnectionPromise;
+  return true;
 }

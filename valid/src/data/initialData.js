@@ -1405,6 +1405,7 @@ export const INITIAL_DEALERS = [
 export const INITIAL_INVOICES = [
   {
     id: 'VAP-2026-0001',
+    session: 'জুলাই - ডিসেম্বর ২০২৬',
     seqNumber: 1,
     date: '2026-10-05',
     dealerId: 'DLR-1',

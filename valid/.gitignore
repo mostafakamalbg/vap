@@ -1,1 +1,5 @@
-node_modules
+# Dependencies / Node Modules
+node_modules/
+
+# Environment variables / Secrets
+.env

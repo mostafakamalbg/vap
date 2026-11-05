@@ -1,366 +1,97 @@
-import React, { useState } from 'react';
-import {
-  FileText,
-  Printer,
-  Search,
-  Calendar,
-  User,
-  PlusCircle,
-  Eye,
-  Edit,
-  X,
-  CheckCircle,
-  ArrowRight
-} from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { FilePlus2, Pencil, Printer, Search, Trash2 } from 'lucide-react';
 import { useAgro } from '../../context/AgroContext';
 import { toBn, toBnCurrency, toBnDate } from '../../utils/bengali';
 import InvoicePrintHeader from './InvoicePrintHeader';
 
 export default function InvoiceList({ onNewInvoiceClick, onEditInvoice }) {
-  const { invoices } = useAgro();
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedInvoice, setSelectedInvoice] = useState(null);
+  const { invoices, deleteInvoice } = useAgro();
+  const [search, setSearch] = useState('');
+  const [printInvoice, setPrintInvoice] = useState(null);
+  const filteredInvoices = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    if (!term) return invoices;
+    return invoices.filter((invoice) => [
+      invoice.id,
+      invoice.dealerName,
+      invoice.officerName,
+      invoice.session
+    ].some((value) => String(value || '').toLowerCase().includes(term)));
+  }, [invoices, search]);
 
-  const filteredInvoices = invoices.filter((inv) => {
-    return (
-      inv.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      inv.dealerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (inv.officerCode && inv.officerCode.toString().includes(searchTerm)) ||
-      inv.date.includes(searchTerm)
-    );
-  });
-
-  const handlePrint = (inv) => {
-    setSelectedInvoice(inv);
-    setTimeout(() => {
-      window.print();
-    }, 400);
+  const handleDelete = (invoice) => {
+    if (!window.confirm(`ইনভয়েস ${invoice.id} মুছে ফেলবেন?`)) return;
+    deleteInvoice(invoice.id);
+    if (printInvoice?.id === invoice.id) setPrintInvoice(null);
   };
 
   return (
-    <div className="py-6 px-4 max-w-7xl mx-auto space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-5 rounded-xl border border-slate-200 shadow-sm no-print">
+    <div className="mx-auto max-w-7xl space-y-5 px-4 py-6">
+      <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
-            <span className="w-9 h-9 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center">
-              <FileText className="w-5 h-5" />
-            </span>
-            সকল বিক্রয় চালান ও ইনভয়েস হিস্ট্রি
-          </h1>
-          <p className="text-slate-500 text-sm mt-0.5">
-            পূর্বে প্রস্তুতকৃত সকল চালান দেখা, সার্চ করা ও পুন:প্রিন্ট করার সুবিধা
-          </p>
+          <h1 className="text-2xl font-bold text-slate-800">ইনভয়েস তালিকা</h1>
+          <p className="mt-1 text-sm text-slate-500">মোট ইনভয়েস: {toBn(invoices.length)}</p>
         </div>
-
-        <button
-          onClick={onNewInvoiceClick}
-          className="flex items-center gap-2 bg-emerald-700 hover:bg-emerald-800 text-white px-4 py-2 rounded-lg font-bold text-xs shadow transition"
-        >
-          <PlusCircle className="w-4 h-4" />
-          <span>নতুন ইনভয়েস তৈরি করুন</span>
+        <button type="button" onClick={onNewInvoiceClick} className="rounded-lg bg-emerald-700 px-4 py-2 font-semibold text-white">
+          <FilePlus2 className="mr-2 inline h-4 w-4" /> নতুন ইনভয়েস
         </button>
       </div>
 
-      {/* Invoices List Table */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-4 no-print">
-        <div className="relative max-w-md">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            placeholder="ইনভয়েস নং, ডিলার নাম বা অফিসার দিয়ে খুঁজুন..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
-          />
-        </div>
+      <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+        <Search className="h-5 w-5 text-slate-400" />
+        <span className="sr-only">ইনভয়েস খুঁজুন</span>
+        <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="ইনভয়েস, ডিলার, অফিসার বা সেশন খুঁজুন" className="w-full outline-none" />
+      </label>
 
-        <div className="border border-slate-200 rounded-lg overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-slate-100 text-slate-700 font-bold uppercase">
-              <tr>
-                <th className="py-3 px-3">চালান নং ও ধরন</th>
-                <th className="py-3 px-3">তারিখ</th>
-                <th className="py-3 px-3">ডিলার ও ঠিকানা</th>
-                <th className="py-3 px-3 text-center">অফিসার কোড</th>
-                <th className="py-3 px-3 text-center">মোট কার্টুন</th>
-                <th className="py-3 px-3 text-right">মোট বিল (৳)</th>
-                <th className="py-3 px-3 text-right">জমা (৳)</th>
-                <th className="py-3 px-3 text-right">অবশিষ্ট বাকি (৳)</th>
-                <th className="py-3 px-3 text-center">অ্যাকশন</th>
+      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+        <table className="w-full min-w-[850px] text-left text-sm">
+          <thead className="bg-slate-100 text-slate-600">
+            <tr>
+              <th className="p-3">ইনভয়েস / তারিখ</th><th className="p-3">সেশন</th><th className="p-3">ডিলার</th>
+              <th className="p-3">অফিসার</th><th className="p-3 text-right">মোট</th><th className="p-3 text-right">বকেয়া</th><th className="p-3">কাজ</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredInvoices.map((invoice) => (
+              <tr key={invoice.id} className="border-t border-slate-100">
+                <td className="p-3"><strong>{toBn(invoice.id)}</strong><p className="text-xs text-slate-500">{toBnDate(invoice.date)}</p></td>
+                <td className="p-3 font-semibold text-emerald-800">{invoice.session || 'সেশন নির্ধারিত নয়'}</td>
+                <td className="p-3">{invoice.dealerName || invoice.dealerId}</td>
+                <td className="p-3">{invoice.officerName || invoice.officerId}</td>
+                <td className="p-3 text-right">৳{toBnCurrency(invoice.totalAmount ?? invoice.grandTotal)}</td>
+                <td className="p-3 text-right text-rose-700">৳{toBnCurrency(invoice.dueAmount ?? invoice.currentDue)}</td>
+                <td className="p-3">
+                  <div className="flex gap-1">
+                    <button type="button" title="প্রিন্ট" onClick={() => setPrintInvoice(invoice)} className="rounded p-2 text-slate-600 hover:bg-slate-100"><Printer className="h-4 w-4" /></button>
+                    {onEditInvoice && <button type="button" title="সম্পাদনা" onClick={() => onEditInvoice(invoice)} className="rounded p-2 text-blue-700 hover:bg-blue-50"><Pencil className="h-4 w-4" /></button>}
+                    <button type="button" title="মুছুন" onClick={() => handleDelete(invoice)} className="rounded p-2 text-rose-700 hover:bg-rose-50"><Trash2 className="h-4 w-4" /></button>
+                  </div>
+                </td>
               </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200">
-              {filteredInvoices.map((inv) => (
-                <tr key={inv.id} className="hover:bg-slate-50 transition">
-                  <td className="py-3 px-3">
-                    <div className="font-bold text-emerald-800 text-sm">
-                      {toBn(inv.id)}
-                    </div>
-                    {inv.invoiceType === 'dealer_return' ? (
-                      <span className="inline-block mt-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800">
-                        ফেরত চালান
-                      </span>
-                    ) : inv.invoiceType === 'factory_damage' ? (
-                      <span className="inline-block mt-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded bg-rose-100 text-rose-800">
-                        ফ্যাক্টরি ফেরত
-                      </span>
-                    ) : (
-                      <span className="inline-block mt-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-800">
-                        রেগুলার বিক্রয়
-                      </span>
-                    )}
-                  </td>
-                  <td className="py-3 px-3 text-slate-700 font-medium">
-                    {toBnDate(inv.date)}
-                  </td>
-                  <td className="py-3 px-3">
-                    <div className="font-bold text-slate-800">{inv.dealerName}</div>
-                    <div className="text-[11px] text-slate-400">{inv.dealerAddress}</div>
-                  </td>
-                  <td className="py-3 px-3 text-center">
-                    <span className="inline-block bg-slate-100 text-slate-800 font-bold px-2 py-0.5 rounded text-xs border border-slate-200">
-                      কোড: {toBn(inv.officerCode || '5')}
-                    </span>
-                  </td>
-                  <td className="py-3 px-3 text-center font-bold text-emerald-800">
-                    {toBn(inv.totalCartons || inv.items?.reduce((s, it) => s + (Number(it.cartons) || 0), 0) || 0)} কাটুন
-                  </td>
-                  <td className="py-3 px-3 text-right font-bold text-slate-800 text-sm">
-                    ৳{toBnCurrency(inv.grandTotal)}
-                  </td>
-                  <td className="py-3 px-3 text-right font-bold text-emerald-700">
-                    ৳{toBnCurrency(inv.paidAmount)}
-                  </td>
-                  <td className="py-3 px-3 text-right font-bold text-rose-700">
-                    ৳{toBnCurrency(inv.currentDue)}
-                  </td>
-                  <td className="py-3 px-3 text-center">
-                    <div className="flex items-center justify-center gap-1.5">
-                      <button
-                        onClick={() => setSelectedInvoice(inv)}
-                        title="চালান দেখুন"
-                        className="bg-slate-100 hover:bg-slate-200 text-slate-700 p-1.5 rounded transition"
-                      >
-                        <Eye className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        onClick={() => onEditInvoice && onEditInvoice(inv)}
-                        title="চালান এডিট / সংশোধন করুন"
-                        className="bg-amber-50 hover:bg-amber-100 text-amber-800 p-1.5 rounded transition border border-amber-200"
-                      >
-                        <Edit className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        onClick={() => handlePrint(inv)}
-                        title="চালান প্রিন্ট করুন"
-                        className="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 p-1.5 rounded transition border border-emerald-200"
-                      >
-                        <Printer className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-
-              {filteredInvoices.length === 0 && (
-                <tr>
-                  <td colSpan={9} className="py-8 text-center text-slate-400 italic">
-                    কোনো ইনভয়েসের তথ্য পাওয়া যায়নি।
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+            ))}
+            {!filteredInvoices.length && <tr><td colSpan="7" className="p-8 text-center text-slate-500">কোনো ইনভয়েস পাওয়া যায়নি।</td></tr>}
+          </tbody>
+        </table>
       </div>
 
-      {/* Invoice Modal Preview */}
-      {selectedInvoice && (
-        <div className="invoice-print-backdrop fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 overflow-y-auto">
-          <div className="invoice-print bg-white rounded-xl shadow-2xl max-w-3xl w-full p-6 space-y-4 my-8">
-            <div className="flex justify-between items-center border-b border-slate-200 pb-3 no-print">
-              <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
-                <FileText className="w-5 h-5 text-emerald-700" />
-                চালান কপি: #{selectedInvoice.id}
-              </h3>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => {
-                    if (onEditInvoice) {
-                      onEditInvoice(selectedInvoice);
-                      setSelectedInvoice(null);
-                    }
-                  }}
-                  className="flex items-center gap-1.5 bg-amber-600 text-white px-3 py-1.5 rounded-lg text-xs font-semibold shadow hover:bg-amber-700"
-                >
-                  <Edit className="w-3.5 h-3.5" />
-                  চালান এডিট করুন
-                </button>
-                <button
-                  onClick={() => window.print()}
-                  className="flex items-center gap-1.5 bg-emerald-700 text-white px-3.5 py-1.5 rounded-lg text-xs font-semibold shadow hover:bg-emerald-800"
-                >
-                  <Printer className="w-3.5 h-3.5" />
-                  প্রিন্ট
-                </button>
-                <button
-                  onClick={() => setSelectedInvoice(null)}
-                  className="text-slate-400 hover:text-slate-600 p-1"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-
-            <InvoicePrintHeader invoiceType={selectedInvoice.invoiceType} />
-
-            {/* Meta - Officer Code ONLY, NO officer name, Bengali numerals */}
-            <div className="grid grid-cols-2 gap-4 text-xs py-3 border-b border-slate-200">
-              <div className="space-y-1">
-                <p><span className="font-bold">ডিলার কোড:</span> <span className="font-bold text-emerald-800">{toBn(selectedInvoice.dealerCode)}</span></p>
-                <p><span className="font-bold">প্রতিষ্ঠানের নাম:</span> {selectedInvoice.dealerName}</p>
-                {selectedInvoice.dealerProprietor && (
-                  <p><span className="font-bold">প্রোপাইটর:</span> {selectedInvoice.dealerProprietor}</p>
-                )}
-                <p><span className="font-bold">ঠিকানা:</span> {selectedInvoice.dealerAddress}</p>
-                <p><span className="font-bold">মোবাইল:</span> {toBn(selectedInvoice.dealerPhone)}</p>
-              </div>
-              <div className="space-y-1 text-right">
-                <p><span className="font-bold">চালান নং:</span> <span className="font-black text-emerald-800 text-sm">{toBn(selectedInvoice.id)}</span></p>
-                <p><span className="font-bold">তারিখ:</span> {toBnDate(selectedInvoice.date)}</p>
-                <p className="bg-slate-100 inline-block px-2.5 py-0.5 rounded border border-slate-200">
-                  <span className="font-bold text-slate-700">অফিসার কোড:</span> <span className="font-black text-emerald-800">{toBn(selectedInvoice.officerCode || selectedInvoice.officerId?.replace('OFF-', '') || '5')}</span>
-                </p>
-                {selectedInvoice.transport && (
-                  <p><span className="font-bold">পরিবহন:</span> {selectedInvoice.transport}</p>
-                )}
-              </div>
-            </div>
-
-            {/* Fixed column proportions keep product names on one line on A4. */}
-            <div className="invoice-table-scroll mt-3 overflow-x-auto">
-              <p className="text-[11px] font-bold text-slate-800 uppercase mb-1">সরবরাহকৃত পণ্য ও কার্টুন বিবরণী:</p>
-              <table className="invoice-items-table min-w-[860px] w-full text-xs border-collapse border border-slate-300">
-                <colgroup>
-                  <col style={{ width: '4%' }} />
-                  <col style={{ width: '29%' }} />
-                  <col style={{ width: '11%' }} />
-                  <col style={{ width: '7%' }} />
-                  <col style={{ width: '9%' }} />
-                  <col style={{ width: '12%' }} />
-                  <col style={{ width: '7%' }} />
-                  <col style={{ width: '11%' }} />
-                  <col style={{ width: '10%' }} />
-                </colgroup>
-                <thead>
-                  <tr className="bg-slate-100 border-b border-slate-300 font-bold text-slate-800">
-                    <th className="py-2 px-2 text-left border-r border-slate-200">নং</th>
-                    <th className="py-2 px-2 text-left border-r border-slate-200">পণ্যের নাম</th>
-                    <th className="py-2 px-2 text-left border-r border-slate-200">প্যাক সাইজ</th>
-                    <th className="py-2 px-2 text-center border-r border-slate-200">কার্টুন</th>
-                    <th className="py-2 px-2 text-right border-r border-slate-200">কার্টুন দর (৳)</th>
-                    <th className="py-2 px-2 text-right border-r border-slate-200">মোট দর (৳)</th>
-                    <th className="py-2 px-2 text-center border-r border-slate-200">কমিশন %</th>
-                    <th className="py-2 px-2 text-right border-r border-slate-200">কমিশন (৳)</th>
-                    <th className="py-2 px-2 text-right">নিট মূল্য (৳)</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-200">
-                  {selectedInvoice.items?.map((it, idx) => {
-                    const cartons = Number(it.cartons) || 1;
-                    const cartonPrice = Number(it.cartonPrice || (it.subtotal && it.cartons ? it.subtotal / it.cartons : it.unitPrice || 0));
-                    const subtotal = it.subtotal ?? (cartons * cartonPrice);
-                    const commPct = Number(it.commissionPercent) ?? 20;
-                    const commAmt = it.commissionAmount ?? Math.round((subtotal * commPct) / 100);
-                    const lineNetTotal = it.total ?? (subtotal - commAmt);
-
-                    return (
-                      <tr key={idx} className="border-b border-slate-200">
-                        <td className="py-1.5 px-2 text-slate-600 border-r border-slate-200">{toBn(idx + 1)}</td>
-                        <td className="invoice-product-name py-1.5 px-2 font-bold text-slate-900 border-r border-slate-200">{it.productName}</td>
-                        <td className="py-1.5 px-2 border-r border-slate-200">{it.size}</td>
-                        <td className="py-1.5 px-2 text-center font-bold text-slate-900 border-r border-slate-200">{toBn(cartons)}</td>
-                        <td className="py-1.5 px-2 text-right border-r border-slate-200">৳{toBnCurrency(cartonPrice)}</td>
-                        <td className="py-1.5 px-2 text-right font-medium border-r border-slate-200">৳{toBnCurrency(subtotal)}</td>
-                        <td className="py-1.5 px-2 text-center border-r border-slate-200">{toBn(commPct)}%</td>
-                        <td className="py-1.5 px-2 text-right text-rose-700 border-r border-slate-200">৳{toBnCurrency(commAmt)}</td>
-                        <td className="py-1.5 px-2 text-right font-bold text-emerald-900">৳{toBnCurrency(lineNetTotal)}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Financials & Signatures */}
-            <div className="grid grid-cols-2 gap-6 mt-4 pt-4 border-t border-slate-300 text-xs">
-              <div>
-                <p className="font-bold text-slate-700">মন্তব্য / নোট:</p>
-                <p className="text-slate-500 italic mt-0.5">{selectedInvoice.note || 'মালামাল সঠিক কার্টুন সংখ্যায় বুঝিয়া পাইলাম।'}</p>
-                <p className="font-bold text-slate-700 mt-2">পেমেন্ট মেথড: <span className="font-normal">{selectedInvoice.paymentMethod}</span></p>
-                <p className="text-[11px] text-slate-400 mt-4 leading-tight">
-                  * বিক্রিত পণ্য ডিলার কর্তৃক সঠিকভাবে বুঝে নেওয়া হলো।
-                </p>
-              </div>
-
-              <div className="space-y-1 text-right font-medium">
-                <div className="flex justify-between">
-                  <span>মোট কাটুন:</span>
-                  <span className="font-bold text-slate-900">{toBn(selectedInvoice.totalCartons || selectedInvoice.items?.reduce((s, it) => s + (Number(it.cartons) || 0), 0) || 0)} কাটুন</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>মোট ট্রেড প্রাইজ:</span>
-                  <span>৳{toBnCurrency(selectedInvoice.subtotal)}</span>
-                </div>
-                {(selectedInvoice.commissionAmount > 0 || selectedInvoice.discountAmount > 0) && (
-                  <div className="flex justify-between text-emerald-700">
-                    <span>ট্রেড কমিশন:</span>
-                    <span>- ৳{toBnCurrency(selectedInvoice.commissionAmount || selectedInvoice.discountAmount)}</span>
-                  </div>
-                )}
-                {selectedInvoice.returnAdjustmentTotal > 0 && (
-                  <div className="flex justify-between text-rose-600 font-bold">
-                    <span>ফেরত মাল সমন্বয় কর্তন:</span>
-                    <span>- ৳{toBnCurrency(selectedInvoice.returnAdjustmentTotal)}</span>
-                  </div>
-                )}
-                <div className="flex justify-between font-bold text-slate-800 border-t border-slate-200 pt-1">
-                  <span>চালানের নিট বিল:</span>
-                  <span className="font-bold text-emerald-800">৳{toBnCurrency(selectedInvoice.grandTotal)}</span>
-                </div>
-                {selectedInvoice.previousDue > 0 && (
-                  <div className="flex justify-between text-slate-600">
-                    <span>পূর্বের বকেয়া:</span>
-                    <span>+ ৳{toBnCurrency(selectedInvoice.previousDue)}</span>
-                  </div>
-                )}
-                <div className="flex justify-between text-emerald-700 font-bold">
-                  <span>নগদ / চেক জমা:</span>
-                  <span>- ৳{toBnCurrency(selectedInvoice.paidAmount)}</span>
-                </div>
-                <div className="flex justify-between text-sm font-extrabold text-rose-700 border-t-2 border-slate-300 pt-1">
-                  <span>বর্তমান অবশিষ্ট বকেয়া:</span>
-                  <span>৳{toBnCurrency(selectedInvoice.currentDue)}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Bottom Signatures: Exactly as requested by user */}
-            <div className="grid grid-cols-3 gap-6 pt-16 text-center text-xs">
-              <div className="border-t border-slate-500 pt-1.5 font-bold text-slate-800">
-                পরিবেশক/পক্ষের স্বাক্ষর ও তাং
-              </div>
-              <div className="border-t border-slate-500 pt-1.5 font-bold text-slate-800">
-                সেলস অফিসারের স্বাক্ষর ও তাং
-              </div>
-              <div className="border-t border-slate-500 pt-1.5 font-bold text-slate-800">
-                কোম্পানীর পক্ষে লজিস্টিক অফিসারের স্বাক্ষর ও তাং
-              </div>
-            </div>
+      {printInvoice && (
+        <section className="space-y-3">
+          <div className="no-print flex justify-end">
+            <button type="button" onClick={() => window.print()} className="rounded-lg bg-slate-800 px-4 py-2 font-semibold text-white">
+              <Printer className="mr-2 inline h-4 w-4" /> প্রিন্ট / PDF
+            </button>
           </div>
-        </div>
+          <div className="rounded-xl bg-slate-100 p-3 sm:p-6"><InvoicePrintHeader invoice={printInvoice} /></div>
+        </section>
       )}
+      <style>{`
+        @media print {
+          body * { visibility: hidden !important; }
+          .invoice-print-sheet, .invoice-print-sheet * { visibility: visible !important; }
+          .invoice-print-sheet { position: absolute; inset: 0; width: 100%; max-width: none; padding: 20px; }
+          @page { size: A4; margin: 10mm; }
+        }
+      `}</style>
     </div>
   );
 }
