@@ -1,21 +1,28 @@
 import React from 'react';
 import { toBn, toBnCurrency, toBnDate } from '../../utils/bengali';
+import { INVOICE_SESSIONS } from '../../../shared/sessions';
 
 export default function InvoicePrintHeader({ invoice }) {
   if (!invoice) return null;
 
   return (
     <article className="invoice-print-sheet mx-auto max-w-4xl bg-white p-8 text-slate-900">
-      <header className="flex items-start justify-between gap-6 border-b-2 border-emerald-700 pb-5">
-        <div>
-          <p className="text-sm font-bold uppercase tracking-[0.18em] text-emerald-700">Valid Agro</p>
-          <h1 className="mt-1 text-2xl font-extrabold">বিক্রয় ইনভয়েস</h1>
-          <p className="mt-1 text-sm text-slate-600">Valid Agro Products Ltd. &amp; Mahananda Agro Industries</p>
+      <header className="border-b-2 border-emerald-700 pb-4 text-center">
+        <div className="flex items-center justify-between gap-3">
+          <img src="/logos/valid-logo.png" alt="Valid Agro" className="h-12 w-12 flex-none object-contain sm:h-16 sm:w-16" />
+          <div className="min-w-0 flex-1">
+            <h1 className="text-xl font-extrabold text-slate-900 sm:text-2xl">ভ্যালিড এগ্রো প্রোডাক্ট লিমিটেড</h1>
+            <p className="text-sm font-bold text-emerald-800 sm:text-base">এন্ড মহানন্দা এগ্রো ইন্ডাস্ট্রিজ</p>
+            <p className="text-xs text-slate-600">হেড অফিস ও ডিস্ট্রিবিউশন হাব: নিশিন্দারা, বগুড়া।</p>
+            <p className="text-xs font-semibold text-slate-700">হটলাইনঃ 01867912167 • ডিস্ট্রিবিউশন হাব ও সেন্ট্রাল ইনভেন্টরি শাখা</p>
+          </div>
+          <img src="/logos/mahananda-logo.png" alt="Mahananda Agro" className="h-12 w-12 flex-none object-contain sm:h-16 sm:w-16" />
         </div>
-        <div className="rounded-lg border-2 border-emerald-700 bg-emerald-50 px-5 py-3 text-right">
-          <p className="text-xs font-bold uppercase tracking-wide text-emerald-800">সেশন</p>
-          <p className="mt-1 text-lg font-extrabold text-emerald-900">{invoice.session || 'সেশন নির্ধারিত নয়'}</p>
+        <div className="mx-auto mt-3 inline-block rounded-lg border-2 border-emerald-700 bg-emerald-50 px-5 py-2 text-center [print-color-adjust:exact]">
+          <p className="text-xs font-bold text-emerald-800">সেশন</p>
+          <p className="mt-0.5 text-base font-extrabold text-emerald-900 sm:text-lg">{invoice.session || INVOICE_SESSIONS[0]}</p>
         </div>
+        <p className="mt-3 text-xl font-extrabold">বিক্রয় ইনভয়েস</p>
       </header>
 
       <div className="grid grid-cols-2 gap-4 py-5 text-sm sm:grid-cols-4">
