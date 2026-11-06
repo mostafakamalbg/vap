@@ -1,4 +1,4 @@
-import dbConnect from '../../lib/mongodb.js';
+import dbConnect, { MongoConnectionError } from '../../lib/mongodb.js';
 import { getSessionUser, publicUser } from '../../lib/auth.js';
 
 export default async function handler(req, res) {
@@ -9,7 +9,10 @@ export default async function handler(req, res) {
     if (!user) return res.status(401).json({ error: 'লগইন করা নেই।' });
     return res.status(200).json({ user: publicUser(user) });
   } catch (error) {
-    console.error('Session lookup failed:', error);
+    if (error instanceof MongoConnectionError) {
+      return res.status(503).json({ error: 'ডাটাবেস সাময়িকভাবে উপলব্ধ নয়।' });
+    }
+    console.error('Session lookup failed:', error instanceof Error ? error.name : 'UnknownError');
     return res.status(500).json({ error: 'সেশন যাচাই করা যায়নি।' });
   }
 }

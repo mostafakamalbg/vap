@@ -4,8 +4,8 @@ import mongoose from 'mongoose';
 const globalConnection = globalThis;
 
 export class MongoConnectionError extends Error {
-  constructor() {
-    super('MongoDB connection failed.');
+  constructor(cause) {
+    super('MongoDB connection failed.', { cause });
     this.name = 'MongoConnectionError';
   }
 }
@@ -22,8 +22,11 @@ export default async function dbConnect() {
     }).catch((error) => {
       globalConnection.mongoConnectionPromise = null;
       const errorName = error instanceof Error ? error.name : 'UnknownError';
-      console.error(`MongoDB connection failed (${errorName}).`);
-      throw new MongoConnectionError();
+      const errorCode = typeof error?.code === 'string' || typeof error?.code === 'number'
+        ? `, code ${error.code}`
+        : '';
+      console.error(`MongoDB connection failed (${errorName}${errorCode}).`);
+      throw new MongoConnectionError(error);
     });
   }
 
