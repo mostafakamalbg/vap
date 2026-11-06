@@ -1,6 +1,5 @@
 import React from 'react';
 import { toBn, toBnCurrency, toBnDate } from '../../utils/bengali';
-import { INVOICE_SESSIONS } from '../../../shared/sessions';
 
 export default function InvoicePrintHeader({ invoice }) {
   if (!invoice) return null;
@@ -19,8 +18,7 @@ export default function InvoicePrintHeader({ invoice }) {
           <img src="/logos/mahananda-logo.png" alt="Mahananda Agro" className="h-12 w-12 flex-none object-contain sm:h-16 sm:w-16" />
         </div>
         <div className="mx-auto mt-3 inline-block rounded-lg border-2 border-emerald-700 bg-emerald-50 px-5 py-2 text-center [print-color-adjust:exact]">
-          <p className="text-xs font-bold text-emerald-800">সেশন</p>
-          <p className="mt-0.5 text-base font-extrabold text-emerald-900 sm:text-lg">{invoice.session || INVOICE_SESSIONS[0]}</p>
+          <p className="text-base font-extrabold text-emerald-900 sm:text-lg">সেশন: জুলাই - ডিসেম্বর ২০২৬</p>
         </div>
         <p className="mt-3 text-xl font-extrabold">বিক্রয় ইনভয়েস</p>
       </header>
