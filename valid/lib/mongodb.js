@@ -3,8 +3,15 @@ import mongoose from 'mongoose';
 
 const globalConnection = globalThis;
 
+export class MongoConnectionError extends Error {
+  constructor() {
+    super('MongoDB connection failed.');
+    this.name = 'MongoConnectionError';
+  }
+}
+
 export default async function dbConnect() {
-  const uri = process.env.MONGO_URI;
+  const uri = process.env.MONGODB_URI?.trim() || process.env.MONGO_URI?.trim();
   if (!uri) return false;
   if (mongoose.connection.readyState === 1) return true;
 
@@ -14,7 +21,9 @@ export default async function dbConnect() {
       serverSelectionTimeoutMS: 10000
     }).catch((error) => {
       globalConnection.mongoConnectionPromise = null;
-      throw error;
+      const errorName = error instanceof Error ? error.name : 'UnknownError';
+      console.error(`MongoDB connection failed (${errorName}).`);
+      throw new MongoConnectionError();
     });
   }
 

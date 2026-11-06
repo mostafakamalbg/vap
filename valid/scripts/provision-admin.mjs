@@ -4,8 +4,8 @@ import dbConnect from '../lib/mongodb.js';
 import { AdminSeat, User } from '../lib/models.js';
 import { hashPassword } from '../lib/auth.js';
 
-if (!process.env.MONGODB_URI) {
-  throw new Error('Set MONGODB_URI before provisioning an administrator.');
+if (!process.env.MONGODB_URI?.trim() && !process.env.MONGO_URI?.trim()) {
+  throw new Error('Set MONGODB_URI or MONGO_URI before provisioning an administrator.');
 }
 if (!stdin.isTTY) {
   throw new Error('Run this command from an interactive terminal so the password can be entered securely.');

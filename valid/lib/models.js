@@ -16,6 +16,11 @@ const userSchema = new Schema({
   phone: { type: String, default: '' }
 }, { timestamps: true });
 
+const adminSeatSchema = new Schema({
+  _id: { type: Number, enum: [1, 2], required: true },
+  email: { type: String, required: true, lowercase: true, trim: true }
+}, { timestamps: true });
+
 const businessRecordSchema = new Schema({
   type: { type: String, required: true, index: true },
   recordId: { type: String, required: true },
@@ -86,6 +91,7 @@ const orderSchema = new Schema({
 }, flexibleOptions);
 
 export const User = mongoose.models.User || mongoose.model('User', userSchema);
+export const AdminSeat = mongoose.models.AdminSeat || mongoose.model('AdminSeat', adminSeatSchema);
 export const BusinessRecord = mongoose.models.BusinessRecord
   || mongoose.model('BusinessRecord', businessRecordSchema);
 export const Product = mongoose.models.Product || mongoose.model('Product', productSchema);

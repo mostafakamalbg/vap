@@ -1,4 +1,4 @@
-import dbConnect from '../../lib/mongodb.js';
+import dbConnect, { MongoConnectionError } from '../../lib/mongodb.js';
 import { User } from '../../lib/models.js';
 import { publicUser, setSessionCookie, verifyPassword } from '../../lib/auth.js';
 
@@ -26,7 +26,10 @@ export default async function handler(req, res) {
     setSessionCookie(res, user._id);
     return res.status(200).json({ user: publicUser(user) });
   } catch (error) {
-    console.error('Login failed:', error);
+    if (error instanceof MongoConnectionError) {
+      return res.status(503).json({ error: 'ডাটাবেস সাময়িকভাবে উপলব্ধ নয়।' });
+    }
+    console.error('Login failed:', error instanceof Error ? error.name : 'UnknownError');
     return res.status(500).json({ error: 'লগইন সম্পন্ন করা যায়নি।' });
   }
 }

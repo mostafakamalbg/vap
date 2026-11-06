@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import dbConnect from '../../lib/mongodb.js';
+import dbConnect, { MongoConnectionError } from '../../lib/mongodb.js';
 import { BusinessRecord, User } from '../../lib/models.js';
 import { INITIAL_OFFICERS } from '../../src/data/initialData.js';
 import { hashPassword, normalizePhone } from '../../lib/auth.js';
@@ -49,8 +49,11 @@ export default async function handler(req, res) {
     });
     return res.status(201).json({ message: 'নিবন্ধন সফল। অ্যাডমিন অনুমোদনের পর লগইন করতে পারবেন।' });
   } catch (error) {
+    if (error instanceof MongoConnectionError) {
+      return res.status(503).json({ error: 'ডাটাবেস সাময়িকভাবে উপলব্ধ নয়।' });
+    }
     if (error?.code === 11000) return res.status(409).json({ error: 'এই ইমেইল দিয়ে অ্যাকাউন্ট আছে।' });
-    console.error('Officer registration failed:', error);
+    console.error('Officer registration failed:', error instanceof Error ? error.name : 'UnknownError');
     return res.status(500).json({ error: 'নিবন্ধন সম্পন্ন করা যায়নি।' });
   }
 }
