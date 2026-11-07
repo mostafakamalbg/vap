@@ -450,6 +450,28 @@ export function AgroProvider({ children }) {
     note: `ইনভয়েস #${invoice.id} এর বিপরীতে পরিশোধ`
   });
 
+  const createInvoiceDamageLogs = (invoice) => (invoice.returnAdjustments || []).map((ret, index) => ({
+    id: `DMG-${invoice.id}-${Date.now().toString().slice(-6)}-${index}`,
+    date: invoice.date,
+    dealerId: invoice.dealerId,
+    dealerName: invoice.dealerName,
+    officerId: invoice.officerId,
+    officerCode: invoice.officerCode,
+    officerName: invoice.officerName,
+    productId: ret.productId,
+    productName: ret.productName,
+    sku: ret.sku,
+    size: ret.size,
+    quantityPieces: Number(ret.quantity) || 1,
+    unitPrice: Number(ret.price) || 0,
+    totalDamageValue: Number(ret.total) || 0,
+    reason: ret.reason || 'মেয়াদোত্তীর্ণ বা ক্ষতিগ্রস্ত পণ্য ফেরত',
+    action: 'চালান হতে সমন্বয় কর্তন',
+    actionType: 'ledger_credit',
+    status: 'নিষ্পন্ন',
+    invoiceRef: invoice.id
+  }));
+
   // Create new Invoice with strict duplicate prevention, type tracking and stock update
   const createInvoice = (newInvoice) => {
     let finalId = newInvoice.id;
@@ -476,32 +498,9 @@ export function AgroProvider({ children }) {
     // Send to MongoDB Atlas API
     setProducts((prevProducts) => applyInvoiceStockChanges(prevProducts, null, invoiceToSave));
 
-    // If loose damage or returns exist inside this invoice, log them
-    if (invoiceToSave.returnAdjustments && invoiceToSave.returnAdjustments.length > 0) {
-      invoiceToSave.returnAdjustments.forEach((ret) => {
-        const dmgEntry = {
-          id: `DMG-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 100)}`,
-          date: invoiceToSave.date,
-          dealerId: invoiceToSave.dealerId,
-          dealerName: invoiceToSave.dealerName,
-          officerId: invoiceToSave.officerId,
-          officerCode: invoiceToSave.officerCode,
-          officerName: invoiceToSave.officerName,
-          productId: ret.productId,
-          productName: ret.productName,
-          sku: ret.sku,
-          size: ret.size,
-          quantityPieces: Number(ret.quantity) || 1,
-          unitPrice: Number(ret.price) || 0,
-          totalDamageValue: Number(ret.total) || 0,
-          reason: ret.reason || 'মেয়াদোত্তীর্ণ বা ক্ষতিগ্রস্ত পণ্য ফেরত',
-          action: 'চালান হতে সমন্বয় কর্তন',
-          actionType: 'ledger_credit',
-          status: 'নিষ্পন্ন',
-          invoiceRef: finalId
-        };
-        setDamageLogs((prev) => [dmgEntry, ...prev]);
-      });
+    const damageEntries = createInvoiceDamageLogs(invoiceToSave);
+    if (damageEntries.length) {
+      setDamageLogs((prev) => [...damageEntries, ...prev]);
     }
 
     // Record payment if paid
@@ -535,6 +534,10 @@ export function AgroProvider({ children }) {
     setInvoices((prev) =>
       prev.map((inv) => (inv.id === finalInvoice.id ? finalInvoice : inv))
     );
+    setDamageLogs((prev) => [
+      ...createInvoiceDamageLogs(finalInvoice),
+      ...prev.filter((entry) => entry.invoiceRef !== finalInvoice.id)
+    ]);
 
     setPayments((prev) => {
       const retainedPayments = prev.filter((payment) => (

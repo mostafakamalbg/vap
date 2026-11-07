@@ -22,6 +22,20 @@ const emptyItem = () => ({
   commission: 0
 });
 
+const emptyReturnAdjustment = () => ({
+  productKey: '',
+  productId: '',
+  productName: '',
+  sku: '',
+  size: '',
+  quantity: 1,
+  unit: 'পিস/বোতল',
+  packPerBox: 1,
+  price: 0,
+  total: 0,
+  reason: 'মেয়াদ উত্তীর্ণ / ফেরত পণ্য'
+});
+
 export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCancelEdit }) {
   const {
     allProductVariants,
@@ -45,6 +59,13 @@ export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCa
     paymentMethod: normalizePaymentMethod(editInvoiceData?.paymentMethod),
     transport: editInvoiceData?.transport || '',
     note: editInvoiceData?.note || '',
+    returnAdjustments: editInvoiceData?.returnAdjustments?.map((item) => ({
+      ...emptyReturnAdjustment(),
+      ...item,
+      productKey: item.productId && item.sku ? `${item.productId}::${item.sku}` : '',
+      quantity: item.quantity ?? item.quantityPieces ?? 1,
+      price: item.price ?? item.unitPrice ?? 0
+    })) || [],
     items: editInvoiceData?.items?.length
       ? editInvoiceData.items.map((item) => ({
           ...emptyItem(),
@@ -74,8 +95,15 @@ export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCa
     (sum, item) => sum + item.total * (Number(item.commission) || 0) / 100,
     0
   );
+  const returnAdjustments = form.returnAdjustments.map((item) => ({
+    ...item,
+    quantity: Math.max(0, Number(item.quantity) || 0),
+    price: Math.max(0, Number(item.price) || 0),
+    total: Math.max(0, Number(item.quantity) || 0) * Math.max(0, Number(item.price) || 0)
+  }));
+  const returnAdjustmentTotal = returnAdjustments.reduce((sum, item) => sum + item.total, 0);
   const transportCost = Math.max(0, Number(form.transportCost) || 0);
-  const totalAmount = Math.max(0, subtotal - commissionAmount + transportCost);
+  const totalAmount = Math.max(0, subtotal - commissionAmount + transportCost - returnAdjustmentTotal);
   const previousDue = editInvoiceData
     ? Number(editInvoiceData.previousDue) || 0
     : Number(dealerSummary?.currentDue) || 0;
@@ -132,6 +160,48 @@ export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCa
     setSuccess('');
   };
 
+  const updateReturnProduct = (index, productKey) => {
+    const variant = allProductVariants.find((entry) => entry.key === productKey);
+    setForm((current) => ({
+      ...current,
+      returnAdjustments: current.returnAdjustments.map((item, itemIndex) => (
+        itemIndex === index
+          ? {
+              ...item,
+              productKey,
+              productId: variant?.productId || '',
+              productName: variant?.productName || '',
+              sku: variant?.sku || '',
+              size: variant?.size || '',
+              unit: variant?.unit || 'পিস/বোতল',
+              packPerBox: variant?.packPerBox || 1,
+              price: variant?.tp || 0
+            }
+          : item
+      ))
+    }));
+    setSavedInvoice(null);
+    setSuccess('');
+  };
+  const updateReturnAdjustment = (index, key, value) => {
+    setForm((current) => ({
+      ...current,
+      returnAdjustments: current.returnAdjustments.map((item, itemIndex) => (
+        itemIndex === index ? { ...item, [key]: value } : item
+      ))
+    }));
+    setSavedInvoice(null);
+    setSuccess('');
+  };
+  const addReturnAdjustment = () => setForm((current) => ({
+    ...current,
+    returnAdjustments: [...current.returnAdjustments, emptyReturnAdjustment()]
+  }));
+  const removeReturnAdjustment = (index) => setForm((current) => ({
+    ...current,
+    returnAdjustments: current.returnAdjustments.filter((_, itemIndex) => itemIndex !== index)
+  }));
+
   const addItem = () => setForm((current) => ({ ...current, items: [...current.items, emptyItem()] }));
   const removeItem = (index) => setForm((current) => ({
     ...current,
@@ -150,7 +220,13 @@ export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCa
       || !Number.isFinite(item.total)
       || item.total <= 0
     ));
-    if (!form.session || !selectedOfficer || !selectedDealer || invalidItem) {
+    const invalidReturn = returnAdjustments.some((item) => (
+      !item.productId
+      || !Number.isSafeInteger(item.quantity)
+      || item.quantity <= 0
+      || !Number.isFinite(item.total)
+    ));
+    if (!form.session || !selectedOfficer || !selectedDealer || invalidItem || invalidReturn) {
       setError('সেশন, অফিসার, ডিলার এবং প্রতিটি পণ্যের সঠিক তথ্য পূরণ করুন।');
       return;
     }
@@ -166,6 +242,7 @@ export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCa
       officerId: selectedOfficer.id,
       officerCode: formatOfficerCode(selectedOfficer.code, selectedOfficer.designation),
       officerName: selectedOfficer.name,
+      officerDesignation: selectedOfficer.designation || '',
       dealerId: selectedDealer.id,
       dealerCode: formatDealerCode(selectedDealer.code),
       dealerName: selectedDealer.shopName,
@@ -186,6 +263,21 @@ export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCa
         commission: Number(item.commission) || 0,
         total: item.total
       })),
+      returnAdjustments: returnAdjustments.map((item) => ({
+        productId: item.productId,
+        productName: item.productName,
+        sku: item.sku,
+        size: item.size,
+        quantity: item.quantity,
+        quantityPieces: item.quantity,
+        unit: item.unit,
+        packPerBox: item.packPerBox,
+        price: item.price,
+        unitPrice: item.price,
+        total: item.total,
+        reason: item.reason
+      })),
+      returnAdjustmentTotal,
       totalCartons: items.reduce((sum, item) => sum + item.cartons, 0),
       subtotal,
       commissionAmount,
@@ -312,6 +404,44 @@ export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCa
           </div>
         </section>
 
+        <section className="overflow-hidden rounded-xl border border-amber-200 bg-white shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-amber-100 p-5">
+            <div>
+              <h2 className="text-lg font-bold text-slate-800">মেয়াদ উত্তীর্ণ / ফেরত পণ্য সমন্বয়</h2>
+              <p className="text-xs text-slate-500">প্রতি পিসের দর অনুযায়ী বিল থেকে কর্তন হবে।</p>
+            </div>
+            <button type="button" onClick={addReturnAdjustment} className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white">+ ফেরত পণ্য যোগ করুন</button>
+          </div>
+          <div className="space-y-3 p-5">
+            {returnAdjustments.map((item, index) => (
+              <div key={`invoice-return-${index}`} className="grid gap-3 rounded-lg border border-slate-200 p-4 sm:grid-cols-2 lg:grid-cols-[minmax(220px,2fr)_1fr_1fr_auto] lg:items-end">
+                <label className="text-sm font-semibold text-slate-700">
+                  ফেরত পণ্য ও সাইজ
+                  <select required value={item.productKey} onChange={(event) => updateReturnProduct(index, event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2">
+                    <option value="">পণ্য নির্বাচন করুন</option>
+                    {allProductVariants.map((variant) => <option key={variant.key} value={variant.key}>{variant.displayText}</option>)}
+                  </select>
+                </label>
+                <label className="text-sm font-semibold text-slate-700">
+                  সংখ্যা ({item.unit})
+                  <input type="number" min="1" step="1" required value={item.quantity} onChange={(event) => updateReturnAdjustment(index, 'quantity', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" />
+                </label>
+                <label className="text-sm font-semibold text-slate-700">
+                  দর (৳/পিস)
+                  <input type="number" min="0" step="0.01" required value={item.price} onChange={(event) => updateReturnAdjustment(index, 'price', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" />
+                </label>
+                <button type="button" aria-label="ফেরত পণ্য সরান" onClick={() => removeReturnAdjustment(index)} className="rounded-lg p-2 text-rose-600 hover:bg-rose-50">
+                  <Trash2 className="h-5 w-5" />
+                </button>
+                <p className="text-xs font-bold text-amber-800 sm:col-span-2 lg:col-span-4">
+                  কর্তন: ৳{toBnCurrency(returnAdjustments[index]?.total)}
+                </p>
+              </div>
+            ))}
+            {!returnAdjustments.length && <p className="text-sm text-slate-500">এই ইনভয়েসে কোনো ফেরত পণ্য সমন্বয় নেই।</p>}
+          </div>
+        </section>
+
         <section className="grid gap-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm lg:grid-cols-2">
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="text-sm font-semibold text-slate-700">
@@ -345,6 +475,7 @@ export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCa
           <div className="space-y-3 rounded-lg bg-slate-50 p-5 text-sm">
             <div className="flex justify-between"><span>পণ্যের মোট</span><strong>৳{toBnCurrency(subtotal)}</strong></div>
             <div className="flex justify-between"><span>কমিশন</span><strong>− ৳{toBnCurrency(commissionAmount)}</strong></div>
+            <div className="flex justify-between"><span>ফেরত পণ্য কর্তন</span><strong>− ৳{toBnCurrency(returnAdjustmentTotal)}</strong></div>
             <div className="flex justify-between"><span>পরিবহন</span><strong>৳{toBnCurrency(transportCost)}</strong></div>
             <div className="flex justify-between border-t border-slate-300 pt-3 text-base"><strong>মোট বিল</strong><strong>৳{toBnCurrency(totalAmount)}</strong></div>
             <div className="flex justify-between"><span>পূর্বের বকেয়া</span><span>৳{toBnCurrency(previousDue)}</span></div>

@@ -18,6 +18,19 @@ function validateInvoice(body) {
   if (!Array.isArray(body.items) || body.items.length < 1 || body.items.length > 50) {
     return 'ইনভয়েসে ১ থেকে ৫০টি পণ্য থাকতে হবে।';
   }
+  if (body.returnAdjustments != null && (
+    !Array.isArray(body.returnAdjustments)
+    || body.returnAdjustments.length > 50
+    || body.returnAdjustments.some((item) => (
+      !item?.productId
+      || !Number.isSafeInteger(Number(item.quantity ?? item.quantityPieces))
+      || Number(item.quantity ?? item.quantityPieces) <= 0
+      || !Number.isFinite(Number(item.price ?? item.unitPrice))
+      || Number(item.price ?? item.unitPrice) < 0
+    ))
+  )) {
+    return 'ফেরত পণ্যের সঠিক পরিমাণ ও দর দিন।';
+  }
   const invalidItem = body.items.some((item) => (
     !item?.productId
     || !item?.sku
@@ -51,6 +64,14 @@ function invoiceValues(body) {
   const dueAmount = paymentMethod === 'credit'
     ? Math.max(0, netPayable - paidAmount)
     : Number(body.dueAmount ?? body.currentDue ?? 0);
+  const returnAdjustments = (body.returnAdjustments || []).map((item) => ({
+    ...item,
+    quantity: Number(item.quantity ?? item.quantityPieces),
+    quantityPieces: Number(item.quantityPieces ?? item.quantity),
+    price: Number(item.price ?? item.unitPrice),
+    unitPrice: Number(item.unitPrice ?? item.price),
+    total: Number(item.price ?? item.unitPrice) * Number(item.quantity ?? item.quantityPieces)
+  }));
   return {
     id: String(body.id).trim(),
     invoiceNo: String(body.invoiceNo || body.id).trim(),
@@ -59,6 +80,7 @@ function invoiceValues(body) {
     officerId: String(body.officerId),
     officerCode: String(body.officerCode || ''),
     officerName: String(body.officerName || ''),
+    officerDesignation: String(body.officerDesignation || ''),
     dealerId: String(body.dealerId),
     dealerCode: String(body.dealerCode || ''),
     dealerName: String(body.dealerName || ''),
@@ -73,6 +95,8 @@ function invoiceValues(body) {
     seqNumber: Number(body.seqNumber) || 0,
     commissionAmount: Number(body.commissionAmount) || 0,
     transportCost: Number(body.transportCost) || 0,
+    returnAdjustments,
+    returnAdjustmentTotal: returnAdjustments.reduce((sum, item) => sum + item.total, 0),
     previousDue,
     netPayable,
     paymentMethod,

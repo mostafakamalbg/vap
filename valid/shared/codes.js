@@ -19,7 +19,7 @@ export function normalizeOfficerCode(code, designation = '') {
   const match = value.match(/^(FSO|SO|TSO|ASM|RSM)-?(\d+)$/);
   if (match) return `${match[1]}-${match[2].padStart(2, '0')}`;
   if (!/^\d+$/.test(value)) return '';
-  return designation ? `${getOfficerCodePrefix(designation)}-${value.padStart(2, '0')}` : String(Number(value));
+  return `${getOfficerCodePrefix(designation)}-${value.padStart(2, '0')}`;
 }
 
 export function createOfficerCode(serial, designation) {

@@ -1,95 +1,239 @@
 import React from 'react';
-import { toBn, toBnCurrency, toBnDate } from '../../utils/bengali';
-import { formatDealerCode } from '../../../shared/codes';
+import { toBn, toBnDate } from '../../utils/bengali';
+import { formatDealerCode, formatOfficerCode } from '../../../shared/codes';
+import { normalizePaymentMethod, PAYMENT_METHODS } from '../../../shared/paymentMethods';
+
+const money = (value) => {
+  const amount = Number(value) || 0;
+  return `৳${amount.toLocaleString('bn-BD', {
+    minimumFractionDigits: Number.isInteger(amount) ? 0 : 1,
+    maximumFractionDigits: 2
+  })}`;
+};
+
+function getItemValues(item) {
+  const cartons = Number(item.cartons ?? item.quantity) || 0;
+  const pieces = Number(item.totalPieces) || cartons * (Number(item.packPerBox) || 1);
+  const tradePrice = Number(item.total) || cartons * (Number(item.cartonPrice) || 0);
+  const commission = tradePrice * (Number(item.commission) || 0) / 100;
+  return { cartons, pieces, tradePrice, commission, net: tradePrice - commission };
+}
+
+function getReturnValues(item) {
+  const quantity = Number(item.quantity ?? item.quantityPieces) || 0;
+  const price = Number(item.price ?? item.unitPrice) || 0;
+  return {
+    quantity,
+    price,
+    total: Number(item.total) || quantity * price
+  };
+}
+
+function getProductDescription(item) {
+  const size = String(item.size || '').trim();
+  const packPerBox = Number(item.packPerBox) || 1;
+  const packageSize = size && packPerBox > 1 && !/[×x]/i.test(size)
+    ? `${size} × ${toBn(packPerBox)}`
+    : size;
+  return `${item.productName || 'পণ্য'}${packageSize ? ` (${packageSize})` : ''}`;
+}
 
 export default function InvoicePrintHeader({ invoice }) {
   if (!invoice) return null;
 
+  const items = invoice.items || [];
+  const returns = invoice.returnAdjustments || [];
+  const itemTotals = items.reduce((totals, item) => {
+    const values = getItemValues(item);
+    totals.cartons += values.cartons;
+    totals.pieces += values.pieces;
+    totals.tradePrice += values.tradePrice;
+    totals.commission += values.commission;
+    totals.net += values.net;
+    return totals;
+  }, { cartons: 0, pieces: 0, tradePrice: 0, commission: 0, net: 0 });
+  const returnTotal = returns.reduce((sum, item) => sum + getReturnValues(item).total, 0)
+    || Number(invoice.returnAdjustmentTotal) || 0;
+  const transportCost = Number(invoice.transportCost) || 0;
+  const storedInvoiceNet = invoice.totalAmount ?? invoice.grandTotal;
+  const invoiceNet = storedInvoiceNet == null
+    ? itemTotals.net + transportCost - returnTotal
+    : Number(storedInvoiceNet) || 0;
+  const previousDue = Number(invoice.previousDue) || 0;
+  const paidAmount = Number(invoice.paidAmount) || 0;
+  const storedDue = invoice.currentDue ?? invoice.dueAmount;
+  const currentDue = storedDue == null
+    ? Math.max(0, invoiceNet + previousDue - paidAmount)
+    : Number(storedDue) || 0;
+  const paymentMethod = PAYMENT_METHODS.find(
+    (method) => method.value === normalizePaymentMethod(invoice.paymentMethod)
+  )?.label || PAYMENT_METHODS[0].label;
+  const defaultComment = 'চালানের মালামাল সঠিক কার্টুন সংখ্যায় বুঝে দেওয়া হলো।';
+  const defaultNote = 'বিক্রিত পণ্য ডিলার কর্তৃক সঠিকভাবে বুঝে নেওয়া হলো।';
+
   return (
     <article className="invoice-print-sheet mx-auto w-full max-w-4xl bg-white p-4 text-slate-900 sm:p-8">
-      <header className="invoice-company-header border-b-2 border-emerald-700 pb-4 text-center">
-        <div className="invoice-print-company-row flex items-center justify-center gap-3">
-          <div className="invoice-print-logos flex flex-none items-center gap-1">
-            <img src="/logos/valid-logo.png" alt="Valid Agro" className="h-12 w-12 object-contain sm:h-16 sm:w-16" />
-            <img src="/logos/mahananda-logo.png" alt="Mahananda Agro" className="h-12 w-12 object-contain sm:h-16 sm:w-16" />
+      <header className="invoice-company-header">
+        <div className="invoice-print-company-row">
+          <div className="invoice-print-logos">
+            <img src="/logos/valid-logo.png" alt="Valid Agro" />
+            <img src="/logos/mahananda-logo.png" alt="Mahananda Agro" />
           </div>
-          <div className="min-w-0 text-left">
-            <h1 className="text-lg font-extrabold leading-tight text-slate-900 sm:text-2xl">ভ্যালিড এগ্রো প্রোডাক্ট লিমিটেড</h1>
-            <p className="text-sm font-bold leading-tight text-emerald-800 sm:text-base">মহানন্দা এগ্রো ইন্ডাস্ট্রিজ</p>
-            <p className="mt-1 text-[10px] text-slate-600 sm:text-xs">হেড অফিস ও ডিস্ট্রিবিউশন হাব: নিশিন্দারা, বগুড়া।</p>
-            <p className="text-[10px] font-semibold text-slate-700 sm:text-xs">হটলাইনঃ 01867912167 • ডিস্ট্রিবিউশন হাব ও সেন্ট্রাল ইনভেন্টরি শাখা</p>
+          <div className="invoice-company-copy">
+            <h1>ভ্যালিড এগ্রো প্রোডাক্ট লিমিটেড</h1>
+            <h2>মহানন্দা এগ্রো ইন্ডাস্ট্রিজ</h2>
+            <p>হেড অফিস ও ডিস্ট্রিবিউশন হাব: নিশিন্দারা, বগুড়া।</p>
+            <p>হটলাইন: 01867912167 • উন্নত ফসল সুরক্ষা ও বালাইনাশক</p>
           </div>
         </div>
-        <div className="mx-auto mt-3 inline-block rounded-lg border-2 border-emerald-700 bg-emerald-50 px-5 py-2 text-center [print-color-adjust:exact]">
-          <p className="text-base font-extrabold text-emerald-900 sm:text-lg">সেশন: জুলাই - ডিসেম্বর ২০২৬</p>
-        </div>
-        <p className="mt-3 text-xl font-extrabold">বিক্রয় ইনভয়েস</p>
+        <div className="invoice-session-badge">সেশন: জুলাই - ডিসেম্বর ২০২৬</div>
+        <h2 className="invoice-title-bar">ডিলার বিক্রয় চালান ও মেমো কপি</h2>
       </header>
 
-      <div className="invoice-meta-grid grid grid-cols-2 gap-3 py-5 text-xs sm:grid-cols-4 sm:gap-4 sm:text-sm">
-        <div><p className="text-slate-500">ইনভয়েস নং</p><p className="font-bold">{toBn(invoice.invoiceNo || invoice.id)}</p></div>
-        <div><p className="text-slate-500">তারিখ</p><p className="font-bold">{toBnDate(invoice.date)}</p></div>
-        <div><p className="text-slate-500">সেলস অফিসার</p><p className="font-bold">{invoice.officerName || '—'}</p></div>
-        <div><p className="text-slate-500">অফিসার আইডি</p><p className="font-bold">{toBn(invoice.officerCode || invoice.officerId || '—')}</p></div>
-      </div>
-
-      <section className="mb-5 rounded-lg bg-slate-50 p-4 text-sm">
-        <h2 className="font-bold">ডিলার</h2>
-        <p className="mt-1 font-semibold">{invoice.dealerName || '—'}</p>
-        <p className="text-slate-600">{invoice.dealerAddress || ''}</p>
-        <p className="text-slate-600">কোড: {toBn(formatDealerCode(invoice.dealerCode || invoice.dealerId || '—'))} {invoice.dealerPhone ? ` • ${toBn(invoice.dealerPhone)}` : ''}</p>
+      <section className="invoice-parties-grid">
+        <div className="invoice-party">
+          <h2>ডিলার তথ্য</h2>
+          <p><strong>ডিলার কোড:</strong> {toBn(formatDealerCode(invoice.dealerCode || invoice.dealerId || '—'))}</p>
+          <p><strong>প্রতিষ্ঠান:</strong> {invoice.dealerName || '—'}</p>
+          <p><strong>প্রোপাইটর:</strong> {invoice.dealerProprietor || '—'}</p>
+          <p><strong>ঠিকানা:</strong> {invoice.dealerAddress || '—'}</p>
+          <p><strong>মোবাইল:</strong> {toBn(invoice.dealerPhone || '—')}</p>
+        </div>
+        <div className="invoice-party">
+          <h2>চালান তথ্য</h2>
+          <p><strong>চালান নং:</strong> {toBn(invoice.invoiceNo || invoice.id)}</p>
+          <p><strong>তারিখ:</strong> {toBnDate(invoice.date)}</p>
+          <p className="invoice-officer-code"><strong>অফিসার কোড:</strong> {toBn(formatOfficerCode(invoice.officerCode, invoice.officerDesignation) || invoice.officerId || '—')}</p>
+          <p><strong>সেলস অফিসার:</strong> {invoice.officerName || '—'}</p>
+          <p><strong>পরিবহন মাধ্যম:</strong> {invoice.transport || '—'}</p>
+        </div>
       </section>
 
-      <section className="invoice-table-scroll">
-        <h2 className="mb-2 text-sm font-bold text-slate-800 sm:text-base">সরবরাহকৃত পণ্য ও কার্টুন তালিকা</h2>
-        <table className="invoice-items-table w-full border-collapse text-xs sm:text-sm">
-          <colgroup>
-            <col className="w-[46%]" />
-            <col className="w-[16%]" />
-            <col className="w-[19%]" />
-            <col className="w-[19%]" />
-          </colgroup>
-          <thead>
-            <tr className="bg-emerald-800 text-left text-white">
-              <th className="border border-slate-300 p-2">পণ্য বিবরণ</th>
-              <th className="border border-slate-300 p-2">পরিমাণ</th>
-              <th className="border border-slate-300 p-2 text-right">একক মূল্য</th>
-              <th className="border border-slate-300 p-2 text-right">মোট</th>
-            </tr>
-          </thead>
-          <tbody>
-            {(invoice.items || []).map((item, index) => (
-              <tr key={`${item.sku || item.productId}-${index}`} className="odd:bg-white even:bg-slate-50">
-                <td className="invoice-product-name border border-slate-200 p-2">
-                  <span className="font-semibold">{item.productName || 'পণ্য'}</span>
-                  {item.size && <span className="ml-1 text-slate-500">({item.size})</span>}
-                </td>
-                <td className="border border-slate-200 p-2">{toBn(item.cartons ?? item.quantity)} কার্টন</td>
-                <td className="border border-slate-200 p-2 text-right">৳{toBnCurrency(item.cartonPrice ?? item.unitPrice)}</td>
-                <td className="border border-slate-200 p-2 text-right font-semibold">৳{toBnCurrency(item.total)}</td>
+      <section className="invoice-table-section">
+        <h2 className="invoice-section-heading">সরবরাহকৃত পণ্য ও কার্টুন তালিকা</h2>
+        <div className="invoice-table-scroll">
+          <table className="invoice-items-table">
+            <colgroup>
+              <col className="invoice-col-index" />
+              <col className="invoice-col-product" />
+              <col className="invoice-col-cartons" />
+              <col className="invoice-col-pieces" />
+              <col className="invoice-col-trade" />
+              <col className="invoice-col-commission" />
+              <col className="invoice-col-net" />
+            </colgroup>
+            <thead>
+              <tr>
+                <th>নং</th>
+                <th>পণ্যের বিবরণ ও প্যাক সাইজ</th>
+                <th>কার্টুন</th>
+                <th>মোট পিস</th>
+                <th>ট্রেড প্রাইজ</th>
+                <th>কমিশন</th>
+                <th>নীট বিল (ট)</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {items.map((item, index) => {
+                const values = getItemValues(item);
+                return (
+                  <tr key={`${item.sku || item.productId}-${index}`}>
+                    <td className="invoice-number-cell">{toBn(index + 1)}</td>
+                    <td className="invoice-product-name">
+                      {getProductDescription(item)}
+                    </td>
+                    <td>{toBn(values.cartons)}</td>
+                    <td>{toBn(values.pieces)}</td>
+                    <td>{money(values.tradePrice)}</td>
+                    <td>{money(values.commission)}</td>
+                    <td>{money(values.net)}</td>
+                  </tr>
+                );
+              })}
+              {!items.length && (
+                <tr><td colSpan="7" className="invoice-empty-row">কোনো পণ্য নেই</td></tr>
+              )}
+              <tr className="invoice-table-total">
+                <th colSpan="2">মোট</th>
+                <th>{toBn(itemTotals.cartons)}</th>
+                <th>{toBn(itemTotals.pieces)}</th>
+                <th>{money(itemTotals.tradePrice)}</th>
+                <th>{money(itemTotals.commission)}</th>
+                <th>{money(itemTotals.net)}</th>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </section>
 
-      <section className="ml-auto mt-5 w-full max-w-sm space-y-2 text-sm">
-        <div className="flex justify-between"><span>মোট</span><strong>৳{toBnCurrency(invoice.subtotal ?? invoice.totalAmount ?? invoice.grandTotal)}</strong></div>
-        {Number(invoice.commissionAmount) > 0 && (
-          <div className="flex justify-between"><span>কমিশন</span><span>− ৳{toBnCurrency(invoice.commissionAmount)}</span></div>
-        )}
-        {Number(invoice.transportCost) > 0 && (
-          <div className="flex justify-between"><span>পরিবহন</span><span>৳{toBnCurrency(invoice.transportCost)}</span></div>
-        )}
-        <div className="flex justify-between border-t border-slate-300 pt-2 text-base"><strong>মোট বিল</strong><strong>৳{toBnCurrency(invoice.totalAmount ?? invoice.grandTotal)}</strong></div>
-        <div className="flex justify-between"><span>পরিশোধ</span><span>৳{toBnCurrency(invoice.paidAmount)}</span></div>
-        <div className="flex justify-between text-rose-700"><strong>বকেয়া</strong><strong>৳{toBnCurrency(invoice.dueAmount ?? invoice.currentDue)}</strong></div>
+      <section className="invoice-table-section">
+        <h2 className="invoice-section-heading">মেয়াদ উত্তীর্ণ / ফেরত পণ্য সমন্বয় (বিল কর্তন):</h2>
+        <div className="invoice-table-scroll">
+          <table className="invoice-returns-table">
+            <colgroup>
+              <col className="invoice-return-product" />
+              <col className="invoice-return-quantity" />
+              <col className="invoice-return-price" />
+              <col className="invoice-return-total" />
+            </colgroup>
+            <thead>
+              <tr>
+                <th>ফেরত পণ্য ও সাইজ</th>
+                <th>সংখ্যা</th>
+                <th>দর (ট)</th>
+                <th>সমন্বয় কর্তন (ট)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {returns.map((item, index) => {
+                const values = getReturnValues(item);
+                return (
+                  <tr key={`${item.sku || item.productId}-return-${index}`}>
+                    <td className="invoice-product-name">{getProductDescription({ ...item, productName: item.productName || 'ফেরত পণ্য' })}</td>
+                    <td>{toBn(values.quantity)} {item.unit || 'পিস/বোতল'}</td>
+                    <td>{money(values.price)}</td>
+                    <td className="invoice-return-deduction">− {money(values.total)}</td>
+                  </tr>
+                );
+              })}
+              {!returns.length && (
+                <tr><td colSpan="4" className="invoice-empty-row">কোনো ফেরত পণ্য নেই</td></tr>
+              )}
+              {returns.length > 0 && (
+                <tr className="invoice-table-total">
+                  <th colSpan="3">মোট ফেরত সমন্বয়</th>
+                  <th className="invoice-return-deduction">− {money(returnTotal)}</th>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </section>
 
-      {invoice.note && <p className="mt-6 border-t border-slate-200 pt-3 text-sm text-slate-600">নোট: {invoice.note}</p>}
-      <footer className="mt-12 flex justify-between text-xs text-slate-500">
-        <span>পণ্য গ্রহণকারীর স্বাক্ষর</span>
-        <span>অনুমোদিত স্বাক্ষর</span>
+      <section className="invoice-summary-grid">
+        <div className="invoice-notes">
+          <h2 className="invoice-section-heading">মন্তব্য ও পরিশোধ</h2>
+          <p><strong>চালান মন্তব্য:</strong> {invoice.deliveryComment || defaultComment}</p>
+          <p><strong>পেমেন্ট মেথড:</strong> {paymentMethod}</p>
+          <p><strong>নোট:</strong> {invoice.note || defaultNote}</p>
+        </div>
+        <div className="invoice-totals">
+          <div><span>মোট কার্টুন</span><strong>{toBn(itemTotals.cartons)} কার্টুন</strong></div>
+          <div><span>মোট ট্রেড প্রাইজ</span><strong>{money(itemTotals.tradePrice)}</strong></div>
+          <div><span>ট্রেড কমিশন</span><strong>− {money(itemTotals.commission)}</strong></div>
+          {transportCost > 0 && <div><span>পরিবহন খরচ</span><strong>+ {money(transportCost)}</strong></div>}
+          <div><span>ফেরত মাল সমন্বয় কর্তন</span><strong>− {money(returnTotal)}</strong></div>
+          <div className="invoice-total-emphasis"><span>চালানের নীট বিল</span><strong>{money(invoiceNet)}</strong></div>
+          <div><span>পূর্বের বকেয়া</span><strong>+ {money(previousDue)}</strong></div>
+          <div><span>নগদ / চেক জমা</span><strong>− {money(paidAmount)}</strong></div>
+          <div className="invoice-due-total"><span>বর্তমান অবশিষ্ট বকেয়া</span><strong>{money(currentDue)}</strong></div>
+        </div>
+      </section>
+
+      <footer className="invoice-signatures">
+        <div>ডিলারের স্বাক্ষর ও সীল</div>
+        <div>সেলস অফিসারের স্বাক্ষর ও তারিখ</div>
+        <div>কোম্পানির পক্ষে / হিসাব বিভাগ ও অনুমোদিত স্বাক্ষর</div>
       </footer>
     </article>
   );
