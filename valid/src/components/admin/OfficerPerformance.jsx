@@ -14,6 +14,7 @@ import {
   Printer
 } from 'lucide-react';
 import { useAgro } from '../../context/AgroContext';
+import { createOfficerCode, formatOfficerCode, getNextOfficerCode, OFFICER_DESIGNATIONS, normalizeOfficerCode } from '../../../shared/codes';
 
 export default function OfficerPerformance() {
   const { officers, addNewOfficer, getOfficerSummary } = useAgro();
@@ -62,12 +63,25 @@ export default function OfficerPerformance() {
       return;
     }
 
-    const assignedCode = newOfficer.code || `${officers.length + 1}`;
-    addNewOfficer({
-      ...newOfficer,
-      code: assignedCode,
-      id: `OFF-${assignedCode}`
-    });
+    const assignedCode = createOfficerCode(
+      newOfficer.code || getNextOfficerCode(officers, newOfficer.designation),
+      newOfficer.designation
+    );
+    if (!assignedCode) {
+      alert('অফিসার কোডে ১ বা তার বেশি সংখ্যা দিন।');
+      return;
+    }
+    if (officers.some((officer) => normalizeOfficerCode(officer.code, officer.designation) === assignedCode)) {
+      alert('এই পদবির অফিসার কোডটি আগে থেকেই আছে।');
+      return;
+    }
+
+    try {
+      addNewOfficer({ ...newOfficer, code: assignedCode });
+    } catch (error) {
+      alert(error.message || 'অফিসার যুক্ত করা যায়নি।');
+      return;
+    }
 
     setStatusMsg(`নতুন অফিসার "${newOfficer.name}" (কোড: ${assignedCode}) সফলভাবে যুক্ত হয়েছে!`);
     setTimeout(() => setStatusMsg(''), 4000);
@@ -208,7 +222,7 @@ export default function OfficerPerformance() {
 
                   <td className="py-3 px-3">
                     <span className="inline-block bg-emerald-100 text-emerald-900 font-mono font-black px-2.5 py-0.5 rounded text-xs">
-                      কোড: {off.code}
+                      কোড: {formatOfficerCode(off.code, off.designation)}
                     </span>
                   </td>
 
@@ -272,7 +286,7 @@ export default function OfficerPerformance() {
                   {selectedOfficerDetail.name} ({selectedOfficerDetail.designation})
                 </h3>
                 <p className="text-xs text-slate-500">
-                  অফিসার কোড: <span className="font-bold text-emerald-800 font-mono">{selectedOfficerDetail.code}</span> | টেরিটরি: {selectedOfficerDetail.territory} | মোবাইল: {selectedOfficerDetail.phone}
+                  অফিসার কোড: <span className="font-bold text-emerald-800 font-mono">{formatOfficerCode(selectedOfficerDetail.code, selectedOfficerDetail.designation)}</span> | টেরিটরি: {selectedOfficerDetail.territory} | মোবাইল: {selectedOfficerDetail.phone}
                 </p>
               </div>
               <button
@@ -364,17 +378,20 @@ export default function OfficerPerformance() {
             </div>
 
             <form onSubmit={handleSubmitNewOfficer} className="space-y-3 text-xs">
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
-                  <label className="block font-semibold text-slate-600 mb-1">অফিসার কোড *</label>
+                  <label className="block font-semibold text-slate-600 mb-1">অফিসার কোড (ঐচ্ছিক, ফাঁকা রাখলে স্বয়ংক্রিয়)</label>
                   <input
                     type="text"
-                    placeholder="যেমন: 11"
+                    inputMode="numeric"
+                    placeholder={getNextOfficerCode(officers, newOfficer.designation).split('-')[1]}
                     value={newOfficer.code}
                     onChange={(e) => setNewOfficer({ ...newOfficer, code: e.target.value })}
                     className="w-full bg-slate-50 border border-slate-300 rounded p-2 text-xs font-mono font-bold text-emerald-800"
-                    required
                   />
+                  <p className="mt-1 text-[10px] text-slate-500">
+                    কোড: {createOfficerCode(newOfficer.code || getNextOfficerCode(officers, newOfficer.designation), newOfficer.designation)}
+                  </p>
                 </div>
 
                 <div>
@@ -384,10 +401,9 @@ export default function OfficerPerformance() {
                     onChange={(e) => setNewOfficer({ ...newOfficer, designation: e.target.value })}
                     className="w-full bg-slate-50 border border-slate-300 rounded p-2 text-xs font-medium"
                   >
-                    <option value="ফিল্ড সেলস অফিসার (FSO)">ফিল্ড সেলস অফিসার (FSO)</option>
-                    <option value="টেরিটরি অফিসার (TO)">টেরিটরি অফিসার (TO)</option>
-                    <option value="এরিয়া সেলস ম্যানেজার (ASM)">এরিয়া সেলস ম্যানেজার (ASM)</option>
-                    <option value="মার্কেটিং অফিসার (MO)">মার্কেটিং অফিসার (MO)</option>
+                    {OFFICER_DESIGNATIONS.map((designation) => (
+                      <option key={designation.value} value={designation.value}>{designation.value}</option>
+                    ))}
                   </select>
                 </div>
               </div>
@@ -416,7 +432,7 @@ export default function OfficerPerformance() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
                   <label className="block font-semibold text-slate-600 mb-1">মোবাইল নম্বর</label>
                   <input

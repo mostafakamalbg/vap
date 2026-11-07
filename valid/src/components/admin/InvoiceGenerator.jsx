@@ -2,8 +2,11 @@ import React, { useMemo, useState } from 'react';
 import { ArrowLeft, Printer, Save, Trash2 } from 'lucide-react';
 import { getNextInvoiceNumber, useAgro } from '../../context/AgroContext';
 import { INVOICE_SESSIONS } from '../../../shared/sessions';
+import { formatDealerCode, formatOfficerCode } from '../../../shared/codes';
+import { normalizePaymentMethod, PAYMENT_METHODS } from '../../../shared/paymentMethods';
 import { toBnCurrency } from '../../utils/bengali';
 import InvoicePrintHeader from './InvoicePrintHeader';
+import SearchableRecordSelect from './SearchableRecordSelect';
 
 const today = () => new Date().toISOString().slice(0, 10);
 const emptyItem = () => ({
@@ -39,7 +42,7 @@ export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCa
     dealerId: editInvoiceData?.dealerId || dealers[0]?.id || '',
     paidAmount: String(editInvoiceData?.paidAmount ?? ''),
     transportCost: String(editInvoiceData?.transportCost ?? ''),
-    paymentMethod: editInvoiceData?.paymentMethod || 'নগদ জমা',
+    paymentMethod: normalizePaymentMethod(editInvoiceData?.paymentMethod),
     transport: editInvoiceData?.transport || '',
     note: editInvoiceData?.note || '',
     items: editInvoiceData?.items?.length
@@ -77,11 +80,18 @@ export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCa
     ? Number(editInvoiceData.previousDue) || 0
     : Number(dealerSummary?.currentDue) || 0;
   const netPayable = totalAmount + previousDue;
-  const paidAmount = Math.max(0, Number(form.paidAmount) || 0);
+  const paymentMethod = normalizePaymentMethod(form.paymentMethod);
+  const paidAmount = paymentMethod === 'credit' ? 0 : Math.max(0, Number(form.paidAmount) || 0);
   const dueAmount = Math.max(0, netPayable - paidAmount);
 
   const updateForm = (key, value) => {
-    setForm((current) => ({ ...current, [key]: value }));
+    setForm((current) => ({
+      ...current,
+      [key]: value,
+      ...(key === 'paymentMethod' && normalizePaymentMethod(value) === 'credit'
+        ? { paidAmount: '0' }
+        : {})
+    }));
     setSavedInvoice(null);
     setSuccess('');
   };
@@ -154,10 +164,10 @@ export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCa
       session: form.session,
       date: form.date,
       officerId: selectedOfficer.id,
-      officerCode: String(selectedOfficer.code || ''),
+      officerCode: formatOfficerCode(selectedOfficer.code, selectedOfficer.designation),
       officerName: selectedOfficer.name,
       dealerId: selectedDealer.id,
-      dealerCode: String(selectedDealer.code || ''),
+      dealerCode: formatDealerCode(selectedDealer.code),
       dealerName: selectedDealer.shopName,
       dealerProprietor: selectedDealer.proprietor || '',
       dealerAddress: selectedDealer.address || '',
@@ -187,7 +197,7 @@ export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCa
       paidAmount,
       currentDue: dueAmount,
       dueAmount,
-      paymentMethod: form.paymentMethod,
+      paymentMethod,
       transport: form.transport,
       note: form.note.trim()
     };
@@ -235,20 +245,26 @@ export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCa
             তারিখ <span className="text-rose-600">*</span>
             <input type="date" required value={form.date} onChange={(event) => updateForm('date', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" />
           </label>
-          <label className="text-sm font-semibold text-slate-700">
-            সেলস অফিসার <span className="text-rose-600">*</span>
-            <select required value={form.officerId} onChange={(event) => updateForm('officerId', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2">
-              <option value="">অফিসার নির্বাচন করুন</option>
-              {officers.map((officer) => <option key={officer.id} value={officer.id}>{officer.name} (ID: {officer.id})</option>)}
-            </select>
-          </label>
-          <label className="text-sm font-semibold text-slate-700">
-            ডিলার <span className="text-rose-600">*</span>
-            <select required value={form.dealerId} onChange={(event) => updateForm('dealerId', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2">
-              <option value="">ডিলার নির্বাচন করুন</option>
-              {dealers.map((dealer) => <option key={dealer.id} value={dealer.id}>{dealer.shopName} (ID: {dealer.id})</option>)}
-            </select>
-          </label>
+          <SearchableRecordSelect
+            label="সেলস অফিসার *"
+            items={officers}
+            value={form.officerId}
+            onChange={(value) => updateForm('officerId', value)}
+            placeholder="অফিসার নির্বাচন করুন"
+            searchPlaceholder="কোড, নাম বা পদবী দিয়ে খুঁজুন"
+            optionLabel={(officer) => `${formatOfficerCode(officer.code, officer.designation) || '—'} • ${officer.name} • ${officer.designation || '—'}`}
+            searchText={(officer) => `${formatOfficerCode(officer.code, officer.designation)} ${officer.name || ''} ${officer.designation || ''}`}
+          />
+          <SearchableRecordSelect
+            label="ডিলার *"
+            items={dealers}
+            value={form.dealerId}
+            onChange={(value) => updateForm('dealerId', value)}
+            placeholder="ডিলার নির্বাচন করুন"
+            searchPlaceholder="ডিলার কোড বা নাম দিয়ে খুঁজুন"
+            optionLabel={(dealer) => `${formatDealerCode(dealer.code)} • ${dealer.shopName}`}
+            searchText={(dealer) => `${formatDealerCode(dealer.code)} ${dealer.shopName || ''} ${dealer.proprietor || ''}`}
+          />
           <label className="text-sm font-semibold text-slate-700 sm:col-span-2 lg:col-span-4">
             সেশন <span className="text-rose-600">*</span>
             <select required value={form.session} onChange={(event) => updateForm('session', event.target.value)} className="mt-1 w-full rounded-lg border-2 border-emerald-600 bg-emerald-50 px-3 py-3 text-base font-bold text-emerald-900">
@@ -304,14 +320,19 @@ export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCa
             </label>
             <label className="text-sm font-semibold text-slate-700">
               পরিশোধিত (৳)
-              <input type="number" min="0" step="0.01" value={form.paidAmount} onChange={(event) => updateForm('paidAmount', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" />
+              <input type="number" min="0" step="0.01" value={paymentMethod === 'credit' ? '0' : form.paidAmount} onChange={(event) => updateForm('paidAmount', event.target.value)} disabled={paymentMethod === 'credit'} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 disabled:bg-slate-100 disabled:text-slate-500" />
             </label>
             <label className="text-sm font-semibold text-slate-700">
               পেমেন্ট পদ্ধতি
               <select value={form.paymentMethod} onChange={(event) => updateForm('paymentMethod', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2">
-                <option>নগদ জমা</option><option>ব্যাংক</option><option>মোবাইল ব্যাংকিং</option>
+                {PAYMENT_METHODS.map((method) => <option key={method.value} value={method.value}>{method.label}</option>)}
               </select>
             </label>
+            {paymentMethod === 'credit' && (
+              <p className="text-xs font-medium text-amber-800 sm:col-span-2">
+                ক্রেডিট ইনভয়েসে কোনো তাৎক্ষণিক পরিশোধ হবে না; সম্পূর্ণ ইনভয়েস বকেয়ায় যুক্ত হবে। ডিলারের পরবর্তী পেমেন্ট আলাদা লেজার এন্ট্রি হিসেবে যোগ করুন।
+              </p>
+            )}
             <label className="text-sm font-semibold text-slate-700">
               পরিবহন
               <input value={form.transport} onChange={(event) => updateForm('transport', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" />
@@ -351,14 +372,6 @@ export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCa
           </div>
         </section>
       )}
-      <style>{`
-        @media print {
-          body * { visibility: hidden !important; }
-          .invoice-print-sheet, .invoice-print-sheet * { visibility: visible !important; }
-          .invoice-print-sheet { position: absolute; inset: 0; width: 100%; max-width: none; padding: 20px; }
-          @page { size: A4; margin: 10mm; }
-        }
-      `}</style>
     </div>
   );
 }

@@ -15,6 +15,8 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { useAgro } from '../../context/AgroContext';
+import { formatDealerCode, formatOfficerCode, getNextDealerCode } from '../../../shared/codes';
+import { PAYMENT_METHODS, normalizePaymentMethod } from '../../../shared/paymentMethods';
 
 export default function DealerLedger() {
   const {
@@ -39,7 +41,7 @@ export default function DealerLedger() {
     dealerId: dealers[0]?.id || '',
     officerId: officers[0]?.id || '',
     amount: '',
-    paymentMethod: 'নগদ জমা',
+    paymentMethod: 'cash',
     reference: '',
     receivedBy: 'ক্যাশিয়ার, নিশিন্দারা বগুড়া',
     note: ''
@@ -72,7 +74,7 @@ export default function DealerLedger() {
     return (
       d.shopName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       d.proprietor.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (d.code && d.code.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      formatDealerCode(d.code).toLowerCase().includes(searchTerm.toLowerCase()) ||
       (d.zone && d.zone.toLowerCase().includes(searchTerm.toLowerCase())) ||
       d.phone.includes(searchTerm) ||
       d.address.toLowerCase().includes(searchTerm.toLowerCase())
@@ -87,7 +89,7 @@ export default function DealerLedger() {
       dealerId,
       officerId: d?.assignedOfficerId || officers[0]?.id || '',
       amount: '',
-      paymentMethod: 'নগদ জমা',
+      paymentMethod: 'cash',
       reference: `MR-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`,
       receivedBy: 'ক্যাশিয়ার, নিশিন্দারা বগুড়া',
       note: 'বকেয়া হিসাব পরিশোধ'
@@ -267,7 +269,7 @@ export default function DealerLedger() {
                   <tr key={d.id} className="hover:bg-slate-50 transition">
                     <td className="py-3 px-3">
                       <span className="inline-block bg-emerald-100 text-emerald-900 font-mono font-bold px-2 py-0.5 rounded text-xs">
-                        {d.code || d.id}
+                        {formatDealerCode(d.code || d.id)}
                       </span>
                       {d.zone && <span className="block text-[10px] text-slate-400 mt-0.5">{d.zone}</span>}
                     </td>
@@ -399,10 +401,9 @@ export default function DealerLedger() {
                     onChange={(e) => setPaymentForm({ ...paymentForm, paymentMethod: e.target.value })}
                     className="w-full bg-slate-50 border border-slate-300 rounded p-2 text-xs"
                   >
-                    <option value="নগদ জমা">নগদ জমা (Cash)</option>
-                    <option value="ব্যাংক চেক">ব্যাংক চেক (Cheque)</option>
-                    <option value="ব্যাংক ডিপোজিট">ব্যাংক ডিপোজিট (Bank Transfer)</option>
-                    <option value="বিকাশ / নগদ">বিকাশ / নগদ (MFS)</option>
+                    {PAYMENT_METHODS.filter((method) => method.value !== 'credit').map((method) => (
+                      <option key={method.value} value={method.value}>{method.label}</option>
+                    ))}
                   </select>
                 </div>
 
@@ -427,7 +428,7 @@ export default function DealerLedger() {
                   >
                     {officers.map((o) => (
                       <option key={o.id} value={o.id}>
-                        {o.name}
+                        {formatOfficerCode(o.code, o.designation)} • {o.name} • {o.designation}
                       </option>
                     ))}
                   </select>
@@ -490,20 +491,19 @@ export default function DealerLedger() {
             </div>
 
             <form onSubmit={handleNewDealerSubmit} className="space-y-3 text-xs">
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                 <div>
                   <label className="block font-semibold text-slate-600 mb-1">ডিলার কোড *</label>
                   <input
                     type="text"
-                    placeholder="যেমন: PIR-40"
-                    value={newDealerForm.code}
-                    onChange={(e) => setNewDealerForm({ ...newDealerForm, code: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-300 rounded p-2 text-xs font-mono font-bold text-emerald-800"
-                    required
+                    placeholder="DL-09"
+                    value={getNextDealerCode(dealers)}
+                    readOnly
+                    className="w-full bg-slate-100 border border-slate-300 rounded p-2 text-xs font-mono font-bold text-emerald-800"
                   />
                 </div>
 
-                <div className="col-span-2">
+                <div className="sm:col-span-2">
                   <label className="block font-semibold text-slate-600 mb-1">দোকান / প্রতিষ্ঠানের নাম *</label>
                   <input
                     type="text"
@@ -563,7 +563,7 @@ export default function DealerLedger() {
                   >
                     {officers.map((o) => (
                       <option key={o.id} value={o.id}>
-                        {o.name}
+                        {formatOfficerCode(o.code, o.designation)} • {o.name} • {o.designation}
                       </option>
                     ))}
                   </select>
@@ -656,7 +656,7 @@ export default function DealerLedger() {
                 <p><span className="font-bold">ফোন:</span> {selectedDealerForLedger.phone}</p>
               </div>
               <div className="text-right">
-                <p><span className="font-bold">ডিলার কোড:</span> {selectedDealerForLedger.id}</p>
+                <p><span className="font-bold">ডিলার কোড:</span> {formatDealerCode(selectedDealerForLedger.code)}</p>
                 <p><span className="font-bold">প্রারম্ভিক বাকি:</span> ৳{selectedDealerForLedger.openingDue.toLocaleString()}</p>
                 <p><span className="font-bold text-emerald-700">মোট পরিশোধ:</span> ৳{selectedDealerForLedger.totalPaid.toLocaleString()}</p>
                 <p className="text-sm font-extrabold text-rose-700 mt-1">
@@ -722,7 +722,7 @@ export default function DealerLedger() {
                   {selectedDealerForLedger.payments.map((p) => (
                     <tr key={p.id}>
                       <td className="p-2 font-mono">{p.date}</td>
-                      <td className="p-2">{p.paymentMethod}</td>
+                      <td className="p-2">{PAYMENT_METHODS.find((method) => method.value === normalizePaymentMethod(p.paymentMethod))?.label}</td>
                       <td className="p-2 font-mono">{p.reference || '-'}</td>
                       <td className="p-2">{p.receivedBy || '-'}</td>
                       <td className="p-2 text-right font-mono font-bold text-emerald-700">৳{p.amount.toLocaleString()}</td>

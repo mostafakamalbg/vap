@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { useAgro } from '../../context/AgroContext';
 import { toBn, toBnCurrency, toBnDate } from '../../utils/bengali';
+import { formatDealerCode, formatOfficerCode } from '../../../shared/codes';
 
 export default function MonthlyReport() {
   const { products, invoices, stockInLogs, damageLogs, payments, officers, dealers } = useAgro();
@@ -87,6 +88,7 @@ export default function MonthlyReport() {
     });
     reportTitle = `ডিলারভিত্তিক বিক্রয় ও রিটার্ন স্টেটমেন্ট: ${d?.shopName || 'ডিলার'}`;
     reportSubtitle = `ডিলার কোড: ${toBn(d?.code)} | প্রোপ্রাইটার: ${d?.proprietor} | এলাকা: ${d?.address} | মোবাইল: ${toBn(d?.phone)} • সময়কাল: ${toBnDate(startDate)} হতে ${toBnDate(endDate)}`;
+    reportSubtitle = reportSubtitle.replace(toBn(d?.code), formatDealerCode(d?.code));
   } else if (filterMode === 'officer') {
     const off = officers.find((o) => String(o.code) === String(selectedOfficerCode) || o.id === selectedOfficerCode);
     filteredInvoices = invoices.filter((inv) => {
@@ -100,6 +102,10 @@ export default function MonthlyReport() {
       return isOfficer && inDateRange;
     });
     reportTitle = `অফিসার সেলস ও পারফরম্যান্স রিপোর্ট: কোড [${toBn(selectedOfficerCode)}]`;
+    reportTitle = reportTitle.replace(
+      `[${toBn(selectedOfficerCode)}]`,
+      `[${formatOfficerCode(off?.code, off?.designation)}]`
+    );
     reportSubtitle = `টেরিটরি: ${off?.territory} | পদবী: ${off?.designation} • সময়কাল: ${toBnDate(startDate)} হতে ${toBnDate(endDate)}`;
   }
 
@@ -275,7 +281,7 @@ export default function MonthlyReport() {
                 >
                   {dealers.map((d) => (
                     <option key={d.id} value={d.id}>
-                      [{d.code}] {d.shopName} - {d.proprietor} ({d.zone})
+                      {formatDealerCode(d.code)} • {d.shopName}
                     </option>
                   ))}
                 </select>
@@ -292,7 +298,7 @@ export default function MonthlyReport() {
                 >
                   {officers.map((o) => (
                     <option key={o.id} value={o.code}>
-                      [কোড: {o.code}] {o.name} - {o.territory} ({o.designation})
+                      {formatOfficerCode(o.code, o.designation)} • {o.name} • {o.designation}
                     </option>
                   ))}
                 </select>
@@ -562,11 +568,11 @@ export default function MonthlyReport() {
                     <td className="p-2 font-mono font-bold text-emerald-800">{inv.id}</td>
                     <td className="p-2 font-mono">{inv.date}</td>
                     <td className="p-2 font-semibold text-slate-800">
-                      {inv.dealerName} <span className="text-[10px] text-slate-400 font-mono">[{inv.dealerCode || ''}]</span>
+                      {inv.dealerName} <span className="text-[10px] text-slate-400 font-mono">[{formatDealerCode(inv.dealerCode)}]</span>
                     </td>
                     <td className="p-2 text-center">
                       <span className="font-mono font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded text-[11px]">
-                        কোড: {inv.officerCode || '5'}
+                        কোড: {formatOfficerCode(inv.officerCode)}
                       </span>
                     </td>
                     <td className="p-2 text-center font-bold text-emerald-800 font-mono">{inv.totalCartons || 0}</td>

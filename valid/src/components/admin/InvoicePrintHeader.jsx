@@ -1,21 +1,24 @@
 import React from 'react';
 import { toBn, toBnCurrency, toBnDate } from '../../utils/bengali';
+import { formatDealerCode } from '../../../shared/codes';
 
 export default function InvoicePrintHeader({ invoice }) {
   if (!invoice) return null;
 
   return (
-    <article className="invoice-print-sheet mx-auto max-w-4xl bg-white p-8 text-slate-900">
-      <header className="border-b-2 border-emerald-700 pb-4 text-center">
-        <div className="flex items-center justify-between gap-3">
-          <img src="/logos/valid-logo.png" alt="Valid Agro" className="h-12 w-12 flex-none object-contain sm:h-16 sm:w-16" />
-          <div className="min-w-0 flex-1">
-            <h1 className="text-xl font-extrabold text-slate-900 sm:text-2xl">ভ্যালিড এগ্রো প্রোডাক্ট লিমিটেড</h1>
-            <p className="text-sm font-bold text-emerald-800 sm:text-base">এন্ড মহানন্দা এগ্রো ইন্ডাস্ট্রিজ</p>
-            <p className="text-xs text-slate-600">হেড অফিস ও ডিস্ট্রিবিউশন হাব: নিশিন্দারা, বগুড়া।</p>
-            <p className="text-xs font-semibold text-slate-700">হটলাইনঃ 01867912167 • ডিস্ট্রিবিউশন হাব ও সেন্ট্রাল ইনভেন্টরি শাখা</p>
+    <article className="invoice-print-sheet mx-auto w-full max-w-4xl bg-white p-4 text-slate-900 sm:p-8">
+      <header className="invoice-company-header border-b-2 border-emerald-700 pb-4 text-center">
+        <div className="invoice-print-company-row flex items-center justify-center gap-3">
+          <div className="invoice-print-logos flex flex-none items-center gap-1">
+            <img src="/logos/valid-logo.png" alt="Valid Agro" className="h-12 w-12 object-contain sm:h-16 sm:w-16" />
+            <img src="/logos/mahananda-logo.png" alt="Mahananda Agro" className="h-12 w-12 object-contain sm:h-16 sm:w-16" />
           </div>
-          <img src="/logos/mahananda-logo.png" alt="Mahananda Agro" className="h-12 w-12 flex-none object-contain sm:h-16 sm:w-16" />
+          <div className="min-w-0 text-left">
+            <h1 className="text-lg font-extrabold leading-tight text-slate-900 sm:text-2xl">ভ্যালিড এগ্রো প্রোডাক্ট লিমিটেড</h1>
+            <p className="text-sm font-bold leading-tight text-emerald-800 sm:text-base">মহানন্দা এগ্রো ইন্ডাস্ট্রিজ</p>
+            <p className="mt-1 text-[10px] text-slate-600 sm:text-xs">হেড অফিস ও ডিস্ট্রিবিউশন হাব: নিশিন্দারা, বগুড়া।</p>
+            <p className="text-[10px] font-semibold text-slate-700 sm:text-xs">হটলাইনঃ 01867912167 • ডিস্ট্রিবিউশন হাব ও সেন্ট্রাল ইনভেন্টরি শাখা</p>
+          </div>
         </div>
         <div className="mx-auto mt-3 inline-block rounded-lg border-2 border-emerald-700 bg-emerald-50 px-5 py-2 text-center [print-color-adjust:exact]">
           <p className="text-base font-extrabold text-emerald-900 sm:text-lg">সেশন: জুলাই - ডিসেম্বর ২০২৬</p>
@@ -23,7 +26,7 @@ export default function InvoicePrintHeader({ invoice }) {
         <p className="mt-3 text-xl font-extrabold">বিক্রয় ইনভয়েস</p>
       </header>
 
-      <div className="grid grid-cols-2 gap-4 py-5 text-sm sm:grid-cols-4">
+      <div className="invoice-meta-grid grid grid-cols-2 gap-3 py-5 text-xs sm:grid-cols-4 sm:gap-4 sm:text-sm">
         <div><p className="text-slate-500">ইনভয়েস নং</p><p className="font-bold">{toBn(invoice.invoiceNo || invoice.id)}</p></div>
         <div><p className="text-slate-500">তারিখ</p><p className="font-bold">{toBnDate(invoice.date)}</p></div>
         <div><p className="text-slate-500">সেলস অফিসার</p><p className="font-bold">{invoice.officerName || '—'}</p></div>
@@ -34,23 +37,30 @@ export default function InvoicePrintHeader({ invoice }) {
         <h2 className="font-bold">ডিলার</h2>
         <p className="mt-1 font-semibold">{invoice.dealerName || '—'}</p>
         <p className="text-slate-600">{invoice.dealerAddress || ''}</p>
-        <p className="text-slate-600">আইডি: {toBn(invoice.dealerCode || invoice.dealerId || '—')} {invoice.dealerPhone ? ` • ${toBn(invoice.dealerPhone)}` : ''}</p>
+        <p className="text-slate-600">কোড: {toBn(formatDealerCode(invoice.dealerCode || invoice.dealerId || '—'))} {invoice.dealerPhone ? ` • ${toBn(invoice.dealerPhone)}` : ''}</p>
       </section>
 
-      <div className="overflow-x-auto">
-        <table className="w-full border-collapse text-sm">
+      <section className="invoice-table-scroll">
+        <h2 className="mb-2 text-sm font-bold text-slate-800 sm:text-base">সরবরাহকৃত পণ্য ও কার্টুন তালিকা</h2>
+        <table className="invoice-items-table w-full border-collapse text-xs sm:text-sm">
+          <colgroup>
+            <col className="w-[46%]" />
+            <col className="w-[16%]" />
+            <col className="w-[19%]" />
+            <col className="w-[19%]" />
+          </colgroup>
           <thead>
             <tr className="bg-emerald-800 text-left text-white">
-              <th className="border border-emerald-800 p-2">পণ্য</th>
-              <th className="border border-emerald-800 p-2">পরিমাণ</th>
-              <th className="border border-emerald-800 p-2 text-right">একক মূল্য</th>
-              <th className="border border-emerald-800 p-2 text-right">মোট</th>
+              <th className="border border-slate-300 p-2">পণ্য বিবরণ</th>
+              <th className="border border-slate-300 p-2">পরিমাণ</th>
+              <th className="border border-slate-300 p-2 text-right">একক মূল্য</th>
+              <th className="border border-slate-300 p-2 text-right">মোট</th>
             </tr>
           </thead>
           <tbody>
             {(invoice.items || []).map((item, index) => (
               <tr key={`${item.sku || item.productId}-${index}`} className="odd:bg-white even:bg-slate-50">
-                <td className="border border-slate-200 p-2">
+                <td className="invoice-product-name border border-slate-200 p-2">
                   <span className="font-semibold">{item.productName || 'পণ্য'}</span>
                   {item.size && <span className="ml-1 text-slate-500">({item.size})</span>}
                 </td>
@@ -61,7 +71,7 @@ export default function InvoicePrintHeader({ invoice }) {
             ))}
           </tbody>
         </table>
-      </div>
+      </section>
 
       <section className="ml-auto mt-5 w-full max-w-sm space-y-2 text-sm">
         <div className="flex justify-between"><span>মোট</span><strong>৳{toBnCurrency(invoice.subtotal ?? invoice.totalAmount ?? invoice.grandTotal)}</strong></div>

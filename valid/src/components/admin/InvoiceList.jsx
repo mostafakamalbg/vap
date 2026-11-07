@@ -84,14 +84,6 @@ export default function InvoiceList({ onNewInvoiceClick, onEditInvoice }) {
           <div className="rounded-xl bg-slate-100 p-3 sm:p-6"><InvoicePrintHeader invoice={printInvoice} /></div>
         </section>
       )}
-      <style>{`
-        @media print {
-          body * { visibility: hidden !important; }
-          .invoice-print-sheet, .invoice-print-sheet * { visibility: visible !important; }
-          .invoice-print-sheet { position: absolute; inset: 0; width: 100%; max-width: none; padding: 20px; }
-          @page { size: A4; margin: 10mm; }
-        }
-      `}</style>
     </div>
   );
 }

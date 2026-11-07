@@ -14,7 +14,14 @@ export default async function handler(req, res) {
   }
   if (req.method === 'GET') {
     try {
-      const dealers = await Dealer.find({}).sort({ code: 1 });
+      const ownerConditions = [
+        ...(user.officerId ? [{ assignedOfficerId: user.officerId }] : []),
+        ...(user.officerCode ? [{ assignedOfficerCode: user.officerCode }, { officerCode: user.officerCode }] : [])
+      ];
+      const filter = user.role === 'admin'
+        ? {}
+        : ownerConditions.length ? { $or: ownerConditions } : { id: '__no_records__' };
+      const dealers = await Dealer.find(filter).sort({ code: 1 });
       return res.status(200).json(dealers);
     } catch (error) {
       console.error('Dealer lookup failed:', error);

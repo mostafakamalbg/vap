@@ -8,11 +8,30 @@ import {
   INITIAL_DAMAGES,
   INITIAL_PAYMENTS
 } from '../data/initialData';
+import { getNextDealerCode, normalizeOfficerCode } from '../../shared/codes';
+import { normalizePaymentMethod } from '../../shared/paymentMethods';
 
 const AgroContext = createContext();
 
 const isSalesInvoice = (invoice) =>
   invoice.invoiceType !== 'dealer_return' && invoice.invoiceType !== 'factory_damage';
+
+function getInvoicePaymentFields(invoice) {
+  const paymentMethod = normalizePaymentMethod(invoice.paymentMethod);
+  if (paymentMethod !== 'credit') return { paymentMethod };
+
+  const invoiceAmount = Number(invoice.totalAmount ?? invoice.grandTotal) || 0;
+  const previousDue = Number(invoice.previousDue) || 0;
+  const netPayable = invoiceAmount + previousDue;
+  const dueAmount = Math.max(0, netPayable);
+  return {
+    paymentMethod,
+    paidAmount: 0,
+    netPayable,
+    dueAmount,
+    currentDue: dueAmount
+  };
+}
 
 // Guaranteed unique sequential invoice generator
 export function getNextInvoiceNumber(existingInvoices = []) {
@@ -410,10 +429,26 @@ export function AgroProvider({ children }) {
         commission: Number(v.commission) || 20,
         stockCartons: Number(v.stockCartons) || 0,
         stock: Number(v.stock) || 0,
-        displayText: `${p.name} — ${v.size} (কার্টুন দর: ৳${Number(v.cartonPrice || 0).toLocaleString()})`
+        displayText: `${p.name} (${v.size})`
       }))
     );
   }, [products]);
+
+  const createInvoicePayment = (invoice) => ({
+    id: `PAY-${Date.now().toString().slice(-6)}`,
+    sourceInvoiceId: invoice.id,
+    date: invoice.date,
+    dealerId: invoice.dealerId,
+    dealerName: invoice.dealerName,
+    officerId: invoice.officerId,
+    officerCode: invoice.officerCode,
+    officerName: invoice.officerName,
+    amount: Number(invoice.paidAmount),
+    paymentMethod: normalizePaymentMethod(invoice.paymentMethod),
+    reference: `চালান #${invoice.id}`,
+    receivedBy: invoice.officerCode ? `অফিসার কোড ${invoice.officerCode}` : 'ক্যাশিয়ার',
+    note: `ইনভয়েস #${invoice.id} এর বিপরীতে পরিশোধ`
+  });
 
   // Create new Invoice with strict duplicate prevention, type tracking and stock update
   const createInvoice = (newInvoice) => {
@@ -430,6 +465,7 @@ export function AgroProvider({ children }) {
 
     const invoiceToSave = {
       ...newInvoice,
+      ...getInvoicePaymentFields(newInvoice),
       id: finalId,
       invoiceType: newInvoice.invoiceType || 'regular', // 'regular' | 'dealer_return' | 'factory_damage'
       totalCartons: calculatedTotalCartons
@@ -470,21 +506,7 @@ export function AgroProvider({ children }) {
 
     // Record payment if paid
     if (Number(invoiceToSave.paidAmount) > 0) {
-      const paymentRecord = {
-        id: `PAY-${Date.now().toString().slice(-6)}`,
-        date: invoiceToSave.date,
-        dealerId: invoiceToSave.dealerId,
-        dealerName: invoiceToSave.dealerName,
-        officerId: invoiceToSave.officerId,
-        officerCode: invoiceToSave.officerCode,
-        officerName: invoiceToSave.officerName,
-        amount: Number(invoiceToSave.paidAmount),
-        paymentMethod: invoiceToSave.paymentMethod || 'নগদ জমা',
-        reference: `চালান #${finalId}`,
-        receivedBy: invoiceToSave.officerCode ? `অফিসার কোড ${invoiceToSave.officerCode}` : 'ক্যাশিয়ার',
-        note: `ইনভয়েস #${finalId} এর বিপরীতে পরিশোধ`
-      };
-      setPayments((prev) => [paymentRecord, ...prev]);
+      setPayments((prev) => [createInvoicePayment(invoiceToSave), ...prev]);
     }
 
     return invoiceToSave;
@@ -499,6 +521,7 @@ export function AgroProvider({ children }) {
 
     const finalInvoice = {
       ...updatedInvoice,
+      ...getInvoicePaymentFields(updatedInvoice),
       totalCartons: calculatedTotalCartons
     };
 
@@ -512,6 +535,19 @@ export function AgroProvider({ children }) {
     setInvoices((prev) =>
       prev.map((inv) => (inv.id === finalInvoice.id ? finalInvoice : inv))
     );
+
+    setPayments((prev) => {
+      const retainedPayments = prev.filter((payment) => (
+        payment.sourceInvoiceId !== finalInvoice.id
+        && !(
+          payment.reference === `চালান #${finalInvoice.id}`
+          && payment.note === `ইনভয়েস #${finalInvoice.id} এর বিপরীতে পরিশোধ`
+        )
+      ));
+      return Number(finalInvoice.paidAmount) > 0
+        ? [createInvoicePayment(finalInvoice), ...retainedPayments]
+        : retainedPayments;
+    });
 
     return finalInvoice;
   };
@@ -568,16 +604,12 @@ export function AgroProvider({ children }) {
 
   // Add New Dealer with nationwide single continuous serial code 1, 2, 3...
   const addNewDealer = (dealerData) => {
-    let maxCode = 0;
-    dealers.forEach((d) => {
-      const num = parseInt(d.code, 10);
-      if (!isNaN(num) && num > maxCode) maxCode = num;
-    });
-    const nextCode = String(maxCode + 1);
+    const nextCode = getNextDealerCode(dealers);
+    const serial = Number(nextCode.match(/\d+$/)?.[0]);
 
     const newDlr = {
       ...dealerData,
-      id: `DLR-${nextCode}`,
+      id: `DLR-${serial}`,
       code: nextCode
     };
     setDealers((prev) => [...prev, newDlr]);
@@ -586,10 +618,17 @@ export function AgroProvider({ children }) {
 
   // Add New Officer
   const addNewOfficer = (officerData) => {
+    const code = String(officerData.code || '').trim().toUpperCase();
+    if (!/^(FSO|SO|TSO|ASM|RSM)-\d{2,}$/.test(code)) {
+      throw new Error('অফিসার কোডের সঠিক ফরম্যাট দিন।');
+    }
+    if (officers.some((officer) => normalizeOfficerCode(officer.code, officer.designation) === code)) {
+      throw new Error('এই অফিসার কোডটি আগে থেকেই আছে।');
+    }
     const newOff = {
       ...officerData,
-      id: `OFF-${officerData.code || (officers.length + 1)}`,
-      code: String(officerData.code || (officers.length + 1))
+      id: `OFF-${code}`,
+      code
     };
     setOfficers((prev) => [...prev, newOff]);
     return newOff;

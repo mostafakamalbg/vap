@@ -3,6 +3,7 @@ import dbConnect, { MongoConnectionError } from '../../lib/mongodb.js';
 import { BusinessRecord, User } from '../../lib/models.js';
 import { INITIAL_OFFICERS } from '../../src/data/initialData.js';
 import { hashPassword, normalizePhone } from '../../lib/auth.js';
+import { normalizeOfficerCode } from '../../shared/codes.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method Not Allowed' });
@@ -12,7 +13,7 @@ export default async function handler(req, res) {
     const requestedName = String(req.body?.name || '').trim();
     const email = String(req.body?.email || '').trim().toLowerCase();
     const password = String(req.body?.password || '');
-    const officerCode = normalizePhone(req.body?.officerCode);
+    const officerCode = normalizeOfficerCode(req.body?.officerCode);
     const phone = normalizePhone(req.body?.phone);
 
     if (requestedName.length < 2 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -24,7 +25,10 @@ export default async function handler(req, res) {
     if (!officerCode || !phone) {
       return res.status(400).json({ error: 'অফিসার কোড ও ফোন নম্বর দিন।' });
     }
-    const rosterOfficer = INITIAL_OFFICERS.find((entry) => String(entry.code) === officerCode);
+    const rosterOfficer = INITIAL_OFFICERS.find((entry) => (
+      normalizeOfficerCode(entry.code) === officerCode
+      || normalizeOfficerCode(entry.code, entry.designation) === officerCode
+    ));
     const savedOfficerRecord = await BusinessRecord.findOne({
       type: 'officers',
       'data.code': officerCode

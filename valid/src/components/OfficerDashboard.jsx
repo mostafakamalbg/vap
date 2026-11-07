@@ -10,7 +10,7 @@ async function requestJson(url, options) {
 }
 
 export default function OfficerDashboard() {
-  const { currentUser, products, invoices, allProductVariants } = useAgro();
+  const { currentUser, invoices, allProductVariants } = useAgro();
   const [orders, setOrders] = useState([]);
   const [items, setItems] = useState([{ productId: '', sku: '', cartons: 1 }]);
   const [note, setNote] = useState('');
@@ -27,14 +27,34 @@ export default function OfficerDashboard() {
   }, []);
 
   const salesInvoices = useMemo(
-    () => invoices.filter((invoice) => !['dealer_return', 'factory_damage'].includes(invoice.invoiceType)),
-    [invoices]
+    () => invoices.filter((invoice) => (
+      !['dealer_return', 'factory_damage'].includes(invoice.invoiceType)
+      && (
+        (currentUser?.officerId && invoice.officerId === currentUser.officerId)
+        || (currentUser?.officerCode && invoice.officerCode === currentUser.officerCode)
+      )
+    )),
+    [currentUser?.officerCode, currentUser?.officerId, invoices]
   );
   const totalSales = salesInvoices.reduce((sum, invoice) => sum + (Number(invoice.grandTotal) || 0), 0);
-  const stockCartons = products.reduce(
-    (sum, product) => sum + (product.variants || []).reduce((total, variant) => total + (Number(variant.stockCartons) || 0), 0),
-    0
-  );
+  const officerProductSales = useMemo(() => {
+    const sales = new Map();
+    salesInvoices.forEach((invoice) => {
+      (invoice.items || []).forEach((item) => {
+        const key = `${item.productId}::${item.sku}`;
+        const sale = sales.get(key) || {
+          key,
+          productName: item.productName || 'পণ্য',
+          size: item.size || '',
+          cartons: 0
+        };
+        sale.cartons += Number(item.cartons ?? item.quantity) || 0;
+        sales.set(key, sale);
+      });
+    });
+    return [...sales.values()];
+  }, [salesInvoices]);
+  const totalCartonsSold = officerProductSales.reduce((sum, item) => sum + item.cartons, 0);
   const officerOrders = orders.filter((order) => order.officerId === currentUser?.officerId);
 
   const updateItem = (index, field, value) => {
@@ -77,7 +97,7 @@ export default function OfficerDashboard() {
         {[
           { label: 'মোট বিক্রয় চালান', value: salesInvoices.length.toLocaleString('bn-BD'), Icon: ClipboardList },
           { label: 'মোট বিক্রয় মূল্য', value: `৳${totalSales.toLocaleString('bn-BD')}`, Icon: TrendingUp },
-          { label: 'মজুত কার্টুন', value: stockCartons.toLocaleString('bn-BD'), Icon: PackageCheck }
+          { label: 'আমার বিক্রিত কার্টুন', value: totalCartonsSold.toLocaleString('bn-BD'), Icon: PackageCheck }
         ].map(({ label, value, Icon }) => (
           <div key={label} className="flex items-center gap-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
             <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700"><Icon className="h-5 w-5" /></span>
@@ -90,8 +110,8 @@ export default function OfficerDashboard() {
         <div className="space-y-6">
           <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
             <div className="border-b border-slate-100 px-5 py-4">
-              <h2 className="font-black text-slate-900">সকল অফিসারের বিক্রয় হিসাব</h2>
-              <p className="text-xs text-slate-500">অনুমোদিত অনলাইন চালান</p>
+              <h2 className="font-black text-slate-900">আমার বিক্রয় হিসাব</h2>
+              <p className="text-xs text-slate-500">শুধু আপনার অফিসার কোডের অনুমোদিত চালান</p>
             </div>
             <div className="max-h-[28rem] overflow-auto">
               <table className="w-full min-w-[620px] text-left text-xs">
@@ -116,23 +136,23 @@ export default function OfficerDashboard() {
 
           <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
             <div className="border-b border-slate-100 px-5 py-4">
-              <h2 className="font-black text-slate-900">অনলাইন স্টক হিসাব</h2>
-              <p className="text-xs text-slate-500">পণ্য ও প্যাক সাইজ অনুযায়ী বর্তমান মজুত</p>
+              <h2 className="font-black text-slate-900">আমার বিক্রিত পণ্য</h2>
+              <p className="text-xs text-slate-500">শুধু আপনার চালানে বিক্রি হওয়া পণ্যের কার্টুন হিসাব</p>
             </div>
             <div className="max-h-[28rem] overflow-auto">
               <table className="w-full min-w-[520px] text-left text-xs">
                 <thead className="sticky top-0 bg-slate-50 text-slate-600"><tr>
-                  <th className="px-4 py-3">পণ্য</th><th className="px-4 py-3">সাইজ</th><th className="px-4 py-3 text-right">কার্টুন</th><th className="px-4 py-3 text-right">পিস</th>
+                  <th className="px-4 py-3">পণ্য</th><th className="px-4 py-3">প্যাক সাইজ</th><th className="px-4 py-3 text-right">বিক্রিত কার্টুন</th>
                 </tr></thead>
                 <tbody className="divide-y divide-slate-100">
-                  {products.flatMap((product) => (product.variants || []).map((variant) => (
-                    <tr key={`${product.id}-${variant.sku}`}>
-                      <td className="px-4 py-2.5 font-semibold">{product.name}</td>
-                      <td className="px-4 py-2.5">{variant.size}</td>
-                      <td className="px-4 py-2.5 text-right font-bold">{(Number(variant.stockCartons) || 0).toLocaleString('bn-BD')}</td>
-                      <td className="px-4 py-2.5 text-right">{(Number(variant.stock) || 0).toLocaleString('bn-BD')}</td>
+                  {officerProductSales.map((item) => (
+                    <tr key={item.key}>
+                      <td className="px-4 py-2.5 font-semibold">{item.productName}</td>
+                      <td className="px-4 py-2.5">{item.size}</td>
+                      <td className="px-4 py-2.5 text-right font-bold">{item.cartons.toLocaleString('bn-BD')}</td>
                     </tr>
-                  )))}
+                  ))}
+                  {!officerProductSales.length && <tr><td colSpan="3" className="px-4 py-8 text-center text-slate-500">আপনার কোনো বিক্রয় চালান নেই।</td></tr>}
                 </tbody>
               </table>
             </div>

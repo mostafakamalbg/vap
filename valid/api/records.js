@@ -23,7 +23,8 @@ export default async function handler(req, res) {
   }
 
   if (!await dbConnect()) return res.status(503).json({ error: 'MongoDB is not configured.' });
-  if (!await authorize(req, res, req.method === 'PUT' ? ['admin'] : ['admin', 'officer'])) return;
+  const user = await authorize(req, res, req.method === 'PUT' ? ['admin'] : ['admin', 'officer']);
+  if (!user) return;
 
   const type = String(req.query?.type || '');
   if (!recordTypes.has(type)) return res.status(400).json({ error: 'Unknown record type.' });
@@ -32,13 +33,39 @@ export default async function handler(req, res) {
     const Model = databaseModels[type];
     if (req.method === 'GET') {
       if (Model) {
-        const query = Model.find({});
+        let filter = {};
+        if (user.role !== 'admin' && type === 'dealers') {
+          const conditions = [
+            ...(user.officerId ? [{ assignedOfficerId: user.officerId }] : []),
+            ...(user.officerCode ? [{ assignedOfficerCode: user.officerCode }, { officerCode: user.officerCode }] : [])
+          ];
+          filter = conditions.length ? { $or: conditions } : { id: '__no_records__' };
+        } else if (user.role !== 'admin' && type === 'invoices') {
+          const conditions = [
+            ...(user.officerId ? [{ officerId: user.officerId }] : []),
+            ...(user.officerCode ? [{ officerCode: user.officerCode }] : [])
+          ];
+          filter = conditions.length ? { $or: conditions } : { id: '__no_records__' };
+        }
+        const query = Model.find(filter);
         if (type === 'invoices') query.sort({ createdAt: -1 });
         if (type === 'dealers') query.sort({ code: 1 });
         if (type === 'products') query.sort({ id: 1 });
         return res.status(200).json(await query.lean());
       }
-      const records = await BusinessRecord.find({ type }).lean();
+      let filter = { type };
+      if (user.role !== 'admin') {
+        if (type === 'officers') {
+          filter = { type, recordId: user.officerId };
+        } else if (['stockInLogs', 'damageLogs', 'payments'].includes(type)) {
+          const ownerConditions = [
+            ...(user.officerId ? [{ 'data.officerId': user.officerId }] : []),
+            ...(user.officerCode ? [{ 'data.officerCode': user.officerCode }] : [])
+          ];
+          filter = { type, ...(ownerConditions.length ? { $or: ownerConditions } : { recordId: '__no_records__' }) };
+        }
+      }
+      const records = await BusinessRecord.find(filter).lean();
       return res.status(200).json(records.map((record) => record.data));
     }
 

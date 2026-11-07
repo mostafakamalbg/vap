@@ -11,6 +11,16 @@ import {
   FileText
 } from 'lucide-react';
 import { useAgro } from '../../context/AgroContext';
+import { formatDealerCode, formatOfficerCode } from '../../../shared/codes';
+
+function formatDamageQuantity(log, products) {
+  const product = products.find((entry) => entry.id === log.productId);
+  const variant = product?.variants.find((entry) => entry.sku === log.sku);
+  const packSize = Number(log.packPerBox || variant?.packPerBox) || 1;
+  const quantity = Number(log.quantityPieces) || 0;
+  const unit = log.unit || variant?.unit || 'পিস/বোতল';
+  return `${Math.floor(quantity / packSize)} কার্টুন ${quantity % packSize} ${unit}`;
+}
 
 export default function DamageReturns() {
   const { products, dealers, officers, damageLogs, recordDamageReturn } = useAgro();
@@ -81,6 +91,8 @@ export default function DamageReturns() {
       productName: prod?.name || '',
       sku: form.sku,
       size: variant?.size || '',
+      packPerBox: Number(variant?.packPerBox) || 1,
+      unit: variant?.unit || 'পিস/বোতল',
       quantityPieces: Number(form.quantityPieces),
       unitPrice,
       totalDamageValue,
@@ -108,7 +120,15 @@ export default function DamageReturns() {
   });
 
   // Calculate totals
-  const totalDamageCount = damageLogs.reduce((acc, curr) => acc + (Number(curr.quantityPieces) || 0), 0);
+  const damageQuantityTotals = damageLogs.reduce((totals, log) => {
+    const quantity = Number(log.quantityPieces) || 0;
+    const product = products.find((entry) => entry.id === log.productId);
+    const variant = product?.variants.find((entry) => entry.sku === log.sku);
+    const packSize = Number(log.packPerBox || variant?.packPerBox) || 1;
+    totals.cartons += Math.floor(quantity / packSize);
+    totals.looseUnits += quantity % packSize;
+    return totals;
+  }, { cartons: 0, looseUnits: 0 });
   const totalDamageFinancialValue = damageLogs.reduce((acc, curr) => acc + (Number(curr.totalDamageValue) || 0), 0);
   const totalAdjustedCredits = damageLogs
     .filter((d) => d.actionType === 'ledger_credit')
@@ -151,7 +171,10 @@ export default function DamageReturns() {
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
           <div>
             <p className="text-xs font-semibold text-slate-500 uppercase">মোট ডেমেজ ফেরত পণ্য</p>
-            <p className="text-2xl font-black text-rose-700 mt-1">{totalDamageCount} পিস / বোতল</p>
+            <p className="text-xl font-black text-rose-700 mt-1">
+              {damageQuantityTotals.cartons.toLocaleString('bn-BD')} কার্টুন + {damageQuantityTotals.looseUnits.toLocaleString('bn-BD')} পিস/বোতল
+            </p>
+            <p className="mt-1 text-[10px] text-slate-500">প্যাক সাইজ অনুযায়ী অবশিষ্ট ইউনিটসহ</p>
           </div>
           <div className="w-10 h-10 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center">
             <AlertOctagon className="w-5 h-5" />
@@ -215,7 +238,7 @@ export default function DamageReturns() {
                 >
                   {dealers.map((d) => (
                     <option key={d.id} value={d.id}>
-                      [{d.code}] {d.shopName} - {d.address}
+                      {formatDealerCode(d.code)} • {d.shopName}
                     </option>
                   ))}
                 </select>
@@ -231,7 +254,7 @@ export default function DamageReturns() {
                 >
                   {officers.map((o) => (
                     <option key={o.id} value={o.id}>
-                      {o.name} ({o.designation})
+                      {formatOfficerCode(o.code, o.designation)} • {o.name} • {o.designation}
                     </option>
                   ))}
                 </select>
@@ -406,7 +429,7 @@ export default function DamageReturns() {
                     <span className="block text-slate-500 text-[11px]">{log.size}</span>
                   </td>
                   <td className="py-3 px-3 text-center font-bold text-rose-700 font-mono text-sm">
-                    {log.quantityPieces} পিস
+                    {formatDamageQuantity(log, products)}
                   </td>
                   <td className="py-3 px-3 text-right font-mono font-bold text-slate-800">
                     ৳{(Number(log.totalDamageValue) || 0).toLocaleString()}

@@ -66,14 +66,15 @@ export default function StockManagement() {
   });
 
   // Calculate total stock value & pieces
-  let totalStockPieces = 0;
+  let totalStockCartons = 0;
   let totalStockValue = 0;
   let lowStockCount = 0;
 
   products.forEach((prod) => {
     prod.variants.forEach((v) => {
-      totalStockPieces += Number(v.stock) || 0;
-      totalStockValue += (Number(v.stock) || 0) * (Number(v.tp) || 0);
+      const stockPieces = Number(v.stock) || 0;
+      totalStockCartons += Number(v.stockCartons ?? Math.floor(stockPieces / (Number(v.packPerBox) || 1))) || 0;
+      totalStockValue += stockPieces * (Number(v.tp) || 0);
       if (v.stock < 50) lowStockCount += 1;
     });
   });
@@ -247,8 +248,8 @@ export default function StockManagement() {
 
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
           <div>
-            <p className="text-xs font-semibold text-slate-500 uppercase">মোট মজুদ (পিস/ইউনিট)</p>
-            <p className="text-2xl font-black text-slate-800 mt-1">{totalStockPieces.toLocaleString()} টি</p>
+            <p className="text-xs font-semibold text-slate-500 uppercase">মোট মজুদ (কার্টুন)</p>
+            <p className="text-2xl font-black text-slate-800 mt-1">{totalStockCartons.toLocaleString()} কার্টুন</p>
           </div>
           <div className="w-10 h-10 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center">
             <Package className="w-5 h-5" />

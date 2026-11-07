@@ -2,6 +2,7 @@ import dbConnect from '../lib/mongodb.js';
 import { Invoice } from '../lib/models.js';
 import { authorize } from '../lib/auth.js';
 import { INVOICE_SESSIONS } from '../shared/sessions.js';
+import { normalizePaymentMethod } from '../shared/paymentMethods.js';
 
 const isValidDate = (value) => {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -43,7 +44,13 @@ function invoiceValues(body) {
     total: Number(item.total ?? Number(item.unitPrice) * Number(item.cartons ?? item.quantity))
   }));
   const totalAmount = Number(body.totalAmount ?? body.grandTotal ?? 0);
-  const dueAmount = Number(body.dueAmount ?? body.currentDue ?? 0);
+  const previousDue = Number(body.previousDue) || 0;
+  const netPayable = totalAmount + previousDue;
+  const paymentMethod = normalizePaymentMethod(body.paymentMethod);
+  const paidAmount = paymentMethod === 'credit' ? 0 : Number(body.paidAmount) || 0;
+  const dueAmount = paymentMethod === 'credit'
+    ? Math.max(0, netPayable - paidAmount)
+    : Number(body.dueAmount ?? body.currentDue ?? 0);
   return {
     id: String(body.id).trim(),
     invoiceNo: String(body.invoiceNo || body.id).trim(),
@@ -59,16 +66,16 @@ function invoiceValues(body) {
     subtotal: Number(body.subtotal ?? totalAmount),
     grandTotal: Number(body.grandTotal ?? totalAmount),
     totalAmount,
-    paidAmount: Number(body.paidAmount || 0),
-    currentDue: Number(body.currentDue ?? dueAmount),
+    paidAmount,
+    currentDue: paymentMethod === 'credit' ? dueAmount : Number(body.currentDue ?? dueAmount),
     dueAmount,
     invoiceType: String(body.invoiceType || 'regular'),
     seqNumber: Number(body.seqNumber) || 0,
     commissionAmount: Number(body.commissionAmount) || 0,
     transportCost: Number(body.transportCost) || 0,
-    previousDue: Number(body.previousDue) || 0,
-    netPayable: Number(body.netPayable ?? totalAmount),
-    paymentMethod: String(body.paymentMethod || ''),
+    previousDue,
+    netPayable,
+    paymentMethod,
     transport: String(body.transport || ''),
     note: String(body.note || '').slice(0, 1000)
   };
@@ -89,7 +96,13 @@ export default async function handler(req, res) {
     if (!user) return;
 
     if (req.method === 'GET') {
-      const filter = user.role === 'admin' ? {} : { officerId: user.officerId };
+      const ownerConditions = [
+        ...(user.officerId ? [{ officerId: user.officerId }] : []),
+        ...(user.officerCode ? [{ officerCode: user.officerCode }] : [])
+      ];
+      const filter = user.role === 'admin'
+        ? {}
+        : ownerConditions.length ? { $or: ownerConditions } : { id: '__no_records__' };
       return res.status(200).json(await Invoice.find(filter).sort({ date: -1, createdAt: -1 }).lean());
     }
 

@@ -129,14 +129,24 @@ body {
     padding-left: 2.8rem;
     text-align: left;
   }
+
+  .invoice-print-logos img {
+    width: 2.35rem;
+    height: 2.35rem;
+  }
+
+  .invoice-items-table {
+    min-width: 34rem;
+  }
 }
 
 .invoice-items-table {
   table-layout: fixed;
+  width: 100%;
 }
 
-.invoice-items-table th {
-  overflow-wrap: anywhere;
+.invoice-table-scroll {
+  overflow-x: auto;
 }
 
 .invoice-items-table td,
@@ -145,9 +155,9 @@ body {
 }
 
 .invoice-product-name {
-  word-break: keep-all;
   overflow: hidden;
   text-overflow: clip;
+  word-break: keep-all;
 }
 
 /* Custom scrollbar */
@@ -169,6 +179,76 @@ body {
 @media print {
   * {
     font-family: 'Nirmala UI', system-ui, sans-serif !important;
+  }
+  @page {
+    size: A4;
+    margin: 10mm;
+  }
+  body * {
+    visibility: hidden !important;
+  }
+  .invoice-print-sheet,
+  .invoice-print-sheet * {
+    visibility: visible !important;
+  }
+  .invoice-print-sheet {
+    position: absolute !important;
+    inset: 0 !important;
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    color: #000 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .invoice-print-company-row {
+    min-height: 15mm;
+    flex-direction: row;
+    gap: 3mm;
+  }
+  .invoice-print-logos img {
+    width: 12mm;
+    height: 12mm;
+  }
+  .invoice-company-header {
+    padding-bottom: 3mm !important;
+  }
+  .invoice-meta-grid {
+    display: grid !important;
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+    gap: 3mm !important;
+  }
+  .invoice-table-scroll {
+    overflow: visible !important;
+  }
+  .invoice-items-table {
+    min-width: 0 !important;
+    table-layout: fixed !important;
+    border-collapse: collapse !important;
+  }
+  .invoice-items-table th,
+  .invoice-items-table td {
+    border: 0.25mm solid #cbd5e1 !important;
+    padding: 1.5mm 1mm !important;
+    line-height: 1.2 !important;
+    vertical-align: middle !important;
+    white-space: nowrap !important;
+  }
+  .invoice-items-table th {
+    font-size: 8pt !important;
+  }
+  .invoice-items-table td {
+    font-size: 8pt !important;
+  }
+  .invoice-product-name {
+    overflow: hidden !important;
+    text-overflow: clip !important;
+    white-space: nowrap !important;
+  }
+  .invoice-items-table tr {
+    break-inside: avoid;
   }
   .no-print {
     display: none !important;
@@ -230,29 +310,5 @@ body {
   }
   .invoice-company-details p {
     margin: 0;
-  }
-  .invoice-items-table th,
-  .invoice-items-table td {
-    padding: 1.2mm 1mm !important;
-    line-height: 1.2;
-  }
-  .invoice-items-table th {
-    font-size: 7pt !important;
-  }
-  .invoice-items-table td {
-    font-size: 8pt !important;
-  }
-  .invoice-items-table {
-    min-width: 0 !important;
-  }
-  .invoice-table-scroll {
-    overflow: visible !important;
-  }
-  .invoice-items-table tr {
-    break-inside: avoid;
-  }
-  @page {
-    size: A4;
-    margin: 10mm;
   }
 }
