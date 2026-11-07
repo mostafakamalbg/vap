@@ -1,7 +1,7 @@
 import dbConnect from '../lib/mongodb.js';
 import mongoose from 'mongoose';
 import { BusinessRecord, User } from '../lib/models.js';
-import { authorize } from '../lib/auth.js';
+import { authorize, hashPassword } from '../lib/auth.js';
 
 export default async function handler(req, res) {
   if (!['GET', 'PATCH'].includes(req.method)) {
@@ -12,11 +12,12 @@ export default async function handler(req, res) {
 
   try {
     if (req.method === 'GET') {
-      const pendingUsers = await User.find({ role: 'officer', status: 'pending' })
+      const status = req.query?.status === 'active' ? 'active' : 'pending';
+      const users = await User.find({ role: 'officer', status })
         .select('name email officerCode phone createdAt')
         .sort({ createdAt: 1 })
         .lean();
-      return res.status(200).json(pendingUsers.map((user) => ({
+      return res.status(200).json(users.map((user) => ({
         id: String(user._id),
         name: user.name,
         email: user.email,
@@ -24,6 +25,24 @@ export default async function handler(req, res) {
         phone: user.phone,
         createdAt: user.createdAt
       })));
+    }
+
+    if (req.body?.action === 'reset-password') {
+      const { userId, password } = req.body;
+      if (!mongoose.isValidObjectId(userId)) {
+        return res.status(400).json({ error: 'সঠিক অফিসার অ্যাকাউন্ট নির্বাচন করুন।' });
+      }
+      if (typeof password !== 'string' || password.length < 10 || password.length > 128) {
+        return res.status(400).json({ error: 'পাসওয়ার্ড ১০ থেকে ১২৮ অক্ষরের মধ্যে হতে হবে।' });
+      }
+      const updated = await User.updateOne(
+        { _id: userId, role: 'officer', status: 'active' },
+        { $set: { passwordHash: await hashPassword(password) } }
+      );
+      if (updated.matchedCount !== 1) {
+        return res.status(404).json({ error: 'সক্রিয় অফিসার অ্যাকাউন্টটি পাওয়া যায়নি।' });
+      }
+      return res.status(200).json({ message: 'অফিসারের পাসওয়ার্ড রিসেট হয়েছে।' });
     }
 
     const { userId, status } = req.body || {};

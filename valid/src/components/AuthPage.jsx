@@ -8,6 +8,7 @@ export default function AuthPage({ initialRole = 'admin', onNavigate, onLoginSuc
   const { t } = useUiPreferences();
   const [role, setRole] = useState(initialRole.startsWith('officer') ? 'officer' : 'admin');
   const [isRegistering, setIsRegistering] = useState(initialRole === 'officer-register');
+  const [isRecovering, setIsRecovering] = useState(false);
   const [form, setForm] = useState({
     name: '',
     email: '',
@@ -48,6 +49,7 @@ export default function AuthPage({ initialRole = 'admin', onNavigate, onLoginSuc
   const selectRole = (nextRole) => {
     setRole(nextRole);
     setIsRegistering(false);
+    setIsRecovering(false);
     setError('');
     setMessage('');
   };
@@ -68,13 +70,13 @@ export default function AuthPage({ initialRole = 'admin', onNavigate, onLoginSuc
           </span>
           <div>
             <h1 className="text-xl font-black text-slate-900">
-              {isRegistering ? t('auth.register') : t('auth.secureLogin')}
+              {isRegistering ? t('auth.register') : isRecovering ? 'পাসওয়ার্ড রিকভারি' : t('auth.secureLogin')}
             </h1>
             <p className="text-xs text-slate-500">{t('auth.management')}</p>
           </div>
         </div>
 
-        {!isRegistering && (
+        {!isRegistering && !isRecovering && (
           <div className="mb-5 grid grid-cols-2 gap-2 rounded-xl bg-slate-100 p-1">
             <button
               type="button"
@@ -97,7 +99,8 @@ export default function AuthPage({ initialRole = 'admin', onNavigate, onLoginSuc
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        {!isRecovering ? (
+          <form onSubmit={handleSubmit} className="space-y-4">
           {isRegistering && (
             <>
               <label className="block space-y-1">
@@ -132,13 +135,29 @@ export default function AuthPage({ initialRole = 'admin', onNavigate, onLoginSuc
           <button disabled={busy} className="w-full rounded-lg bg-emerald-700 px-4 py-3 text-sm font-black text-white shadow transition hover:bg-emerald-800 disabled:cursor-wait disabled:opacity-60">
             {busy ? t('auth.wait') : isRegistering ? t('auth.registerSubmit') : t('auth.loginSubmit')}
           </button>
-        </form>
+          </form>
+        ) : (
+          <div className="space-y-4">
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-950">
+              <p className="font-bold">অ্যাডমিন-ভেরিফাইড পাসওয়ার্ড রিসেট</p>
+              <p className="mt-1">আপনার অফিসার কোড ও নিবন্ধিত ফোন নম্বর দিয়ে পরিচয় যাচাই করতে অ্যাডমিনের সাথে যোগাযোগ করুন। যাচাইয়ের পর অ্যাডমিন অফিসার অ্যাকাউন্ট থেকে নতুন পাসওয়ার্ড সেট করবেন।</p>
+            </div>
+            <button type="button" onClick={() => setIsRecovering(false)} className="w-full rounded-lg bg-emerald-700 px-4 py-3 text-sm font-black text-white shadow transition hover:bg-emerald-800">
+              লগইনে ফিরে যান
+            </button>
+          </div>
+        )}
 
         <div className="mt-5 border-t border-slate-100 pt-4 text-center">
-          {role === 'officer' && !isRegistering ? (
-            <button type="button" onClick={() => { setIsRegistering(true); setMessage(''); setError(''); }} className="text-sm font-bold text-emerald-700 hover:underline">
-              {t('auth.newOfficer')}
-            </button>
+          {isRecovering ? null : role === 'officer' && !isRegistering ? (
+            <div className="flex flex-wrap justify-center gap-4">
+              <button type="button" onClick={() => { setIsRegistering(true); setMessage(''); setError(''); }} className="text-sm font-bold text-emerald-700 hover:underline">
+                {t('auth.newOfficer')}
+              </button>
+              <button type="button" onClick={() => { setIsRecovering(true); setMessage(''); setError(''); }} className="text-sm font-bold text-slate-600 hover:underline">
+                পাসওয়ার্ড ভুলে গেছেন?
+              </button>
+            </div>
           ) : isRegistering ? (
             <button type="button" onClick={() => { setIsRegistering(false); setMessage(''); setError(''); }} className="text-sm font-bold text-emerald-700 hover:underline">
               {t('auth.existingOfficer')}

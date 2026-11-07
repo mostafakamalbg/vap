@@ -405,41 +405,48 @@ export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCa
         </section>
 
         <section className="overflow-hidden rounded-xl border border-amber-200 bg-white shadow-sm">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-amber-100 p-5">
-            <div>
-              <h2 className="text-lg font-bold text-slate-800">মেয়াদ উত্তীর্ণ / ফেরত পণ্য সমন্বয়</h2>
-              <p className="text-xs text-slate-500">প্রতি পিসের দর অনুযায়ী বিল থেকে কর্তন হবে।</p>
-            </div>
-            <button type="button" onClick={addReturnAdjustment} className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white">+ ফেরত পণ্য যোগ করুন</button>
-          </div>
-          <div className="space-y-3 p-5">
-            {returnAdjustments.map((item, index) => (
-              <div key={`invoice-return-${index}`} className="grid gap-3 rounded-lg border border-slate-200 p-4 sm:grid-cols-2 lg:grid-cols-[minmax(220px,2fr)_1fr_1fr_auto] lg:items-end">
-                <label className="text-sm font-semibold text-slate-700">
-                  ফেরত পণ্য ও সাইজ
-                  <select required value={item.productKey} onChange={(event) => updateReturnProduct(index, event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2">
-                    <option value="">পণ্য নির্বাচন করুন</option>
-                    {allProductVariants.map((variant) => <option key={variant.key} value={variant.key}>{variant.displayText}</option>)}
-                  </select>
-                </label>
-                <label className="text-sm font-semibold text-slate-700">
-                  সংখ্যা ({item.unit})
-                  <input type="number" min="1" step="1" required value={item.quantity} onChange={(event) => updateReturnAdjustment(index, 'quantity', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" />
-                </label>
-                <label className="text-sm font-semibold text-slate-700">
-                  দর (৳/পিস)
-                  <input type="number" min="0" step="0.01" required value={item.price} onChange={(event) => updateReturnAdjustment(index, 'price', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" />
-                </label>
-                <button type="button" aria-label="ফেরত পণ্য সরান" onClick={() => removeReturnAdjustment(index)} className="rounded-lg p-2 text-rose-600 hover:bg-rose-50">
-                  <Trash2 className="h-5 w-5" />
-                </button>
-                <p className="text-xs font-bold text-amber-800 sm:col-span-2 lg:col-span-4">
-                  কর্তন: ৳{toBnCurrency(returnAdjustments[index]?.total)}
-                </p>
+          {returnAdjustments.length > 0 ? (
+            <>
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-amber-100 p-5">
+                <div>
+                  <h2 className="text-lg font-bold text-slate-800">মেয়াদ উত্তীর্ণ / ফেরত পণ্য সমন্বয় (বিল কর্তন)</h2>
+                  <p className="text-xs text-slate-500">প্রতি পিসের দর অনুযায়ী বিল থেকে কর্তন হবে।</p>
+                </div>
+                <button type="button" onClick={addReturnAdjustment} className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white">+ ফেরত পণ্য যোগ করুন</button>
               </div>
-            ))}
-            {!returnAdjustments.length && <p className="text-sm text-slate-500">এই ইনভয়েসে কোনো ফেরত পণ্য সমন্বয় নেই।</p>}
-          </div>
+              <div className="space-y-3 p-5">
+                {returnAdjustments.map((item, index) => (
+                  <div key={`invoice-return-${index}`} className="grid gap-3 rounded-lg border border-slate-200 p-4 sm:grid-cols-2 lg:grid-cols-[minmax(220px,2fr)_1fr_1fr_auto] lg:items-end">
+                    <label className="text-sm font-semibold text-slate-700">
+                      ফেরত পণ্য ও সাইজ
+                      <select required value={item.productKey} onChange={(event) => updateReturnProduct(index, event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2">
+                        <option value="">পণ্য নির্বাচন করুন</option>
+                        {allProductVariants.map((variant) => <option key={variant.key} value={variant.key}>{variant.displayText}</option>)}
+                      </select>
+                    </label>
+                    <label className="text-sm font-semibold text-slate-700">
+                      সংখ্যা ({item.unit})
+                      <input type="number" min="1" step="1" required value={item.quantity} onChange={(event) => updateReturnAdjustment(index, 'quantity', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" />
+                    </label>
+                    <label className="text-sm font-semibold text-slate-700">
+                      দর (৳/পিস)
+                      <input type="number" min="0" step="0.01" required value={item.price} onChange={(event) => updateReturnAdjustment(index, 'price', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" />
+                    </label>
+                    <button type="button" aria-label="ফেরত পণ্য সরান" onClick={() => removeReturnAdjustment(index)} className="rounded-lg p-2 text-rose-600 hover:bg-rose-50">
+                      <Trash2 className="h-5 w-5" />
+                    </button>
+                    <p className="text-xs font-bold text-amber-800 sm:col-span-2 lg:col-span-4">
+                      কর্তন: ৳{toBnCurrency(returnAdjustments[index]?.total)}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : (
+            <div className="p-5">
+              <button type="button" onClick={addReturnAdjustment} className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white">+ মেয়াদ উত্তীর্ণ / ফেরত পণ্য যোগ করুন</button>
+            </div>
+          )}
         </section>
 
         <section className="grid gap-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm lg:grid-cols-2">
@@ -475,7 +482,7 @@ export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCa
           <div className="space-y-3 rounded-lg bg-slate-50 p-5 text-sm">
             <div className="flex justify-between"><span>পণ্যের মোট</span><strong>৳{toBnCurrency(subtotal)}</strong></div>
             <div className="flex justify-between"><span>কমিশন</span><strong>− ৳{toBnCurrency(commissionAmount)}</strong></div>
-            <div className="flex justify-between"><span>ফেরত পণ্য কর্তন</span><strong>− ৳{toBnCurrency(returnAdjustmentTotal)}</strong></div>
+            {returnAdjustments.length > 0 && <div className="flex justify-between"><span>ফেরত পণ্য কর্তন</span><strong>− ৳{toBnCurrency(returnAdjustmentTotal)}</strong></div>}
             <div className="flex justify-between"><span>পরিবহন</span><strong>৳{toBnCurrency(transportCost)}</strong></div>
             <div className="flex justify-between border-t border-slate-300 pt-3 text-base"><strong>মোট বিল</strong><strong>৳{toBnCurrency(totalAmount)}</strong></div>
             <div className="flex justify-between"><span>পূর্বের বকেয়া</span><span>৳{toBnCurrency(previousDue)}</span></div>

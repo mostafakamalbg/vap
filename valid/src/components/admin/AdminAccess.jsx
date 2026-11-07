@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Check, ClipboardCheck, RefreshCw, ShieldX, Users } from 'lucide-react';
+import { Check, ClipboardCheck, KeyRound, RefreshCw, ShieldX, Users } from 'lucide-react';
 import { useAgro } from '../../context/AgroContext';
 
 async function requestJson(url, options) {
@@ -12,9 +12,12 @@ async function requestJson(url, options) {
 export default function AdminAccess() {
   const { refreshSharedRecords } = useAgro();
   const [pendingUsers, setPendingUsers] = useState([]);
+  const [activeUsers, setActiveUsers] = useState([]);
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState('');
+  const [resettingUserId, setResettingUserId] = useState('');
+  const [newPassword, setNewPassword] = useState('');
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
 
@@ -22,11 +25,13 @@ export default function AdminAccess() {
     setLoading(true);
     setError('');
     try {
-      const [users, allOrders] = await Promise.all([
+      const [users, officers, allOrders] = await Promise.all([
         requestJson('/api/users'),
+        requestJson('/api/users?status=active'),
         requestJson('/api/orders')
       ]);
       setPendingUsers(users);
+      setActiveUsers(officers);
       setOrders(allOrders);
     } catch (requestError) {
       setError(requestError.message);
@@ -50,6 +55,27 @@ export default function AdminAccess() {
       if (status === 'active') await refreshSharedRecords('officers');
       setMessage(result.message);
       await refresh();
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setBusyId('');
+    }
+  };
+
+  const resetOfficerPassword = async (event, userId) => {
+    event.preventDefault();
+    setBusyId(userId);
+    setError('');
+    setMessage('');
+    try {
+      const result = await requestJson('/api/users', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'reset-password', userId, password: newPassword })
+      });
+      setMessage(result.message);
+      setNewPassword('');
+      setResettingUserId('');
     } catch (requestError) {
       setError(requestError.message);
     } finally {
@@ -117,6 +143,46 @@ export default function AdminAccess() {
             </div>
           ))}
           {!loading && pendingUsers.length === 0 && <p className="px-5 py-8 text-center text-sm text-slate-500">নতুন কোনো অফিসার আবেদন নেই।</p>}
+        </div>
+      </section>
+
+      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="flex items-center gap-2 border-b border-slate-100 px-5 py-4">
+          <KeyRound className="h-5 w-5 text-emerald-700" />
+          <div><h2 className="font-black text-slate-900">অফিসার পাসওয়ার্ড রিসেট</h2><p className="text-xs text-slate-500">পরিচয় যাচাই করে নতুন পাসওয়ার্ড সেট করুন এবং ব্যক্তিগতভাবে জানান।</p></div>
+        </div>
+        <div className="divide-y divide-slate-100">
+          {activeUsers.map((user) => (
+            <div key={user.id} className="flex flex-col justify-between gap-3 px-5 py-4 sm:flex-row sm:items-center">
+              <div>
+                <p className="font-bold text-slate-900">{user.name}</p>
+                <p className="text-xs text-slate-500">{user.email} • অফিসার কোড {user.officerCode} • {user.phone}</p>
+              </div>
+              {resettingUserId === user.id ? (
+                <form onSubmit={(event) => resetOfficerPassword(event, user.id)} className="flex flex-wrap items-center gap-2">
+                  <input
+                    required
+                    minLength={10}
+                    maxLength={128}
+                    type="password"
+                    autoComplete="new-password"
+                    aria-label={`${user.name} এর নতুন পাসওয়ার্ড`}
+                    placeholder="নতুন পাসওয়ার্ড (কমপক্ষে ১০ অক্ষর)"
+                    value={newPassword}
+                    onChange={(event) => setNewPassword(event.target.value)}
+                    className="min-w-60 rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  />
+                  <button disabled={busyId === user.id} className="rounded-lg bg-emerald-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">সেট করুন</button>
+                  <button type="button" onClick={() => { setResettingUserId(''); setNewPassword(''); }} className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-600">বাতিল</button>
+                </form>
+              ) : (
+                <button type="button" onClick={() => setResettingUserId(user.id)} className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-800">
+                  <KeyRound className="h-4 w-4" /> পাসওয়ার্ড রিসেট
+                </button>
+              )}
+            </div>
+          ))}
+          {!loading && activeUsers.length === 0 && <p className="px-5 py-8 text-center text-sm text-slate-500">সক্রিয় অফিসার অ্যাকাউন্ট নেই।</p>}
         </div>
       </section>
 

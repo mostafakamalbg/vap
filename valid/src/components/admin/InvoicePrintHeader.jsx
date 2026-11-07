@@ -80,15 +80,17 @@ export default function InvoicePrintHeader({ invoice }) {
     <article className="invoice-print-sheet mx-auto w-full max-w-4xl bg-white p-4 text-slate-900 sm:p-8">
       <header className="invoice-company-header">
         <div className="invoice-print-company-row">
-          <div className="invoice-print-logos">
+          <div className="invoice-print-logo invoice-print-logo-valid">
             <img src="/logos/valid-logo.png" alt="Valid Agro" />
-            <img src="/logos/mahananda-logo.png" alt="Mahananda Agro" />
           </div>
           <div className="invoice-company-copy">
             <h1>ভ্যালিড এগ্রো প্রোডাক্ট লিমিটেড</h1>
             <h2>মহানন্দা এগ্রো ইন্ডাস্ট্রিজ</h2>
             <p>হেড অফিস ও ডিস্ট্রিবিউশন হাব: নিশিন্দারা, বগুড়া।</p>
             <p>হটলাইন: 01867912167 • উন্নত ফসল সুরক্ষা ও বালাইনাশক</p>
+          </div>
+          <div className="invoice-print-logo invoice-print-logo-mahananda">
+            <img src="/logos/mahananda-logo.png" alt="Mahananda Agro" />
           </div>
         </div>
         <div className="invoice-session-badge">সেশন: জুলাই - ডিসেম্বর ২০২৬</div>
@@ -104,7 +106,7 @@ export default function InvoicePrintHeader({ invoice }) {
           <p><strong>ঠিকানা:</strong> {invoice.dealerAddress || '—'}</p>
           <p><strong>মোবাইল:</strong> {toBn(invoice.dealerPhone || '—')}</p>
         </div>
-        <div className="invoice-party">
+        <div className="invoice-party invoice-party-invoice">
           <h2>চালান তথ্য</h2>
           <p><strong>চালান নং:</strong> {toBn(invoice.invoiceNo || invoice.id)}</p>
           <p><strong>তারিখ:</strong> {toBnDate(invoice.date)}</p>
@@ -175,49 +177,46 @@ export default function InvoicePrintHeader({ invoice }) {
         </div>
       </section>
 
-      <section className="invoice-table-section">
-        <h2 className="invoice-section-heading">মেয়াদ উত্তীর্ণ / ফেরত পণ্য সমন্বয় (বিল কর্তন):</h2>
-        <div className="invoice-table-scroll">
-          <table className="invoice-returns-table">
-            <colgroup>
-              <col className="invoice-return-product" />
-              <col className="invoice-return-quantity" />
-              <col className="invoice-return-price" />
-              <col className="invoice-return-total" />
-            </colgroup>
-            <thead>
-              <tr>
-                <th>ফেরত পণ্য ও সাইজ</th>
-                <th>সংখ্যা</th>
-                <th>দর (ট)</th>
-                <th>সমন্বয় কর্তন (ট)</th>
-              </tr>
-            </thead>
-            <tbody>
-              {returns.map((item, index) => {
-                const values = getReturnValues(item);
-                return (
-                  <tr key={`${item.sku || item.productId}-return-${index}`}>
-                    <td className="invoice-product-name">{getProductDescription({ ...item, productName: item.productName || 'ফেরত পণ্য' })}</td>
-                    <td>{toBn(values.quantity)} {item.unit || 'পিস/বোতল'}</td>
-                    <td>{money(values.price)}</td>
-                    <td className="invoice-return-deduction">− {money(values.total)}</td>
-                  </tr>
-                );
-              })}
-              {!returns.length && (
-                <tr><td colSpan="4" className="invoice-empty-row">কোনো ফেরত পণ্য নেই</td></tr>
-              )}
-              {returns.length > 0 && (
+      {returns.length > 0 && (
+        <section className="invoice-table-section">
+          <h2 className="invoice-section-heading">মেয়াদ উত্তীর্ণ / ফেরত পণ্য সমন্বয় (বিল কর্তন):</h2>
+          <div className="invoice-table-scroll">
+            <table className="invoice-returns-table">
+              <colgroup>
+                <col className="invoice-return-product" />
+                <col className="invoice-return-quantity" />
+                <col className="invoice-return-price" />
+                <col className="invoice-return-total" />
+              </colgroup>
+              <thead>
+                <tr>
+                  <th>ফেরত পণ্য ও সাইজ</th>
+                  <th>সংখ্যা</th>
+                  <th>দর (ট)</th>
+                  <th>সমন্বয় কর্তন (ট)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {returns.map((item, index) => {
+                  const values = getReturnValues(item);
+                  return (
+                    <tr key={`${item.sku || item.productId}-return-${index}`}>
+                      <td className="invoice-product-name">{getProductDescription({ ...item, productName: item.productName || 'ফেরত পণ্য' })}</td>
+                      <td>{toBn(values.quantity)} {item.unit || 'পিস/বোতল'}</td>
+                      <td>{money(values.price)}</td>
+                      <td className="invoice-return-deduction">− {money(values.total)}</td>
+                    </tr>
+                  );
+                })}
                 <tr className="invoice-table-total">
                   <th colSpan="3">মোট ফেরত সমন্বয়</th>
                   <th className="invoice-return-deduction">− {money(returnTotal)}</th>
                 </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
 
       <section className="invoice-summary-grid">
         <div className="invoice-notes">
@@ -231,7 +230,7 @@ export default function InvoicePrintHeader({ invoice }) {
           <div><span>মোট ট্রেড প্রাইজ</span><strong>{money(itemTotals.tradePrice)}</strong></div>
           <div><span>ট্রেড কমিশন</span><strong>− {money(itemTotals.commission)}</strong></div>
           {transportCost > 0 && <div><span>পরিবহন খরচ</span><strong>+ {money(transportCost)}</strong></div>}
-          <div><span>ফেরত মাল সমন্বয় কর্তন</span><strong>− {money(returnTotal)}</strong></div>
+          {returns.length > 0 && <div><span>ফেরত মাল সমন্বয় কর্তন</span><strong>− {money(returnTotal)}</strong></div>}
           <div className="invoice-total-emphasis"><span>চালানের নীট বিল</span><strong>{money(invoiceNet)}</strong></div>
           <div><span>পূর্বের বকেয়া</span><strong>+ {money(previousDue)}</strong></div>
           <div><span>নগদ / চেক জমা</span><strong>− {money(paidAmount)}</strong></div>

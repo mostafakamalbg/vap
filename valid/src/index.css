@@ -187,11 +187,6 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
     text-align: left;
   }
 
-  .invoice-print-logos img {
-    width: 2.35rem;
-    height: 2.35rem;
-  }
-
   .invoice-items-table {
     min-width: 34rem;
   }
@@ -262,12 +257,7 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
   }
   .invoice-print-company-row {
     min-height: 15mm;
-    flex-direction: row;
     gap: 3mm;
-  }
-  .invoice-print-logos img {
-    width: 12mm;
-    height: 12mm;
   }
   .invoice-company-header {
     padding-bottom: 3mm !important;
@@ -382,19 +372,26 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
 }
 
 .invoice-print-company-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: 3.4rem minmax(0, 1fr) 3.4rem;
   align-items: center;
-  gap: 0.8rem;
+  gap: 0.5rem;
 }
 
-.invoice-print-logos {
+.invoice-print-logo {
   display: flex;
-  flex: none;
   align-items: center;
-  gap: 0.25rem;
 }
 
-.invoice-print-logos img {
+.invoice-print-logo-valid {
+  justify-content: flex-start;
+}
+
+.invoice-print-logo-mahananda {
+  justify-content: flex-end;
+}
+
+.invoice-print-logo img {
   width: 3.4rem;
   height: 3.4rem;
   object-fit: contain;
@@ -402,8 +399,7 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
 
 .invoice-company-copy {
   min-width: 0;
-  flex: 1;
-  text-align: right;
+  text-align: center;
 }
 
 .invoice-company-copy h1,
@@ -486,16 +482,21 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
 .invoice-party h2 {
   margin-bottom: 0.15rem;
   color: #166534;
-  font-size: 0.72rem;
+  font-size: 0.82rem;
   font-weight: 900;
 }
 
 .invoice-party p {
   overflow: hidden;
-  font-size: 0.65rem;
+  font-size: 0.72rem;
+  font-weight: 600;
   line-height: 1.35;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.invoice-party-invoice {
+  text-align: right;
 }
 
 .invoice-officer-code {
@@ -704,21 +705,23 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
 
 @media (max-width: 639px) {
   .invoice-print-company-row {
-    align-items: flex-start;
-    gap: 0.4rem;
+    grid-template-columns: 2.4rem minmax(0, 1fr) 2.4rem;
+    gap: 0.3rem;
   }
 
-  .invoice-print-logos img {
+  .invoice-print-logo img {
     width: 2.4rem;
     height: 2.4rem;
   }
 
   .invoice-company-copy h1 {
     font-size: 0.92rem;
+    white-space: normal;
   }
 
   .invoice-company-copy h2 {
     font-size: 0.78rem;
+    white-space: normal;
   }
 
   .invoice-company-copy p {
@@ -792,11 +795,7 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
     gap: 3mm;
   }
 
-  .invoice-print-logos {
-    gap: 1mm;
-  }
-
-  .invoice-print-logos img {
+  .invoice-print-logo img {
     width: 11mm;
     height: 11mm;
   }
@@ -836,11 +835,12 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
   .invoice-party h2,
   .invoice-section-heading {
     margin-bottom: 0.5mm;
-    font-size: 7.5pt;
+    font-size: 8pt;
   }
 
   .invoice-party p {
-    font-size: 7pt;
+    font-size: 7.5pt;
+    font-weight: 600;
     line-height: 1.2;
   }
 
