@@ -5,7 +5,8 @@ import { toBn, toBnDate } from '../../utils/bengali';
 import { useAgro } from '../../context/AgroContext';
 import SearchableRecordSelect from './SearchableRecordSelect';
 
-const DEFAULT_AGREEMENT_SESSION = 'জুলাই - ডিসেম্বর ২০২৭';
+const DEFAULT_AGREEMENT_START_SESSION = 'জানুয়ারি - জুন ২০২৭';
+const DEFAULT_AGREEMENT_END_SESSION = 'জুলাই - ডিসেম্বর ২০২৭';
 const BENGALI_NUMBER_WORDS = [
   'শূন্য', 'এক', 'দুই', 'তিন', 'চার', 'পাঁচ', 'ছয়', 'সাত', 'আট', 'নয়',
   'দশ', 'এগারো', 'বারো', 'তেরো', 'চৌদ্দ', 'পনেরো', 'ষোলো', 'সতেরো', 'আঠারো', 'উনিশ',
@@ -23,7 +24,9 @@ const emptyAgreement = () => ({
   id: '',
   reference: '',
   date: new Date().toISOString().slice(0, 10),
-  session: DEFAULT_AGREEMENT_SESSION,
+  session: DEFAULT_AGREEMENT_END_SESSION,
+  sessionStart: DEFAULT_AGREEMENT_START_SESSION,
+  sessionEnd: DEFAULT_AGREEMENT_END_SESSION,
   dealerId: '',
   dealerName: '',
   proprietor: '',
@@ -65,19 +68,30 @@ function getSessionRange(session) {
     : { start: `${year}-07-01`, end: `${year}-12-31` };
 }
 
-function getAgreementSessionYears(session) {
-  const range = getSessionRange(session);
-  if (!range) return { julyDecember: '____________', januaryJune: '____________' };
-  const startYear = Number(range.start.slice(0, 4));
-  const isJanuarySession = range.start.endsWith('-01-01');
-  return {
-    julyDecember: String(isJanuarySession ? startYear - 1 : startYear),
-    januaryJune: String(isJanuarySession ? startYear : startYear + 1)
-  };
+function getAgreementRange(agreement) {
+  const startSession = agreement.sessionStart || agreement.session || '';
+  const endSession = agreement.sessionEnd || agreement.session || startSession;
+  const startRange = getSessionRange(startSession);
+  const endRange = getSessionRange(endSession);
+  return startRange && endRange
+    ? { start: startRange.start, end: endRange.end }
+    : null;
 }
 
 function amount(value) {
   return `৳${(Number(value) || 0).toLocaleString('bn-BD', { maximumFractionDigits: 2 })}`;
+}
+
+function AgreementAmount({ value, words }) {
+  const hasAmount = value !== '' && value !== null && value !== undefined;
+  const formattedAmount = hasAmount
+    ? `=${Number(value).toLocaleString('bn-BD', { maximumFractionDigits: 2 })}/- টাকা`
+    : '............................................';
+  return (
+    <>
+      <strong>{formattedAmount}</strong> <u>কথায়:</u> ({words || '........................................'} টাকা)
+    </>
+  );
 }
 
 function numberBelowThousandInWords(value) {
@@ -119,14 +133,13 @@ function amountInBengaliWords(value) {
 }
 
 function getAgreementMetrics(agreement, invoices, payments) {
-  const range = getSessionRange(agreement.session);
+  const range = getAgreementRange(agreement);
   const withinRange = (date) => date >= agreement.date
     && (!range || (date >= range.start && date <= range.end));
   const sales = invoices
     .filter((invoice) => (
       invoice.dealerId === agreement.dealerId
       && withinRange(invoice.date)
-      && (!invoice.session || invoice.session === agreement.session)
     ))
     .reduce((sum, invoice) => sum + Number(invoice.totalAmount ?? invoice.grandTotal ?? 0), 0);
   const collection = payments
@@ -188,13 +201,18 @@ export default function SalesAgreement() {
 
   const handleSubmit = (event) => {
     event.preventDefault();
-    if (!form.dealerId || !form.reference.trim() || !form.date || !form.session) {
-      setError('ডিলার, রেফারেন্স, তারিখ ও সেশন পূরণ করুন।');
+    if (!form.dealerId || !form.reference.trim() || !form.date || !form.sessionStart || !form.sessionEnd) {
+      setError('ডিলার, রেফারেন্স, তারিখ এবং শুরুর ও শেষ সেশন পূরণ করুন।');
+      return;
+    }
+    if (INVOICE_SESSIONS.indexOf(form.sessionStart) > INVOICE_SESSIONS.indexOf(form.sessionEnd)) {
+      setError('শেষ সেশন শুরুর সেশনের আগে হতে পারবে না।');
       return;
     }
     const agreement = saveSalesAgreement({
       ...form,
       reference: form.reference.trim(),
+      session: form.sessionEnd,
       annualSalesTarget: Number(form.annualSalesTarget) || 0,
       annualSalesTargetWords: amountInBengaliWords(form.annualSalesTarget),
       benefitAmount: Number(form.benefitAmount) || 0,
@@ -209,7 +227,14 @@ export default function SalesAgreement() {
   };
 
   const loadAgreement = (agreement) => {
-    setForm({ ...emptyAgreement(), ...agreement, terms: agreement.terms || Array(9).fill('') });
+    const legacySession = agreement.session || DEFAULT_AGREEMENT_END_SESSION;
+    setForm({
+      ...emptyAgreement(),
+      ...agreement,
+      sessionStart: agreement.sessionStart || legacySession,
+      sessionEnd: agreement.sessionEnd || legacySession,
+      terms: agreement.terms || Array(9).fill('')
+    });
     setError('');
     setMessage('');
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -225,7 +250,7 @@ export default function SalesAgreement() {
   const currentMetrics = form.id
     ? getAgreementMetrics(form, invoices, payments)
     : { sales: 0, collection: 0, target: Number(form.annualSalesTarget) || 0, remaining: Number(form.annualSalesTarget) || 0 };
-  const agreementSessionYears = getAgreementSessionYears(form.session);
+  const agreementSessionRange = `${form.sessionStart || '____________'} থেকে ${form.sessionEnd || '____________'}`;
   const annualSalesTargetWords = amountInBengaliWords(form.annualSalesTarget);
   const benefitAmountWords = amountInBengaliWords(form.benefitAmount);
   const minimumCollectionWords = amountInBengaliWords(form.minimumCollection);
@@ -255,12 +280,18 @@ export default function SalesAgreement() {
               চুক্তির তারিখ *
               <input required type="date" value={form.date} onChange={(event) => updateField('date', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 font-normal" />
             </label>
-            <label className="text-sm font-bold text-slate-700 sm:col-span-2">
-              সেশন / চুক্তির মেয়াদ *
-              <select required value={form.session} onChange={(event) => updateField('session', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2">
+            <label className="text-sm font-bold text-slate-700">
+              চুক্তির শুরুর সেশন *
+              <select required value={form.sessionStart} onChange={(event) => updateField('sessionStart', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2">
                 {INVOICE_SESSIONS.map((session) => <option key={session} value={session}>{session}</option>)}
               </select>
-              <span className="mt-1 block text-xs font-normal text-slate-500">নির্বাচিত সেশন অনুযায়ী চুক্তির জুলাই-ডিসেম্বর ও জানুয়ারি-জুনের মেয়াদ নির্ধারিত হবে।</span>
+            </label>
+            <label className="text-sm font-bold text-slate-700">
+              চুক্তির শেষ সেশন *
+              <select required value={form.sessionEnd} onChange={(event) => updateField('sessionEnd', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2">
+                {INVOICE_SESSIONS.map((session) => <option key={session} value={session}>{session}</option>)}
+              </select>
+              <span className="mt-1 block text-xs font-normal text-slate-500">শুরু ও শেষ সেশন আলাদাভাবে নির্বাচন করুন।</span>
             </label>
             <div className="sm:col-span-2">
               <SearchableRecordSelect
@@ -338,6 +369,10 @@ export default function SalesAgreement() {
                   <img src="/logos/valid-logo.png" alt="ভ্যালিড এগ্রো প্রোডাক্ট লিমিটেড লোগো" />
                   <h1>ভ্যালিড এগ্রো প্রোডাক্ট লিমিটেড</h1>
                 </div>
+                <div className="agreement-brand">
+                  <img src="/logos/mahananda-logo-transparent.png" alt="মহানন্দা এগ্রো ইন্ডাস্ট্রিজ লোগো" />
+                  <h1>মহানন্দা এগ্রো ইন্ডাস্ট্রিজ</h1>
+                </div>
               </div>
               <p className="agreement-subtitle">(Agricultural Commodities Importer, Repacker &amp; Supplier)</p>
               <p>Office/Factory: Matidali, Bogra Sadar, Bogra</p>
@@ -348,7 +383,7 @@ export default function SalesAgreement() {
             </div>
             <h2 className="agreement-title">সেলস ও কালেকশনের বিপরীতে অতিরিক্ত সুবিধা প্রদান ও গ্রহণের চুক্তি</h2>
             <p className="agreement-intro">
-              <strong>প্রথম পক্ষ কোম্পানী:</strong> ভ্যালিড এগ্রো প্রোডাক্ট লিমিটেড।
+              <strong>প্রথম পক্ষ কোম্পানী:</strong> ভ্যালিড এগ্রো প্রোডাক্ট লিমিটেড ও মহানন্দা এগ্রো ইন্ডাস্ট্রিজ।
             </p>
             <div className="agreement-dealer-details">
               <p className="agreement-party-label"><strong>দ্বিতীয় পক্ষ পরিবেশক:</strong></p>
@@ -361,15 +396,15 @@ export default function SalesAgreement() {
             </p>
             <h3 className="agreement-clauses-heading">উভয়ের আলোচনা সাপেক্ষে চুক্তি সমূহ নিম্নে প্রদত্ত হলো:</h3>
             <ol className="agreement-clauses">
-              <li>দ্বিতীয় পক্ষকে বাৎসরিক <strong>{form.annualSalesTarget ? amount(form.annualSalesTarget) : '............................................'}</strong> কথায়: {annualSalesTargetWords || '.......................................................................................'} টাকা সেলস করিতে হইবে। বিনিময়ে প্রথম পক্ষ দ্বিতীয় পক্ষকে <strong>{form.benefitAmount ? amount(form.benefitAmount) : '............................................'}</strong> কথায়: {benefitAmountWords || '.......................................................................................'} টাকা প্রদান করিবে।</li>
-              <li>বাৎসরিক লক্ষ্য মাত্রা ২টি সেশনে বিভক্ত যথা জুলাই-ডিসেম্বর {toBn(agreementSessionYears.julyDecember)} এবং জানুয়ারি-জুন {toBn(agreementSessionYears.januaryJune)}।</li>
+              <li>দ্বিতীয় পক্ষকে বাৎসরিক <AgreementAmount value={form.annualSalesTarget} words={annualSalesTargetWords} /> সেলস করিতে হইবে। বিনিময়ে প্রথম পক্ষ দ্বিতীয় পক্ষকে <AgreementAmount value={form.benefitAmount} words={benefitAmountWords} /> প্রদান করিবে।</li>
+              <li>চুক্তির মেয়াদ {agreementSessionRange}।</li>
               <li>জুলাই থেকে ডিসেম্বর যে পরিমাণ সেলস হবে তা ২৮শে ডিসেম্বরের এবং জানুয়ারি থেকে জুন পর্যন্ত যে পরিমাণ সেলস হবে তা ৩০শে জুন এর মধ্যে শতভাগ টাকা পরিশোধ করিতে হবে।</li>
               <li>অতিরিক্ত সুযোগ-সুবিধার পুরো টাকা ক্লোজিং-এ একসাথে প্রদান করা হবে।</li>
               <li>দ্বিতীয় পক্ষ উল্লেখিত বিক্রয় লক্ষ্য মাত্রা অর্জন করিতে ব্যর্থ হইলে অতিরিক্ত সুযোগ সুবিধা থেকে বঞ্চিত হইবে।</li>
               <li>মোট বিক্রয় লক্ষ্য মাত্রার ২৫% পণ্য প্রথম পক্ষ সরবরাহ করিতে ব্যর্থ হইলে দ্বিতীয় পক্ষ পণ্যের অজুহাতে বিক্রয় লক্ষ্য মাত্রা কমাইতে পারিবে না। বরং যে সকল পণ্য যথাযথ সরবরাহ থাকিবে সে সকল পণ্য বিক্রয় করিয়া লক্ষ্য মাত্রা পূরণ করিতে হইবে।</li>
-              <li>এই চুক্তি জুলাই থেকে ডিসেম্বর {toBn(agreementSessionYears.julyDecember)} এবং জানুয়ারি থেকে জুন {toBn(agreementSessionYears.januaryJune)} পর্যন্ত বলবৎ থাকিবে; যদি উভয় পক্ষ পরবর্তীতে আবার চুক্তি করিতে চাহিলে একই নিয়মে চুক্তি সম্পাদিত হইবে।</li>
+              <li>এই চুক্তি {agreementSessionRange} পর্যন্ত বলবৎ থাকিবে; যদি উভয় পক্ষ পরবর্তীতে আবার চুক্তি করিতে চাহিলে একই নিয়মে চুক্তি সম্পাদিত হইবে।</li>
               <li>আন্তর্জাতিক বাজারের কারণে যে কোন সময় প্রথম পক্ষ পণ্যের দাম বাড়াইতে কিংবা কমাইতে পারিবে।</li>
-              <li>দ্বিতীয় পক্ষ প্রথম পক্ষকে ক্লোজিং মাস ছাড়া প্রতি মাসে {toBn(form.collectionDueDay)} তারিখের মধ্যে ন্যূনতম একটি কালেকশন দিতে হইবে, যার সর্বনিম্ন পরিমাণ <strong>{form.minimumCollection ? amount(form.minimumCollection) : '............................................'}</strong> কথায়: {minimumCollectionWords || '.......................................................................................'} টাকা। মাসিক কালেকশন বাদে বাকী যে টাকা থাকিবে তাহা কোম্পানীর ক্লোজিং-এর নির্ধারিত সময়ের মধ্যে পরিশোধ করিতে হইবে।</li>
+              <li>দ্বিতীয় পক্ষ প্রথম পক্ষকে ক্লোজিং মাস ছাড়া প্রতি মাসে {toBn(form.collectionDueDay)} তারিখের মধ্যে ন্যূনতম একটি কালেকশন দিতে হইবে, যার সর্বনিম্ন পরিমাণ <AgreementAmount value={form.minimumCollection} words={minimumCollectionWords} />। মাসিক কালেকশন বাদে বাকী যে টাকা থাকিবে তাহা কোম্পানীর ক্লোজিং-এর নির্ধারিত সময়ের মধ্যে পরিশোধ করিতে হইবে।</li>
             </ol>
             <p className="agreement-declaration">এমতাবস্থায় উপরোক্ত সকল বিষয় উভয় পক্ষ জেনে বুঝে স্বজ্ঞানে স্বেচ্ছায় নিম্নে স্বাক্ষর করিলেন।</p>
             <footer className="agreement-signatures">
@@ -405,7 +440,7 @@ export default function SalesAgreement() {
                 return (
                   <tr key={agreement.id} className="border-t border-slate-100">
                     <td className="p-3"><strong>{agreement.dealerName}</strong><p className="text-xs text-slate-500">{agreement.reference}</p></td>
-                    <td className="p-3">{agreement.session}<p className="text-xs text-slate-500">{toBnDate(agreement.date)}</p></td>
+                    <td className="p-3">{agreement.sessionStart && agreement.sessionEnd ? `${agreement.sessionStart} – ${agreement.sessionEnd}` : agreement.session}<p className="text-xs text-slate-500">{toBnDate(agreement.date)}</p></td>
                     <td className="p-3 text-right">{amount(summary.target)}</td>
                     <td className="p-3 text-right font-bold text-emerald-700">{amount(summary.sales)}</td>
                     <td className="p-3 text-right font-bold text-rose-700">{amount(summary.remaining)}</td>
