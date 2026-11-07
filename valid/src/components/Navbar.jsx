@@ -19,33 +19,35 @@ import {
   LogOut
 } from 'lucide-react';
 import { useAgro } from '../context/AgroContext';
+import { UI_THEMES, useUiPreferences } from '../context/UiPreferencesContext';
 
 export default function Navbar({ activeTab, setActiveTab }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [backupMenuOpen, setBackupMenuOpen] = useState(false);
   const { currentUser, logout, exportBackup, resetToFactoryData } = useAgro();
+  const { theme, setTheme, language, setLanguage, t } = useUiPreferences();
 
   const publicItems = [
     // Public section
-    { id: 'website-home', label: 'হোম পেজ', icon: Home, section: 'public' },
-    { id: 'website-products', label: 'সকল পণ্য', icon: Package, section: 'public' },
-    { id: 'website-about', label: 'কোম্পানি পরিচিতি', icon: Building2, section: 'public' },
+    { id: 'website-home', label: t('nav.home'), icon: Home, section: 'public' },
+    { id: 'website-products', label: t('nav.products'), icon: Package, section: 'public' },
+    { id: 'website-about', label: t('nav.about'), icon: Building2, section: 'public' },
   ];
 
   const adminItems = [
-    { id: 'admin-access', label: 'অফিসার ও অর্ডার অনুমোদন', icon: UserCheck },
-    { id: 'new-invoice', label: 'নতুন ইনভয়েস', icon: FileText },
-    { id: 'invoice-list', label: 'ইনভয়েস হিস্ট্রি', icon: FileText },
-    { id: 'inventory', label: 'স্টক ও মালামাল ইন', icon: Package },
-    { id: 'damage-returns', label: 'ডেমেজ পণ্য ফেরত', icon: RotateCcw },
-    { id: 'dealer-ledger', label: 'ডিলার হিসাব ও বাকি', icon: Users },
-    { id: 'officer-tracking', label: 'অফিসার সেলস ট্র্যাকিং', icon: UserCheck },
-    { id: 'monthly-reports', label: 'মাসিক ইন/আউট রিপোর্ট', icon: BarChart3 }
+    { id: 'admin-access', label: t('nav.adminApproval'), icon: UserCheck },
+    { id: 'new-invoice', label: t('nav.newInvoice'), icon: FileText },
+    { id: 'invoice-list', label: t('nav.invoiceHistory'), icon: FileText },
+    { id: 'inventory', label: t('nav.stock'), icon: Package },
+    { id: 'damage-returns', label: t('nav.returns'), icon: RotateCcw },
+    { id: 'dealer-ledger', label: t('nav.dealerLedger'), icon: Users },
+    { id: 'officer-tracking', label: t('nav.officerTracking'), icon: UserCheck },
+    { id: 'monthly-reports', label: t('nav.reports'), icon: BarChart3 }
   ];
   const navItems = currentUser?.role === 'admin'
     ? [...publicItems, ...adminItems]
     : currentUser?.role === 'officer'
-      ? [...publicItems, { id: 'officer-dashboard', label: 'অফিসার ড্যাশবোর্ড ও অর্ডার', icon: UserCheck }]
+      ? [...publicItems, { id: 'officer-dashboard', label: t('nav.officerDashboard'), icon: UserCheck }]
       : publicItems;
 
   const handleNavClick = (tabId) => {
@@ -72,32 +74,58 @@ export default function Navbar({ activeTab, setActiveTab }) {
           <div className="flex items-center space-x-4">
             <span className="flex items-center gap-1.5">
               <MapPin className="w-3.5 h-3.5 text-emerald-300" />
-              <span>ঠিকানাঃ নিশিন্দারা, বগুড়া।</span>
+              <span>{t('brand.address')}</span>
             </span>
           </div>
 
-          <div className="flex items-center space-x-3 ml-auto">
+          <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
             <a
               href="tel:01867912167"
               className="flex items-center gap-1.5 bg-emerald-700 hover:bg-emerald-600 px-2.5 py-0.5 rounded-full text-white font-medium transition"
             >
               <Phone className="w-3.5 h-3.5" />
-              <span>হটলাইনঃ 01867912167</span>
+              <span>{t('brand.hotline')}</span>
             </a>
+            <span className="text-[10px] text-emerald-200">{t('brand.slogan')}</span>
+            <label className="flex items-center gap-1">
+              <span className="sr-only">{t('settings.theme')}</span>
+              <select
+                aria-label={t('settings.theme')}
+                value={theme}
+                onChange={(event) => setTheme(event.target.value)}
+                className="max-w-28 rounded-md border border-emerald-700 bg-emerald-800 px-1.5 py-1 text-[10px] text-white sm:text-xs"
+              >
+                {UI_THEMES.map(({ value }) => (
+                  <option key={value} value={value}>{t(`settings.${value}`)}</option>
+                ))}
+              </select>
+            </label>
+            <label className="flex items-center gap-1">
+              <span className="sr-only">{t('settings.language')}</span>
+              <select
+                aria-label={t('settings.language')}
+                value={language}
+                onChange={(event) => setLanguage(event.target.value)}
+                className="rounded-md border border-emerald-700 bg-emerald-800 px-1.5 py-1 text-[10px] text-white sm:text-xs"
+              >
+                <option value="bn">বাংলা</option>
+                <option value="en">English</option>
+              </select>
+            </label>
 
             {currentUser?.role === 'admin' && (
               <div className="relative hidden lg:block">
                 <button
                   onClick={() => setBackupMenuOpen((open) => !open)}
                   aria-expanded={backupMenuOpen}
-                  title="ব্যাকআপের ফরম্যাট বাছুন"
+                  title={t('nav.backupFormat')}
                   className="flex items-center gap-1 rounded px-2 py-0.5 text-emerald-200 transition hover:bg-emerald-800 hover:text-white"
                 >
-                  <Download className="h-3 w-3" /><span>ব্যাকআপ</span>
+                  <Download className="h-3 w-3" /><span>{t('nav.backup')}</span>
                 </button>
                 {backupMenuOpen && (
                   <div className="absolute right-0 top-full z-50 mt-2 w-52 rounded-xl border border-slate-200 bg-white p-2 text-slate-700 shadow-xl">
-                    <p className="px-2 py-1 text-[10px] font-bold text-slate-400">ডাউনলোড ফরম্যাট</p>
+                    <p className="px-2 py-1 text-[10px] font-bold text-slate-400">{t('nav.downloadFormat')}</p>
                     <button onClick={() => { exportBackup('excel'); setBackupMenuOpen(false); }} className="w-full rounded-lg px-2 py-2 text-left text-xs hover:bg-emerald-50">Excel (.xls)</button>
                     <button onClick={() => { exportBackup('google-docs'); setBackupMenuOpen(false); }} className="w-full rounded-lg px-2 py-2 text-left text-xs hover:bg-emerald-50">Google Docs (.html)</button>
                     <button onClick={() => { exportBackup('word'); setBackupMenuOpen(false); }} className="w-full rounded-lg px-2 py-2 text-left text-xs hover:bg-emerald-50">Microsoft Word (.doc)</button>
@@ -108,10 +136,10 @@ export default function Navbar({ activeTab, setActiveTab }) {
             {currentUser?.role === 'admin' && (
               <button
                 onClick={resetToFactoryData}
-                title="ডিফল্ট ডাটায় রিসেট করুন"
+                title={t('nav.resetData')}
                 className="hidden items-center gap-1 rounded px-2 py-0.5 text-emerald-300 transition hover:bg-emerald-800 hover:text-white lg:flex"
               >
-                <RotateCw className="h-3 w-3" /><span>রিসেট</span>
+                <RotateCw className="h-3 w-3" /><span>{t('nav.reset')}</span>
               </button>
             )}
           </div>
@@ -123,7 +151,7 @@ export default function Navbar({ activeTab, setActiveTab }) {
         <button
           type="button"
           onClick={() => handleNavClick('website-home')}
-          aria-label="ভ্যালিড এগ্রো ও মহানন্দা এগ্রো হোম"
+          aria-label={`${t('brand.first')} ${t('brand.second')} ${t('nav.home')}`}
           className="min-w-0 flex flex-col items-start gap-0.5 text-left group"
         >
           <span className="flex min-w-0 items-center gap-1.5">
@@ -133,7 +161,7 @@ export default function Navbar({ activeTab, setActiveTab }) {
               className="h-7 w-8 sm:h-8 sm:w-9 shrink-0 object-contain"
             />
             <span className="whitespace-nowrap text-[10px] min-[360px]:text-[11px] sm:text-xs font-black text-slate-800 tracking-tight leading-tight">
-              ভ্যালিড এগ্রো প্রোডাক্ট লিমিটেড
+              {t('brand.first')}
             </span>
           </span>
           <span className="flex min-w-0 items-center gap-1.5">
@@ -143,7 +171,7 @@ export default function Navbar({ activeTab, setActiveTab }) {
               className="h-6 w-8 sm:h-7 sm:w-9 shrink-0 object-contain"
             />
             <span className="whitespace-nowrap text-[10px] min-[360px]:text-[11px] text-emerald-800 leading-tight">
-              মহানন্দা এগ্রো ইন্ডাস্ট্রিজ
+              {t('brand.second')}
               <span className="hidden sm:inline"> • নিশিন্দারা, বগুড়া</span>
             </span>
           </span>
@@ -153,30 +181,30 @@ export default function Navbar({ activeTab, setActiveTab }) {
           {!currentUser && (
             <button
               onClick={() => handleNavClick('admin-login')}
-              aria-label="অ্যাডমিন বা অফিসার লগইন"
+              aria-label={t('nav.login')}
               className="flex shrink-0 items-center gap-1 rounded-lg bg-emerald-50 px-2 py-2 text-[11px] font-bold text-emerald-800 hover:bg-emerald-100 sm:px-3"
             >
-              <LogIn className="h-4 w-4" /><span>লগইন</span>
+              <LogIn className="h-4 w-4" /><span>{t('nav.login')}</span>
             </button>
           )}
           {currentUser && (
             <button
               onClick={handleLogout}
-              aria-label="লগআউট"
-              title={`${currentUser.name} • লগআউট`}
+              aria-label={t('nav.logout')}
+              title={`${currentUser.name} • ${t('nav.logout')}`}
               className="flex shrink-0 items-center gap-1 rounded-lg bg-slate-100 px-2 py-2 text-[11px] font-bold text-slate-700 hover:bg-rose-50 hover:text-rose-700 sm:px-3"
             >
-              <LogOut className="h-4 w-4" /><span className="hidden min-[380px]:inline">লগআউট</span>
+              <LogOut className="h-4 w-4" /><span className="hidden min-[380px]:inline">{t('nav.logout')}</span>
             </button>
           )}
           {currentUser?.role === 'admin' && (
             <button
             onClick={() => handleNavClick('new-invoice')}
-            aria-label="নতুন ইনভয়েস তৈরি করুন"
+            aria-label={t('nav.newInvoice')}
               className="flex shrink-0 items-center gap-1 rounded-lg bg-emerald-50 px-2.5 py-2 text-[11px] font-medium text-emerald-700 transition hover:bg-emerald-100 sm:px-3 sm:text-xs"
             >
               <PlusCircle className="h-3.5 w-3.5" />
-              <span className="hidden min-[360px]:inline">ইনভয়েস</span>
+              <span className="hidden min-[360px]:inline">{t('nav.invoice')}</span>
             </button>
           )}
 
@@ -194,7 +222,7 @@ export default function Navbar({ activeTab, setActiveTab }) {
       {mobileMenuOpen && (
         <div className="border-t border-slate-200 bg-white px-4 py-3 shadow-lg">
           <div className="px-2 py-1 text-xs font-semibold uppercase tracking-wider text-slate-400">
-            {currentUser ? 'ব্যবসা ও হিসাব' : 'পাবলিক তথ্য ও লগইন'}
+            {currentUser ? t('nav.business') : t('nav.public')}
           </div>
           <div className="grid grid-cols-1 gap-1 sm:grid-cols-2">
             {navItems.map((item) => {
@@ -218,27 +246,27 @@ export default function Navbar({ activeTab, setActiveTab }) {
           </div>
           {!currentUser && (
             <div className="mt-2 grid grid-cols-1 gap-1 border-t border-slate-100 pt-2 sm:grid-cols-2">
-              <button onClick={() => handleNavClick('admin-login')} className="w-full rounded-lg px-3 py-2.5 text-left text-sm font-medium text-slate-700 hover:bg-slate-50"><LogIn className="mr-3 inline h-4 w-4 text-emerald-600" />অ্যাডমিন লগইন</button>
-              <button onClick={() => handleNavClick('officer-login')} className="w-full rounded-lg px-3 py-2.5 text-left text-sm font-medium text-slate-700 hover:bg-slate-50"><UserCheck className="mr-3 inline h-4 w-4 text-emerald-600" />অফিসার লগইন</button>
-              <button onClick={() => handleNavClick('officer-register')} className="w-full rounded-lg px-3 py-2.5 text-left text-sm font-medium text-slate-700 hover:bg-slate-50"><Users className="mr-3 inline h-4 w-4 text-emerald-600" />অফিসার রেজিস্ট্রেশন</button>
+              <button onClick={() => handleNavClick('admin-login')} className="w-full rounded-lg px-3 py-2.5 text-left text-sm font-medium text-slate-700 hover:bg-slate-50"><LogIn className="mr-3 inline h-4 w-4 text-emerald-600" />{t('nav.adminLogin')}</button>
+              <button onClick={() => handleNavClick('officer-login')} className="w-full rounded-lg px-3 py-2.5 text-left text-sm font-medium text-slate-700 hover:bg-slate-50"><UserCheck className="mr-3 inline h-4 w-4 text-emerald-600" />{t('nav.officerLogin')}</button>
+              <button onClick={() => handleNavClick('officer-register')} className="w-full rounded-lg px-3 py-2.5 text-left text-sm font-medium text-slate-700 hover:bg-slate-50"><Users className="mr-3 inline h-4 w-4 text-emerald-600" />{t('nav.officerRegister')}</button>
             </div>
           )}
           {currentUser?.role === 'admin' && (
             <div className="mt-2 border-t border-slate-100 pt-2">
-              <p className="px-2 py-1 text-[10px] font-bold text-slate-400">ব্যাকআপ ফরম্যাট</p>
+              <p className="px-2 py-1 text-[10px] font-bold text-slate-400">{t('nav.backupFormat')}</p>
               <div className="grid grid-cols-1 gap-1 sm:grid-cols-3">
                 <button onClick={() => { exportBackup('excel'); setMobileMenuOpen(false); }} className="flex items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold text-emerald-800 hover:bg-emerald-50"><Download className="h-4 w-4" />Excel (.xls)</button>
                 <button onClick={() => { exportBackup('google-docs'); setMobileMenuOpen(false); }} className="flex items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold text-emerald-800 hover:bg-emerald-50"><Download className="h-4 w-4" />Google Docs</button>
                 <button onClick={() => { exportBackup('word'); setMobileMenuOpen(false); }} className="flex items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold text-emerald-800 hover:bg-emerald-50"><Download className="h-4 w-4" />Microsoft Word</button>
               </div>
               <button onClick={resetToFactoryData} className="mt-1 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold text-rose-600 hover:bg-rose-50">
-                <RotateCw className="h-4 w-4" />রিসেট ডাটা
+                <RotateCw className="h-4 w-4" />{t('nav.resetData')}
               </button>
             </div>
           )}
           {currentUser && (
             <div className="mt-2 border-t border-slate-100 px-2 pt-3 text-xs text-slate-500">
-              লগইন: <strong className="text-slate-700">{currentUser.name}</strong> ({currentUser.role === 'admin' ? 'অ্যাডমিন' : 'অফিসার'})
+              {t('nav.loggedIn')} <strong className="text-slate-700">{currentUser.name}</strong> ({currentUser.role === 'admin' ? t('nav.adminLogin') : t('nav.officer')})
             </div>
           )}
         </div>

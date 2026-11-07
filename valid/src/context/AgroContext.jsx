@@ -788,7 +788,7 @@ export function AgroProvider({ children }) {
   xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
   xmlns:html="http://www.w3.org/TR/REC-html40">
   ${createExcelWorksheet('Summary', [
-    { Information: 'Valid Agro Products Ltd. & Mahananda Agro Industries' },
+    { Information: 'Valid Agro Products Ltd. / Mahananda Agro Industries' },
     { Information: `Exported at: ${exportedAt}` }
   ])}
   ${dataSets.map(([name, records]) => createExcelWorksheet(name, records)).join('\n')}

@@ -7,6 +7,7 @@ import AboutCompany from './components/public/AboutCompany';
 import Footer from './components/public/Footer';
 import AuthPage from './components/AuthPage';
 import OfficerDashboard from './components/OfficerDashboard';
+import { UiPreferencesProvider } from './context/UiPreferencesContext';
 
 // Admin / ERP Modules
 import AdminAccess from './components/admin/AdminAccess';
@@ -111,34 +112,36 @@ function AppContent() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50 text-slate-800">
-      <Navbar
-        activeTab={activeTab}
-        setActiveTab={handleNavigate}
-      />
+    <UiPreferencesProvider>
+      <div className="min-h-screen flex flex-col bg-slate-50 text-slate-800">
+        <Navbar
+          activeTab={activeTab}
+          setActiveTab={handleNavigate}
+        />
 
-      <main className="flex-grow">
-        {authLoading && !currentUser ? (
-          <div className="flex min-h-[50vh] items-center justify-center text-sm font-semibold text-slate-500">সেশন যাচাই হচ্ছে...</div>
-        ) : (
-          <>
-            {cloudError && currentUser && (
-              <div role="alert" className="mx-auto mt-4 max-w-7xl rounded-lg bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">
-                অনলাইন ডেটা সিঙ্ক হয়নি: {cloudError}
-              </div>
-            )}
-            {authError && !currentUser && activeTab.includes('login') && (
-              <div role="alert" className="mx-auto mt-4 max-w-2xl rounded-lg bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">
-                {authError}
-              </div>
-            )}
-            {renderActivePage()}
-          </>
-        )}
-      </main>
+        <main className="flex-grow">
+          {authLoading && !currentUser ? (
+            <div className="flex min-h-[50vh] items-center justify-center text-sm font-semibold text-slate-500">সেশন যাচাই হচ্ছে...</div>
+          ) : (
+            <>
+              {cloudError && currentUser && (
+                <div role="alert" className="mx-auto mt-4 max-w-7xl rounded-lg bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">
+                  অনলাইন ডেটা সিঙ্ক হয়নি: {cloudError}
+                </div>
+              )}
+              {authError && !currentUser && activeTab.includes('login') && (
+                <div role="alert" className="mx-auto mt-4 max-w-2xl rounded-lg bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">
+                  {authError}
+                </div>
+              )}
+              {renderActivePage()}
+            </>
+          )}
+        </main>
 
-      <Footer onNavigate={handleNavigate} />
-    </div>
+        <Footer onNavigate={handleNavigate} />
+      </div>
+    </UiPreferencesProvider>
   );
 }
 

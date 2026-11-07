@@ -14,6 +14,7 @@ import {
   Leaf
 } from 'lucide-react';
 import { useAgro } from '../../context/AgroContext';
+import { useUiPreferences } from '../../context/UiPreferencesContext';
 
 const heroSlides = [
   {
@@ -38,6 +39,7 @@ const heroSlides = [
 
 export default function Home({ onNavigate }) {
   const { products } = useAgro();
+  const { t } = useUiPreferences();
   const [activeSlide, setActiveSlide] = useState(0);
   const featured = products;
 
@@ -90,10 +92,14 @@ export default function Home({ onNavigate }) {
               <span>কৃষকের সমৃদ্ধি ও নিরাপদ ফসল সুরক্ষায় নির্ভরযোগ্য নাম</span>
             </div>
 
-            <h1 className="text-[1.65rem] min-[380px]:text-3xl sm:text-5xl lg:text-6xl font-black tracking-tight leading-tight">
-              ভ্যালিড এগ্রো প্রোডাক্ট লিমিটেড <br />
-              <span className="text-emerald-300 text-2xl sm:text-4xl lg:text-5xl font-bold">
-                এন্ড মহানন্দা এগ্রো ইন্ডাস্ট্রিজ
+            <h1 className="home-company-heading flex flex-col items-start gap-2 font-black tracking-tight">
+              <span className="home-company-line">
+                <img src="/logos/valid-logo.png" alt="" />
+                <span>{t('brand.first')}</span>
+              </span>
+              <span className="home-company-line text-emerald-300">
+                <img src="/logos/mahananda-logo.png" alt="" />
+                <span>{t('brand.second')}</span>
               </span>
             </h1>
 

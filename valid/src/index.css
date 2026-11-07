@@ -49,6 +49,63 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+html[data-theme="agro"] body {
+  background-color: #f2f8f2;
+}
+
+html[data-theme="agro"] .bg-white {
+  background-color: #fbfefb;
+}
+
+html[data-theme="agro"] .border-slate-200 {
+  border-color: #c6ddc9;
+}
+
+html[data-theme="dark"] body {
+  background-color: #0f172a;
+  color: #e2e8f0;
+}
+
+html[data-theme="dark"] .bg-white,
+html[data-theme="dark"] .bg-slate-50,
+html[data-theme="dark"] .bg-slate-100 {
+  background-color: #1e293b !important;
+}
+
+html[data-theme="dark"] .bg-emerald-50,
+html[data-theme="dark"] .bg-green-50 {
+  background-color: #123528 !important;
+}
+
+html[data-theme="dark"] .text-slate-900,
+html[data-theme="dark"] .text-slate-800,
+html[data-theme="dark"] .text-slate-700 {
+  color: #e2e8f0 !important;
+}
+
+html[data-theme="dark"] .text-slate-600,
+html[data-theme="dark"] .text-slate-500,
+html[data-theme="dark"] .text-slate-400 {
+  color: #cbd5e1 !important;
+}
+
+html[data-theme="dark"] .text-emerald-900,
+html[data-theme="dark"] .text-emerald-800,
+html[data-theme="dark"] .text-emerald-700 {
+  color: #6ee7b7 !important;
+}
+
+html[data-theme="dark"] .border-slate-100,
+html[data-theme="dark"] .border-slate-200,
+html[data-theme="dark"] .border-slate-300 {
+  border-color: #475569 !important;
+}
+
+html[data-theme="dark"] .hover\:bg-slate-50:hover,
+html[data-theme="dark"] .hover\:bg-slate-100:hover {
+  background-color: #334155 !important;
+}
+
 .invoice-company-row {
   display: flex;
   align-items: center;
@@ -355,6 +412,11 @@ body {
   margin: 0;
 }
 
+.invoice-company-copy h1,
+.invoice-company-copy h2 {
+  white-space: nowrap;
+}
+
 .invoice-company-copy h1 {
   color: #14532d;
   font-size: 1.25rem;
@@ -502,12 +564,13 @@ body {
 }
 
 .invoice-col-index { width: 5%; }
-.invoice-col-product { width: 33%; }
-.invoice-col-cartons { width: 8%; }
-.invoice-col-pieces { width: 9%; }
-.invoice-col-trade { width: 15%; }
-.invoice-col-commission { width: 14%; }
-.invoice-col-net { width: 16%; }
+.invoice-col-product { width: 29%; }
+.invoice-col-cartons { width: 7%; }
+.invoice-col-unit-price { width: 11%; }
+.invoice-col-trade { width: 13%; }
+.invoice-col-commission-percent { width: 8%; }
+.invoice-col-commission { width: 13%; }
+.invoice-col-net { width: 14%; }
 
 .invoice-return-product { width: 44%; }
 .invoice-return-quantity { width: 20%; }
@@ -598,6 +661,47 @@ body {
   text-align: center;
 }
 
+.company-brand-heading {
+  font-size: clamp(0.78rem, 3.2vw, 2.25rem);
+  line-height: 1.25;
+}
+
+.company-brand-line {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  white-space: nowrap;
+}
+
+.company-brand-line img {
+  width: clamp(1.7rem, 6vw, 3.5rem);
+  height: clamp(1.7rem, 6vw, 3.5rem);
+  flex: none;
+  object-fit: contain;
+}
+
+.home-company-heading {
+  font-size: clamp(0.7rem, 3.8vw, 3.75rem);
+  line-height: 1.25;
+}
+
+.home-company-line {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  gap: 0.6rem;
+  white-space: nowrap;
+}
+
+.home-company-line img {
+  width: clamp(1.6rem, 5vw, 3.5rem);
+  height: clamp(1.6rem, 5vw, 3.5rem);
+  flex: none;
+  object-fit: contain;
+}
+
 @media (max-width: 639px) {
   .invoice-print-company-row {
     align-items: flex-start;
@@ -640,6 +744,18 @@ body {
 
   .invoice-summary-grid {
     grid-template-columns: 1fr;
+  }
+
+  .company-brand-heading {
+    font-size: clamp(0.7rem, 3.6vw, 1.25rem);
+  }
+
+  .company-brand-line {
+    gap: 0.35rem;
+  }
+
+  .home-company-line {
+    gap: 0.35rem;
   }
 }
 
@@ -785,6 +901,11 @@ body {
 
   .invoice-signatures > div {
     font-size: 6.5pt;
+  }
+
+  html[data-theme="dark"] .invoice-print-sheet {
+    background: #fff !important;
+    color: #000 !important;
   }
 
   .invoice-table-section,

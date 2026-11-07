@@ -13,10 +13,16 @@ const money = (value) => {
 
 function getItemValues(item) {
   const cartons = Number(item.cartons ?? item.quantity) || 0;
-  const pieces = Number(item.totalPieces) || cartons * (Number(item.packPerBox) || 1);
   const tradePrice = Number(item.total) || cartons * (Number(item.cartonPrice) || 0);
   const commission = tradePrice * (Number(item.commission) || 0) / 100;
-  return { cartons, pieces, tradePrice, commission, net: tradePrice - commission };
+  return {
+    cartons,
+    unitTradePrice: Number(item.cartonPrice) || Number(item.unitPrice) * (Number(item.packPerBox) || 1),
+    tradePrice,
+    commissionPercent: Number(item.commission) || 0,
+    commission,
+    net: tradePrice - commission
+  };
 }
 
 function getReturnValues(item) {
@@ -46,12 +52,11 @@ export default function InvoicePrintHeader({ invoice }) {
   const itemTotals = items.reduce((totals, item) => {
     const values = getItemValues(item);
     totals.cartons += values.cartons;
-    totals.pieces += values.pieces;
     totals.tradePrice += values.tradePrice;
     totals.commission += values.commission;
     totals.net += values.net;
     return totals;
-  }, { cartons: 0, pieces: 0, tradePrice: 0, commission: 0, net: 0 });
+  }, { cartons: 0, tradePrice: 0, commission: 0, net: 0 });
   const returnTotal = returns.reduce((sum, item) => sum + getReturnValues(item).total, 0)
     || Number(invoice.returnAdjustmentTotal) || 0;
   const transportCost = Number(invoice.transportCost) || 0;
@@ -117,20 +122,22 @@ export default function InvoicePrintHeader({ invoice }) {
               <col className="invoice-col-index" />
               <col className="invoice-col-product" />
               <col className="invoice-col-cartons" />
-              <col className="invoice-col-pieces" />
+              <col className="invoice-col-unit-price" />
               <col className="invoice-col-trade" />
+              <col className="invoice-col-commission-percent" />
               <col className="invoice-col-commission" />
               <col className="invoice-col-net" />
             </colgroup>
             <thead>
               <tr>
                 <th>নং</th>
-                <th>পণ্যের বিবরণ ও প্যাক সাইজ</th>
+                <th>পণ্যের নাম ও প্যাক সাইজ</th>
                 <th>কার্টুন</th>
-                <th>মোট পিস</th>
                 <th>ট্রেড প্রাইজ</th>
-                <th>কমিশন</th>
-                <th>নীট বিল (ট)</th>
+                <th>মোট ট্রেড প্রাইজ</th>
+                <th>কমিশন (%)</th>
+                <th>কমিশন এ্যামাউন্ট</th>
+                <th>নীট মূল্য</th>
               </tr>
             </thead>
             <tbody>
@@ -143,21 +150,23 @@ export default function InvoicePrintHeader({ invoice }) {
                       {getProductDescription(item)}
                     </td>
                     <td>{toBn(values.cartons)}</td>
-                    <td>{toBn(values.pieces)}</td>
+                    <td>{money(values.unitTradePrice)}</td>
                     <td>{money(values.tradePrice)}</td>
+                    <td>{toBn(values.commissionPercent)}%</td>
                     <td>{money(values.commission)}</td>
                     <td>{money(values.net)}</td>
                   </tr>
                 );
               })}
               {!items.length && (
-                <tr><td colSpan="7" className="invoice-empty-row">কোনো পণ্য নেই</td></tr>
+                <tr><td colSpan="8" className="invoice-empty-row">কোনো পণ্য নেই</td></tr>
               )}
               <tr className="invoice-table-total">
                 <th colSpan="2">মোট</th>
                 <th>{toBn(itemTotals.cartons)}</th>
-                <th>{toBn(itemTotals.pieces)}</th>
+                <th>—</th>
                 <th>{money(itemTotals.tradePrice)}</th>
+                <th>—</th>
                 <th>{money(itemTotals.commission)}</th>
                 <th>{money(itemTotals.net)}</th>
               </tr>

@@ -641,7 +641,7 @@ export default function DealerLedger() {
             {/* Printable Ledger Header */}
             <div className="text-center border-b border-emerald-800 pb-3">
               <h2 className="text-xl font-black text-slate-900">ভ্যালিড এগ্রো প্রোডাক্ট লিমিটেড</h2>
-              <p className="text-xs text-emerald-800 font-bold">এন্ড মহানন্দা এগ্রো ইন্ডাস্ট্রিজ • নিশিন্দারা, বগুড়া</p>
+              <p className="text-xs text-emerald-800 font-bold">মহানন্দা এগ্রো ইন্ডাস্ট্রিজ • নিশিন্দারা, বগুড়া</p>
               <div className="mt-2 inline-block bg-slate-100 text-slate-800 border border-slate-300 px-3 py-0.5 rounded text-xs font-bold">
                 ডিলার লেজার ও বাকি হিসাব বিবরণী
               </div>

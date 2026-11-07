@@ -10,21 +10,32 @@ import {
   FileText
 } from 'lucide-react';
 import { useAgro } from '../../context/AgroContext';
+import { useUiPreferences } from '../../context/UiPreferencesContext';
 
 export default function ProductCatalog({ onSelectProductForInvoice, actionLabel = 'চালানে যোগ করুন' }) {
   const { products } = useAgro();
+  const { t, language } = useUiPreferences();
+  const localizedActionLabel = language === 'en'
+    ? actionLabel === 'অর্ডার করুন' ? 'Place Order' : 'Add to Invoice'
+    : actionLabel;
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('ALL');
   const [activeModalProduct, setActiveModalProduct] = useState(null);
 
-  const categories = ['ALL', 'কীটনাশক', 'ছত্রাকনাশক', 'সার ও অনুখাদ্য', 'গ্রোথ প্রমোটার'];
+  const categories = [
+    { value: 'ALL', label: t('catalog.all') },
+    { value: 'কীটনাশক', label: t('catalog.pesticide') },
+    { value: 'ছত্রাকনাশক', label: t('catalog.fungicide') },
+    { value: 'সার ও অনুখাদ্য', label: t('catalog.fertilizer') },
+    { value: 'গ্রোথ প্রমোটার', label: t('catalog.growth') }
+  ];
 
   const filtered = products.filter((p) => {
     const matchCat = selectedCategory === 'ALL' || p.category === selectedCategory;
     const matchSearch =
-      p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.generic.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.description.toLowerCase().includes(searchTerm.toLowerCase());
+      (p.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (p.generic || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (p.description || '').toLowerCase().includes(searchTerm.toLowerCase());
     return matchCat && matchSearch;
   });
 
@@ -33,13 +44,13 @@ export default function ProductCatalog({ onSelectProductForInvoice, actionLabel 
       {/* Header */}
       <div className="text-center max-w-2xl mx-auto space-y-2">
         <span className="text-emerald-700 font-bold text-xs uppercase tracking-wider">
-          ভ্যালিড এগ্রো ও মহানন্দা এগ্রো ক্যাটালগ
+          {t('catalog.tagline')}
         </span>
         <h1 className="text-3xl font-black text-slate-800">
-          আমাদের সকল অনুমোদিত কৃষি পণ্য তালিকা ({products.length} টি)
+          {t('catalog.heading')} ({products.length})
         </h1>
         <p className="text-slate-500 text-sm">
-          প্রতিটি পণ্যের প্যাক সাইজ, কার্টুন প্যাকেজিং অনুপাত, টিপি ও এমআরপি রেট বিস্তারিত দেখুন
+          {t('catalog.details')}
         </p>
       </div>
 
@@ -49,7 +60,7 @@ export default function ProductCatalog({ onSelectProductForInvoice, actionLabel 
           <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             type="text"
-            placeholder="পণ্য বা উপাদান দিয়ে খুঁজুন..."
+            placeholder={t('catalog.search')}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full pl-9 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
@@ -59,15 +70,15 @@ export default function ProductCatalog({ onSelectProductForInvoice, actionLabel 
         <div className="flex items-center gap-2 overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0">
           {categories.map((cat) => (
             <button
-              key={cat}
-              onClick={() => setSelectedCategory(cat)}
+              key={cat.value}
+              onClick={() => setSelectedCategory(cat.value)}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition ${
-                selectedCategory === cat
+                selectedCategory === cat.value
                   ? 'bg-emerald-700 text-white shadow'
                   : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
               }`}
             >
-              {cat === 'ALL' ? 'সকল পণ্য' : cat}
+              {cat.label}
             </button>
           ))}
         </div>
@@ -83,7 +94,7 @@ export default function ProductCatalog({ onSelectProductForInvoice, actionLabel 
             <div>
               <div className="flex justify-between items-start gap-2 mb-2">
                 <span className="bg-emerald-50 text-emerald-800 text-[11px] font-bold px-2.5 py-0.5 rounded-full border border-emerald-200">
-                  {prod.category}
+                  {categories.find((category) => category.value === prod.category)?.label || prod.category}
                 </span>
                 <span className="text-slate-400 font-mono text-xs">#{idx + 1}</span>
               </div>
@@ -96,7 +107,7 @@ export default function ProductCatalog({ onSelectProductForInvoice, actionLabel 
 
               {/* Pack Sizes & Cartoon Ratio List */}
               <div className="mt-4 pt-3 border-t border-slate-100 space-y-1.5">
-                <p className="text-[11px] font-bold text-slate-700 uppercase">প্যাক সাইজ ও কার্টুন অনুপাত:</p>
+                <p className="text-[11px] font-bold text-slate-700 uppercase">{t('catalog.packRatio')}</p>
                 <div className="grid grid-cols-2 gap-1.5">
                   {prod.variants.map((v) => (
                     <div
@@ -104,7 +115,7 @@ export default function ProductCatalog({ onSelectProductForInvoice, actionLabel 
                       className="bg-slate-50 border border-slate-200/80 rounded p-1.5 text-[11px] flex justify-between items-center"
                     >
                       <span className="font-bold text-slate-800">{v.size}</span>
-                      <span className="text-slate-500 font-mono">× {v.packPerBox} টি</span>
+                      <span className="text-slate-500 font-mono">× {Number(v.packPerBox).toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')} {t('catalog.units')}</span>
                     </div>
                   ))}
                 </div>
@@ -116,7 +127,7 @@ export default function ProductCatalog({ onSelectProductForInvoice, actionLabel 
                 onClick={() => setActiveModalProduct(prod)}
                 className="text-xs font-bold text-emerald-700 hover:text-emerald-800 hover:underline"
               >
-                বিস্তারিত দেখুন
+              {t('catalog.detailsButton')}
               </button>
 
               {onSelectProductForInvoice && (
@@ -125,7 +136,7 @@ export default function ProductCatalog({ onSelectProductForInvoice, actionLabel 
                   className="bg-emerald-700 hover:bg-emerald-800 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1 shadow"
                 >
                   <FileText className="w-3.5 h-3.5" />
-                  <span>{actionLabel}</span>
+                  <span>{localizedActionLabel}</span>
                 </button>
               )}
             </div>
@@ -135,12 +146,12 @@ export default function ProductCatalog({ onSelectProductForInvoice, actionLabel 
 
       {filtered.length === 0 && (
         <div className="text-center py-16 bg-white rounded-xl border border-slate-200 p-8 space-y-2">
-          <p className="text-slate-500 font-medium text-sm">কোনো পণ্য খুঁজে পাওয়া যায়নি।</p>
+          <p className="text-slate-500 font-medium text-sm">{t('catalog.notFound')}</p>
           <button
             onClick={() => { setSearchTerm(''); setSelectedCategory('ALL'); }}
             className="text-xs font-bold text-emerald-700 hover:underline"
           >
-            ফিল্টার রিসেট করুন
+            {t('catalog.reset')}
           </button>
         </div>
       )}
@@ -165,31 +176,31 @@ export default function ProductCatalog({ onSelectProductForInvoice, actionLabel 
 
             <div className="space-y-3 text-xs text-slate-700">
               <div>
-                <h4 className="font-bold text-slate-900 mb-1">কার্যকারিতা ও প্রয়োগ ক্ষেত্র:</h4>
+                <h4 className="font-bold text-slate-900 mb-1">{t('catalog.usage')}</h4>
                 <p className="leading-relaxed bg-slate-50 p-2.5 rounded-lg border border-slate-200">
                   {activeModalProduct.description}
                 </p>
               </div>
 
               <div>
-                <h4 className="font-bold text-slate-900 mb-1.5">অনুমোদিত প্যাক সাইজ ও রেট তালিকা:</h4>
+                <h4 className="font-bold text-slate-900 mb-1.5">{t('catalog.rates')}</h4>
                 <div className="border border-slate-200 rounded-lg overflow-hidden">
                   <table className="w-full text-left text-xs">
                     <thead className="bg-slate-100 text-slate-700 font-bold">
                       <tr>
-                        <th className="p-2">সাইজ</th>
-                        <th className="p-2 text-center">কার্টুন প্যাকেজিং</th>
-                        <th className="p-2 text-right">টিপি (৳)</th>
-                        <th className="p-2 text-right">এমআরপি (৳)</th>
+                        <th className="p-2">{t('catalog.size')}</th>
+                        <th className="p-2 text-center">{t('catalog.packaging')}</th>
+                        <th className="p-2 text-right">{t('catalog.tp')}</th>
+                        <th className="p-2 text-right">{t('catalog.mrp')}</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-200">
                       {activeModalProduct.variants.map((v) => (
                         <tr key={v.sku}>
                           <td className="p-2 font-bold text-slate-800">{v.size}</td>
-                          <td className="p-2 text-center">{v.packPerBox} {v.unit} / বক্স</td>
-                          <td className="p-2 text-right font-mono font-semibold">৳{Number(v.tp || 0).toLocaleString()}</td>
-                          <td className="p-2 text-right font-mono text-slate-500">৳{v.mrp ? Number(v.mrp).toLocaleString() : '-'}</td>
+                          <td className="p-2 text-center">{Number(v.packPerBox).toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')} {v.unit} / {t('catalog.box')}</td>
+                          <td className="p-2 text-right font-mono font-semibold">৳{Number(v.tp || 0).toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}</td>
+                          <td className="p-2 text-right font-mono text-slate-500">৳{v.mrp ? Number(v.mrp).toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US') : '-'}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -198,8 +209,8 @@ export default function ProductCatalog({ onSelectProductForInvoice, actionLabel 
               </div>
 
               <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-800">
-                <p className="font-bold mb-0.5">ডিলারদের জন্য বিশেষ সুবিধা:</p>
-                <p>বগুড়া ডিপো হতে তাৎক্ষণিক মালামাল ডেলিভারি ও ডেমেজ পণ্য ১০০% ফেরত গ্রহণের নিশ্চয়তা।</p>
+                <p className="font-bold mb-0.5">{t('catalog.dealerBenefit')}</p>
+                <p>{t('catalog.dealerBenefitDetails')}</p>
               </div>
             </div>
 
@@ -208,7 +219,7 @@ export default function ProductCatalog({ onSelectProductForInvoice, actionLabel 
                 onClick={() => setActiveModalProduct(null)}
                 className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold"
               >
-                বন্ধ করুন
+                {t('catalog.close')}
               </button>
               {onSelectProductForInvoice && (
                 <button
@@ -219,7 +230,7 @@ export default function ProductCatalog({ onSelectProductForInvoice, actionLabel 
                   }}
                   className="bg-emerald-700 hover:bg-emerald-800 text-white px-5 py-2 rounded-lg text-xs font-bold shadow"
                 >
-                  চালান মেমো তৈরি করুন
+                  {t('catalog.createMemo')}
                 </button>
               )}
             </div>

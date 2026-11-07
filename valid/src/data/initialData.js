@@ -1,4 +1,4 @@
-// Valid Agro Products Ltd. & Mahananda Agro Industries
+// Valid Agro Products Ltd. / Mahananda Agro Industries
 // Initial dataset with exact client products, trade prices, carton packs, commission, and all 83+ authorized dealers.
 
 export const INITIAL_OFFICERS = [
