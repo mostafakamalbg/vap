@@ -50,6 +50,10 @@ export function formatDealerCode(code) {
   return match ? `DL-${match[1].padStart(2, '0')}` : value;
 }
 
+export function formatInvoiceNumber(invoiceNumber) {
+  return String(invoiceNumber || '').replace(/^VAP-\d{4}-/i, '');
+}
+
 export function getNextDealerCode(dealers) {
   const maxSerial = dealers.reduce((max, dealer) => {
     const match = String(dealer.code || '').trim().match(/^(?:DL-?)?(\d+)$/i);

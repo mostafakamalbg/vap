@@ -1,6 +1,6 @@
 import React from 'react';
 import { toBn, toBnDate } from '../../utils/bengali';
-import { formatDealerCode, formatOfficerCode } from '../../../shared/codes';
+import { formatDealerCode, formatInvoiceNumber, formatOfficerCode } from '../../../shared/codes';
 import { normalizePaymentMethod, PAYMENT_METHODS } from '../../../shared/paymentMethods';
 import { LEGACY_INVOICE_SESSION } from '../../../shared/sessions';
 
@@ -112,11 +112,11 @@ export default function InvoicePrintHeader({ invoice }) {
         </div>
         <div className="invoice-party invoice-party-invoice">
           <h2>চালান তথ্য</h2>
-          <p><strong>ইনভয়েস নং:</strong> {toBn(invoice.invoiceNo || invoice.id)}</p>
           <p><strong>চালান নং:</strong> {toBn(invoice.challanNo || '—')}</p>
+          <p><strong>ইনভয়েস নং:</strong> {toBn(formatInvoiceNumber(invoice.invoiceNo || invoice.id))}</p>
           <p><strong>তারিখ:</strong> {toBnDate(invoice.date)}</p>
           <p className="invoice-officer-code"><strong>অফিসার কোড:</strong> {toBn(formatOfficerCode(invoice.officerCode, invoice.officerDesignation) || invoice.officerId || '—')}</p>
-          <p><strong>সেলস অফিসার:</strong> {invoice.officerName || '—'}</p>
+          <p className="invoice-officer-name"><strong>সেলস অফিসার:</strong> {invoice.officerName || '—'}</p>
           <p><strong>পরিবহন মাধ্যম:</strong> {invoice.transport || '—'}</p>
         </div>
       </section>

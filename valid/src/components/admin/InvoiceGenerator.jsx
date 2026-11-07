@@ -2,13 +2,14 @@ import React, { useMemo, useState } from 'react';
 import { ArrowLeft, Printer, Save, Trash2 } from 'lucide-react';
 import { getNextInvoiceNumber, useAgro } from '../../context/AgroContext';
 import { INVOICE_SESSIONS } from '../../../shared/sessions';
-import { formatDealerCode, formatOfficerCode } from '../../../shared/codes';
+import { formatDealerCode, formatInvoiceNumber, formatOfficerCode } from '../../../shared/codes';
 import { normalizePaymentMethod, PAYMENT_METHODS } from '../../../shared/paymentMethods';
 import { toBnCurrency } from '../../utils/bengali';
 import InvoicePrintHeader from './InvoicePrintHeader';
 import SearchableRecordSelect from './SearchableRecordSelect';
 
 const today = () => new Date().toISOString().slice(0, 10);
+const TRANSPORT_OPTIONS = ['কাভার্ড ভ্যান', 'অটো', 'ভ্যান'];
 const emptyItem = () => ({
   productKey: '',
   productId: '',
@@ -310,7 +311,7 @@ export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCa
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">{editInvoiceData ? 'ইনভয়েস সম্পাদনা' : 'নতুন ইনভয়েস'}</h1>
-          <p className="mt-1 text-sm text-slate-500">ইনভয়েস নং: {editInvoiceData?.id || getNextInvoiceNumber(invoices).candidateId}</p>
+          <p className="mt-1 text-sm text-slate-500">ইনভয়েস নং: {formatInvoiceNumber(editInvoiceData?.id || getNextInvoiceNumber(invoices).candidateId)}</p>
         </div>
         <div className="flex gap-2">
           {onCancelEdit && (
@@ -333,7 +334,7 @@ export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCa
         <section className="grid gap-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:grid-cols-2 lg:grid-cols-4">
           <label className="text-sm font-semibold text-slate-700">
             ইনভয়েস নং
-            <input value={editInvoiceData?.id || getNextInvoiceNumber(invoices).candidateId} readOnly className="mt-1 w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2" />
+            <input value={formatInvoiceNumber(editInvoiceData?.id || getNextInvoiceNumber(invoices).candidateId)} readOnly className="mt-1 w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2" />
           </label>
           <label className="text-sm font-semibold text-slate-700">
             চালান নং
@@ -480,8 +481,14 @@ export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCa
               </p>
             )}
             <label className="text-sm font-semibold text-slate-700">
-              পরিবহন
-              <input value={form.transport} onChange={(event) => updateForm('transport', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" />
+              পরিবহনের মাধ্যম
+              <select value={form.transport} onChange={(event) => updateForm('transport', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2">
+                <option value="">পরিবহন মাধ্যম নির্বাচন করুন</option>
+                {form.transport && !TRANSPORT_OPTIONS.includes(form.transport) && (
+                  <option value={form.transport}>{form.transport}</option>
+                )}
+                {TRANSPORT_OPTIONS.map((transport) => <option key={transport} value={transport}>{transport}</option>)}
+              </select>
             </label>
             <label className="text-sm font-semibold text-slate-700 sm:col-span-2">
               নোট

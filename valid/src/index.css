@@ -300,6 +300,9 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
   .no-print {
     display: none !important;
   }
+  .invoice-officer-name {
+    display: none !important;
+  }
   .print-only {
     display: block !important;
   }

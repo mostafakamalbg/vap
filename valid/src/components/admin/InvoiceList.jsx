@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { FilePlus2, Pencil, Printer, Search, Trash2 } from 'lucide-react';
 import { useAgro } from '../../context/AgroContext';
 import { toBn, toBnCurrency, toBnDate } from '../../utils/bengali';
+import { formatInvoiceNumber } from '../../../shared/codes';
 import InvoicePrintHeader from './InvoicePrintHeader';
 
 export default function InvoiceList({ onNewInvoiceClick, onEditInvoice }) {
@@ -54,7 +55,7 @@ export default function InvoiceList({ onNewInvoiceClick, onEditInvoice }) {
           <tbody>
             {filteredInvoices.map((invoice) => (
               <tr key={invoice.id} className="border-t border-slate-100">
-                <td className="p-3"><strong>{toBn(invoice.id)}</strong><p className="text-xs text-slate-500">{toBnDate(invoice.date)}</p></td>
+                <td className="p-3"><strong>{toBn(formatInvoiceNumber(invoice.invoiceNo || invoice.id))}</strong><p className="text-xs text-slate-500">{toBnDate(invoice.date)}</p></td>
                 <td className="p-3 font-semibold text-emerald-800">{invoice.session || 'সেশন নির্ধারিত নয়'}</td>
                 <td className="p-3">{invoice.dealerName || invoice.dealerId}</td>
                 <td className="p-3">{invoice.officerName || invoice.officerId}</td>
