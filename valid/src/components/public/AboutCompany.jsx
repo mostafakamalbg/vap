@@ -28,7 +28,7 @@ export default function AboutCompany() {
             <span>{t('brand.first')}</span>
           </span>
           <span className="company-brand-line text-emerald-700">
-            <img src="/logos/mahananda-logo.png" alt="" />
+            <img src="/logos/mahananda-logo-transparent.png" alt="" />
             <span>{t('brand.second')}</span>
           </span>
         </h1>

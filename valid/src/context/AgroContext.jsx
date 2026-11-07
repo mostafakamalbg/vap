@@ -238,6 +238,10 @@ export function AgroProvider({ children }) {
     const saved = localStorage.getItem('vap_payments_v5');
     return saved ? JSON.parse(saved) : INITIAL_PAYMENTS;
   });
+  const [salesAgreements, setSalesAgreements] = useState(() => {
+    const saved = localStorage.getItem('vap_sales_agreements_v1');
+    return saved ? JSON.parse(saved) : [];
+  });
   const localRecordsRef = useRef({
     products,
     officers,
@@ -245,7 +249,8 @@ export function AgroProvider({ children }) {
     invoices,
     stockInLogs,
     damageLogs,
-    payments
+    payments,
+    salesAgreements
   });
   const syncQueueRef = useRef({});
 
@@ -277,6 +282,10 @@ export function AgroProvider({ children }) {
   useEffect(() => {
     localStorage.setItem('vap_payments_v5', JSON.stringify(payments));
   }, [payments]);
+
+  useEffect(() => {
+    localStorage.setItem('vap_sales_agreements_v1', JSON.stringify(salesAgreements));
+  }, [salesAgreements]);
 
   useEffect(() => {
     let cancelled = false;
@@ -336,7 +345,8 @@ export function AgroProvider({ children }) {
       invoices: setInvoices,
       stockInLogs: setStockInLogs,
       damageLogs: setDamageLogs,
-      payments: setPayments
+      payments: setPayments,
+      salesAgreements: setSalesAgreements
     };
     if (!Array.isArray(records) || !setters[type]) {
       throw new Error('সার্ভার থেকে সঠিক ডেটা পাওয়া যায়নি।');
@@ -359,12 +369,14 @@ export function AgroProvider({ children }) {
       invoices: setInvoices,
       stockInLogs: setStockInLogs,
       damageLogs: setDamageLogs,
-      payments: setPayments
+      payments: setPayments,
+      salesAgreements: setSalesAgreements
     };
 
     async function loadSharedRecords() {
       try {
         for (const [type, setter] of Object.entries(setters)) {
+          if (type === 'salesAgreements' && currentUser.role !== 'admin') continue;
           const response = await fetch(`/api/records?type=${encodeURIComponent(type)}`);
           const records = await readJsonResponse(response);
           if (!Array.isArray(records)) throw new Error(`সার্ভার থেকে ${type} ডেটা সঠিকভাবে পাওয়া যায়নি।`);
@@ -415,6 +427,7 @@ export function AgroProvider({ children }) {
     syncRecords('stockInLogs', stockInLogs);
     syncRecords('damageLogs', damageLogs);
     syncRecords('payments', payments);
+    syncRecords('salesAgreements', salesAgreements);
   }, [
     currentUser,
     cloudReady,
@@ -424,7 +437,8 @@ export function AgroProvider({ children }) {
     invoices,
     stockInLogs,
     damageLogs,
-    payments
+    payments,
+    salesAgreements
   ]);
 
   // Helper: Flattened list of all product variants for 1-click selection with pack sizes
@@ -624,6 +638,24 @@ export function AgroProvider({ children }) {
     setPayments((prev) => [newPayment, ...prev]);
   };
 
+  const saveSalesAgreement = (agreement) => {
+    const savedAgreement = {
+      ...agreement,
+      id: agreement.id || `AGR-${globalThis.crypto.randomUUID()}`
+    };
+    setSalesAgreements((previous) => {
+      const exists = previous.some((entry) => entry.id === savedAgreement.id);
+      return exists
+        ? previous.map((entry) => entry.id === savedAgreement.id ? savedAgreement : entry)
+        : [savedAgreement, ...previous];
+    });
+    return savedAgreement;
+  };
+
+  const deleteSalesAgreement = (agreementId) => {
+    setSalesAgreements((previous) => previous.filter((entry) => entry.id !== agreementId));
+  };
+
   // Add New Dealer with nationwide single continuous serial code 1, 2, 3...
   const addNewDealer = (dealerData) => {
     const nextCode = getNextDealerCode(dealers);
@@ -759,7 +791,7 @@ export function AgroProvider({ children }) {
   // Reset to factory data
   const resetToFactoryData = () => {
     const confirmed = window.confirm(
-      'সতর্কতা: রিসেট করলে পণ্য, স্টক, ইনভয়েস, ডিলার ও হিসাবসহ সব বর্তমান ডাটা মুছে যাবে এবং মূল ডাটায় ফিরে যাবে। আগে Excel ব্যাকআপ নিন। আপনি কি এগোতে চান?'
+      'সতর্কতা: রিসেট করলে পণ্য, স্টক, ইনভয়েস, ডিলার, সেলস ও কালেকশন চুক্তি এবং হিসাবসহ সব বর্তমান ডাটা মুছে যাবে এবং মূল ডাটায় ফিরে যাবে। আগে Excel ব্যাকআপ নিন। আপনি কি এগোতে চান?'
     );
     if (!confirmed) return;
 
@@ -773,6 +805,7 @@ export function AgroProvider({ children }) {
     localStorage.removeItem('vap_stock_in_v5');
     localStorage.removeItem('vap_damages_v5');
     localStorage.removeItem('vap_payments_v5');
+    localStorage.removeItem('vap_sales_agreements_v1');
 
     setProducts(INITIAL_PRODUCTS);
     setOfficers(INITIAL_OFFICERS);
@@ -781,6 +814,7 @@ export function AgroProvider({ children }) {
     setStockInLogs(INITIAL_STOCK_IN);
     setDamageLogs(INITIAL_DAMAGES);
     setPayments(INITIAL_PAYMENTS);
+    setSalesAgreements([]);
   };
 
   const exportBackup = (format = 'excel') => {
@@ -793,7 +827,8 @@ export function AgroProvider({ children }) {
       ['Invoices', invoices],
       ['Stock In', stockInLogs],
       ['Damage Logs', damageLogs],
-      ['Payments', payments]
+      ['Payments', payments],
+      ['Sales Agreements', salesAgreements]
     ];
     let fileName;
     let mimeType;
@@ -862,6 +897,7 @@ export function AgroProvider({ children }) {
         stockInLogs,
         damageLogs,
         payments,
+        salesAgreements,
         allProductVariants,
         createInvoice,
         updateInvoice,
@@ -869,6 +905,8 @@ export function AgroProvider({ children }) {
         addStockIn,
         recordDamageReturn,
         addDealerPayment,
+        saveSalesAgreement,
+        deleteSalesAgreement,
         addNewDealer,
         addNewOfficer,
         addNewProduct,

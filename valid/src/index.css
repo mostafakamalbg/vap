@@ -240,8 +240,74 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
     visibility: hidden !important;
   }
   .invoice-print-sheet,
-  .invoice-print-sheet * {
+  .invoice-print-sheet *,
+  .sales-agreement-print,
+  .sales-agreement-print * {
     visibility: visible !important;
+  }
+  .sales-agreement-print {
+    position: static !important;
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    border: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    font-size: 10pt !important;
+    line-height: 1.32 !important;
+  }
+  .sales-agreement-page {
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  .sales-agreement-page > .grid {
+    display: block !important;
+  }
+  .sales-agreement-page > .grid > section {
+    display: block !important;
+    width: 100% !important;
+  }
+  .agreement-header {
+    padding-bottom: 2mm;
+  }
+  .agreement-header h1 {
+    font-size: 17pt;
+  }
+  .agreement-subtitle {
+    font-size: 10pt;
+  }
+  .agreement-ref-row {
+    margin: 3mm 0;
+  }
+  .agreement-title {
+    margin: 3mm 0;
+    font-size: 13pt;
+  }
+  .agreement-intro,
+  .agreement-declaration {
+    margin: 2.5mm 0;
+  }
+  .agreement-dealer-details,
+  .agreement-commercial-terms {
+    margin: 2.5mm 0;
+    padding: 2mm 3mm;
+  }
+  .agreement-clauses-heading {
+    margin: 3mm 0 1.5mm;
+    font-size: 11pt;
+  }
+  .agreement-clauses {
+    gap: 1.5mm;
+  }
+  .agreement-signatures {
+    gap: 5mm;
+    margin-top: 18mm;
+  }
+  .agreement-signatures > div {
+    min-height: 12mm;
+    padding-top: 2mm;
+    font-size: 9pt;
   }
   .invoice-print-sheet {
     position: absolute !important;
@@ -684,7 +750,7 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
 }
 
 .home-company-heading {
-  font-size: clamp(0.7rem, 3.8vw, 3.75rem);
+  font-size: clamp(1.05rem, 2.4vw, 2.15rem);
   line-height: 1.25;
 }
 
@@ -697,8 +763,8 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
 }
 
 .home-company-line img {
-  width: clamp(1.6rem, 5vw, 3.5rem);
-  height: clamp(1.6rem, 5vw, 3.5rem);
+  width: clamp(1.5rem, 3vw, 2.5rem);
+  height: clamp(1.5rem, 3vw, 2.5rem);
   flex: none;
   object-fit: contain;
 }
@@ -760,6 +826,105 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
   .home-company-line {
     gap: 0.35rem;
   }
+}
+
+.sales-agreement-print {
+  width: 100%;
+  max-width: 210mm;
+  margin: 0 auto;
+  border: 1px solid #d1d5db;
+  font-size: 0.94rem;
+  line-height: 1.5;
+}
+
+.agreement-header {
+  border-bottom: 2px solid #14532d;
+  padding-bottom: 0.7rem;
+}
+
+.agreement-header h1 {
+  margin: 0;
+  color: #14532d;
+  font-size: 1.5rem;
+  font-weight: 900;
+}
+
+.agreement-header p {
+  margin: 0.1rem 0;
+}
+
+.agreement-subtitle {
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.agreement-ref-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 0.8rem 0;
+}
+
+.agreement-title {
+  margin: 0.7rem 0;
+  font-size: 1.15rem;
+  font-weight: 900;
+  text-align: center;
+}
+
+.agreement-intro,
+.agreement-declaration {
+  margin: 0.65rem 0;
+  text-align: justify;
+}
+
+.agreement-dealer-details,
+.agreement-commercial-terms {
+  margin: 0.7rem 0;
+  border: 1px solid #9ca3af;
+  padding: 0.5rem 0.7rem;
+}
+
+.agreement-dealer-details p,
+.agreement-commercial-terms p {
+  margin: 0.2rem 0;
+}
+
+.agreement-clauses-heading {
+  margin: 0.7rem 0 0.35rem;
+  font-size: 1rem;
+  font-weight: 900;
+}
+
+.agreement-clauses {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0;
+  padding-left: 1.8rem;
+  list-style: decimal;
+}
+
+.agreement-clauses li {
+  padding-left: 0.2rem;
+  text-align: justify;
+  break-inside: avoid;
+}
+
+.agreement-signatures {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1rem;
+  margin-top: 3.5rem;
+  break-inside: avoid;
+}
+
+.agreement-signatures > div {
+  min-height: 2.5rem;
+  border-top: 1px solid #374151;
+  padding-top: 0.4rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-align: center;
 }
 
 @media print {

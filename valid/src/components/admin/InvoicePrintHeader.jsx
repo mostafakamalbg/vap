@@ -94,7 +94,7 @@ export default function InvoicePrintHeader({ invoice }) {
             <p>হটলাইন: 01867912167 • উন্নত ফসল সুরক্ষা ও বালাইনাশক</p>
           </div>
           <div className="invoice-print-logo invoice-print-logo-mahananda">
-            <img src="/logos/mahananda-logo.png" alt="Mahananda Agro" />
+            <img src="/logos/mahananda-logo-transparent.png" alt="Mahananda Agro" />
           </div>
         </div>
         <div className="invoice-session-badge">সেশন: {invoice.session || LEGACY_INVOICE_SESSION}</div>

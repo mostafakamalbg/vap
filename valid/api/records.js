@@ -9,7 +9,8 @@ const recordTypes = new Set([
   'invoices',
   'stockInLogs',
   'damageLogs',
-  'payments'
+  'payments',
+  'salesAgreements'
 ]);
 const databaseModels = { products: Product, dealers: Dealer, invoices: Invoice };
 
@@ -55,6 +56,9 @@ export default async function handler(req, res) {
       }
       let filter = { type };
       if (user.role !== 'admin') {
+        if (type === 'salesAgreements') {
+          return res.status(403).json({ error: 'এই রেকর্ড দেখার অনুমতি নেই।' });
+        }
         if (type === 'officers') {
           filter = { type, recordId: user.officerId };
         } else if (['stockInLogs', 'damageLogs', 'payments'].includes(type)) {

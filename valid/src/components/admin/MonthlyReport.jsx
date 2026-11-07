@@ -476,7 +476,7 @@ export default function MonthlyReport() {
               </div>
             </div>
             <img
-              src="/logos/mahananda-logo.png"
+              src="/logos/mahananda-logo-transparent.png"
               alt="Mahananda Agro"
               className="h-16 w-auto object-contain"
             />

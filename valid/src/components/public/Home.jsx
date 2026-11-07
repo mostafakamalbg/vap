@@ -98,7 +98,7 @@ export default function Home({ onNavigate }) {
                 <span>{t('brand.first')}</span>
               </span>
               <span className="home-company-line text-emerald-300">
-                <img src="/logos/mahananda-logo.png" alt="" />
+                <img src="/logos/mahananda-logo-transparent.png" alt="" />
                 <span>{t('brand.second')}</span>
               </span>
             </h1>

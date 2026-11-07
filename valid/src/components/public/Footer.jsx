@@ -23,7 +23,7 @@ export default function Footer({ onNavigate }) {
               <span className="whitespace-nowrap font-bold text-slate-900 text-[10px] sm:text-xs">{t('brand.first')}</span>
             </div>
             <div className="flex items-center gap-2">
-              <img src="/logos/mahananda-logo.png" alt="" className="h-7 w-8 object-contain shrink-0" />
+              <img src="/logos/mahananda-logo-transparent.png" alt="" className="h-7 w-8 object-contain shrink-0" />
               <span className="whitespace-nowrap text-[10px] font-semibold text-emerald-800 sm:text-xs">{t('brand.second')}</span>
             </div>
           </div>

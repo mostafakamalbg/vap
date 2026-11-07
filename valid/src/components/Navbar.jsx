@@ -41,6 +41,7 @@ export default function Navbar({ activeTab, setActiveTab }) {
     { id: 'inventory', label: t('nav.stock'), icon: Package },
     { id: 'damage-returns', label: t('nav.returns'), icon: RotateCcw },
     { id: 'dealer-ledger', label: t('nav.dealerLedger'), icon: Users },
+    { id: 'sales-agreements', label: 'সেলস ও কালেকশন চুক্তি', icon: FileText },
     { id: 'officer-tracking', label: t('nav.officerTracking'), icon: UserCheck },
     { id: 'monthly-reports', label: t('nav.reports'), icon: BarChart3 }
   ];
@@ -166,7 +167,7 @@ export default function Navbar({ activeTab, setActiveTab }) {
           </span>
           <span className="flex min-w-0 items-center gap-1.5">
             <img
-              src="/logos/mahananda-logo.png"
+              src="/logos/mahananda-logo-transparent.png"
               alt=""
               className="h-6 w-8 sm:h-7 sm:w-9 shrink-0 object-contain"
             />
