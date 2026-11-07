@@ -271,8 +271,26 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
   .agreement-header {
     padding-bottom: 2mm;
   }
-  .agreement-header h1 {
-    font-size: 17pt;
+  .agreement-brand-row {
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    gap: 2mm;
+  }
+  .agreement-brand {
+    flex-direction: row;
+    gap: 1.5mm;
+  }
+  .agreement-brand img {
+    width: 15mm;
+    height: 15mm;
+  }
+  .agreement-brand h1 {
+    font-size: 11pt;
+  }
+  .agreement-brand-connector span {
+    font-size: 15pt;
+  }
+  .agreement-brand-connector small {
+    font-size: 6pt;
   }
   .agreement-subtitle {
     font-size: 10pt;
@@ -840,12 +858,62 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
 .agreement-header {
   border-bottom: 2px solid #14532d;
   padding-bottom: 0.7rem;
+  text-align: center;
 }
 
-.agreement-header h1 {
+.agreement-brand-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.agreement-brand {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+}
+
+.agreement-brand img {
+  width: 3.5rem;
+  height: 3.5rem;
+  flex: 0 0 auto;
+  object-fit: contain;
+}
+
+.agreement-brand h1 {
   margin: 0;
   color: #14532d;
-  font-size: 1.5rem;
+  font-size: 1.15rem;
+  font-weight: 900;
+  line-height: 1.3;
+}
+
+.agreement-brand-connector {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  color: #64748b;
+}
+
+.agreement-brand-connector span {
+  color: #b45309;
+  font-size: 1.6rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.agreement-brand-connector small {
+  font-size: 0.62rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.agreement-party-label {
+  margin-bottom: 0.4rem !important;
+  color: #14532d;
   font-weight: 900;
 }
 
@@ -856,6 +924,32 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
 .agreement-subtitle {
   font-size: 0.9rem;
   font-weight: 700;
+}
+
+@media (max-width: 640px) {
+  .agreement-brand-row {
+    gap: 0.35rem;
+  }
+
+  .agreement-brand {
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  .agreement-brand img {
+    width: 2.8rem;
+    height: 2.8rem;
+  }
+
+  .agreement-brand h1 {
+    font-size: 0.82rem;
+  }
+
+  .agreement-brand-connector small {
+    max-width: 3.6rem;
+    white-space: normal;
+    text-align: center;
+  }
 }
 
 .agreement-ref-row {

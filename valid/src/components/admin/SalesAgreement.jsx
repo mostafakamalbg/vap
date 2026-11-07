@@ -20,6 +20,7 @@ const emptyAgreement = () => ({
   annualSalesTarget: '',
   annualSalesTargetWords: '',
   benefitAmount: '',
+  benefitAmountWords: '',
   benefitDescription: '',
   collectionDueDay: '5',
   minimumCollection: '',
@@ -48,6 +49,17 @@ function getSessionRange(session) {
   return session.includes('জানুয়ারি')
     ? { start: `${year}-01-01`, end: `${year}-06-30` }
     : { start: `${year}-07-01`, end: `${year}-12-31` };
+}
+
+function getAgreementSessionYears(session) {
+  const range = getSessionRange(session);
+  if (!range) return { julyDecember: '____________', januaryJune: '____________' };
+  const startYear = Number(range.start.slice(0, 4));
+  const isJanuarySession = range.start.endsWith('-01-01');
+  return {
+    julyDecember: String(isJanuarySession ? startYear - 1 : startYear),
+    januaryJune: String(isJanuarySession ? startYear : startYear + 1)
+  };
 }
 
 function amount(value) {
@@ -116,13 +128,6 @@ export default function SalesAgreement() {
     setMessage('');
   };
 
-  const updateTerm = (index, value) => {
-    setForm((current) => ({
-      ...current,
-      terms: current.terms.map((term, termIndex) => termIndex === index ? value : term)
-    }));
-  };
-
   const resetForm = () => {
     setForm(emptyAgreement());
     setError('');
@@ -165,6 +170,7 @@ export default function SalesAgreement() {
   const currentMetrics = form.id
     ? getAgreementMetrics(form, invoices, payments)
     : { sales: 0, collection: 0, target: Number(form.annualSalesTarget) || 0, remaining: Number(form.annualSalesTarget) || 0 };
+  const agreementSessionYears = getAgreementSessionYears(form.session);
 
   return (
     <div className="sales-agreement-page mx-auto max-w-7xl space-y-6 px-4 py-6">
@@ -235,8 +241,8 @@ export default function SalesAgreement() {
               <input type="number" min="0" step="1" value={form.benefitAmount} onChange={(event) => updateField('benefitAmount', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 font-normal" />
             </label>
             <label className="text-sm font-bold text-slate-700">
-              সুবিধার বিবরণ
-              <input value={form.benefitDescription} onChange={(event) => updateField('benefitDescription', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 font-normal" />
+              সুবিধার টাকার পরিমাণ কথায়
+              <input value={form.benefitAmountWords} onChange={(event) => updateField('benefitAmountWords', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 font-normal" />
             </label>
             <label className="text-sm font-bold text-slate-700">
               মাসিক কালেকশনের তারিখ
@@ -255,15 +261,6 @@ export default function SalesAgreement() {
             </label>
           </div>
 
-          <section className="space-y-3 border-t border-slate-200 pt-4">
-            <h3 className="font-black text-slate-900">চুক্তির ৯টি শর্ত লিখুন</h3>
-            {form.terms.map((term, index) => (
-              <label key={`term-${index}`} className="block text-sm font-bold text-slate-700">
-                শর্ত {toBn(index + 1)}
-                <textarea rows="2" value={term} onChange={(event) => updateTerm(index, event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 font-normal" />
-              </label>
-            ))}
-          </section>
           <button type="submit" className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-700 px-4 py-3 font-black text-white hover:bg-emerald-800">
             <Save className="h-4 w-4" /> {form.id ? 'চুক্তি আপডেট করুন' : 'চুক্তি সংরক্ষণ করুন'}
           </button>
@@ -276,8 +273,22 @@ export default function SalesAgreement() {
             </button>
           </div>
           <article className="sales-agreement-print bg-white p-6 text-slate-900 shadow-sm sm:p-10">
-            <header className="agreement-header text-center">
-              <h1>মহানন্দা এগ্রো ইন্ডাস্ট্রিজ</h1>
+            <header className="agreement-header">
+              <div className="agreement-brand-row">
+                <div className="agreement-brand">
+                  <img src="/logos/valid-logo.png" alt="ভ্যালিড এগ্রো প্রোডাক্ট লিমিটেড লোগো" />
+                  <h1>ভ্যালিড এগ্রো প্রোডাক্ট লিমিটেড</h1>
+                </div>
+                <div className="agreement-brand-connector" aria-label="সম্পৃক্ত প্রতিষ্ঠান">
+                  <span>&amp;</span>
+                  <small>সম্পৃক্ত প্রতিষ্ঠান</small>
+                </div>
+                <div className="agreement-brand">
+                  <img src="/logos/mahananda-logo-transparent.png" alt="মহানন্দা এগ্রো ইন্ডাস্ট্রিজ লোগো" />
+                  <h1>মহানন্দা এগ্রো ইন্ডাস্ট্রিজ</h1>
+                </div>
+              </div>
+              <p className="agreement-subtitle">সমন্বিত কার্যক্রম</p>
               <p className="agreement-subtitle">(Agricultural Commodities Importer, Repacker &amp; Supplier)</p>
               <p>Office/Factory: Matidali, Bogra Sadar, Bogra</p>
             </header>
@@ -287,25 +298,30 @@ export default function SalesAgreement() {
             </div>
             <h2 className="agreement-title">সেলস ও কালেকশনের বিপরীতে অতিরিক্ত সুবিধা প্রদান ও গ্রহণের চুক্তি</h2>
             <p className="agreement-intro">
-              এই চুক্তি {toBnDate(form.date) || '________________'} তারিখে প্রথম পক্ষ মহানন্দা এগ্রো ইন্ডাস্ট্রিজ এবং দ্বিতীয় পক্ষের মধ্যে সম্পাদিত হলো।
+              <strong>প্রথম পক্ষ কোম্পানী:</strong> মহানন্দা এগ্রো ইন্ডাস্ট্রিজ, মাটিডালী, বগুড়া সদর, বগুড়া।
             </p>
             <div className="agreement-dealer-details">
-              <p><strong>মেসার্স:</strong> {form.dealerName || '________________'} <strong>প্রোপাইটর:</strong> {form.proprietor || '________________'}</p>
-              <p><strong>বাজার/গ্রাম:</strong> {form.marketVillage || '________________'} <strong>থানা:</strong> {form.thana || '________________'} <strong>জেলা:</strong> {form.district || '________________'}</p>
-              <p><strong>মোবাইল:</strong> {form.phone || '________________'} <strong>সেশন:</strong> {form.session}</p>
+              <p className="agreement-party-label"><strong>দ্বিতীয় পক্ষ পরিবেশক:</strong></p>
+              <p><strong>মেসার্স:</strong> {form.dealerName || '..............................................................'} <strong>প্রো:</strong> {form.proprietor || '..............................................................'}</p>
+              <p><strong>বাজার/গ্রাম:</strong> {form.marketVillage || '.......................................................'} <strong>থানা:</strong> {form.thana || '..............................................................'}</p>
+              <p><strong>জেলা:</strong> {form.district || '................................................................'} <strong>মোবাইল নং:</strong> {form.phone || '....................................................'}</p>
             </div>
-            <div className="agreement-commercial-terms">
-              <p><strong>বার্ষিক সেলস টার্গেট:</strong> {form.annualSalesTarget ? amount(form.annualSalesTarget) : '৳____________'} ({form.annualSalesTargetWords || '________________________________'})</p>
-              <p><strong>প্রদত্ত সুবিধা:</strong> {form.benefitAmount ? amount(form.benefitAmount) : '৳____________'} {form.benefitDescription && `(${form.benefitDescription})`}</p>
-              <p><strong>মাসিক ন্যূনতম কালেকশন:</strong> প্রতি মাসের {toBn(form.collectionDueDay)} তারিখে {form.minimumCollection ? amount(form.minimumCollection) : '৳____________'} ({form.minimumCollectionWords || '________________________________'})</p>
-            </div>
-            <h3 className="agreement-clauses-heading">চুক্তির শর্তাবলী</h3>
+            <p className="agreement-intro">
+              প্রকাশ থাকে যে, দ্বিতীয় পক্ষ প্রথম পক্ষের একজন নিয়োজিত পরিবেশক। ব্যবসা চলাকালীন সময়ে দ্বিতীয় পক্ষ উভয় সেশনে ব্যবসা বাড়ানো এবং শতভাগ ক্লোজিং এর বিনিময় অতিরিক্ত সুযোগ-সুবিধা পাওয়ার জন্য প্রথম পক্ষকে মৌখিকভাবে প্রস্তাব দেন। পরবর্তীতে উভয়ের উপস্থিতিতে একটি মৌখিক চুক্তি হয়, যা এখানে লিখিত আকারে সম্পাদিত হলো।
+            </p>
+            <h3 className="agreement-clauses-heading">উভয়ের আলোচনা সাপেক্ষে চুক্তি সমূহ নিম্নে প্রদত্ত হলো:</h3>
             <ol className="agreement-clauses">
-              {form.terms.map((term, index) => (
-                <li key={`print-term-${index}`}>{term || '________________________________________________________________________________'}</li>
-              ))}
+              <li>দ্বিতীয় পক্ষকে বাৎসরিক <strong>{form.annualSalesTarget ? amount(form.annualSalesTarget) : '............................................'}</strong> কথায়: {form.annualSalesTargetWords || '.......................................................................................'} টাকা সেলস করিতে হইবে। বিনিময়ে প্রথম পক্ষ দ্বিতীয় পক্ষকে <strong>{form.benefitAmount ? amount(form.benefitAmount) : '............................................'}</strong> কথায়: {form.benefitAmountWords || '.......................................................................................'} টাকা প্রদান করিবে।</li>
+              <li>বাৎসরিক লক্ষ্য মাত্রা ২টি সেশনে বিভক্ত যথা জুলাই-ডিসেম্বর এবং জানুয়ারি-জুন।</li>
+              <li>জুলাই থেকে ডিসেম্বর যে পরিমাণ সেলস হবে তা ২৮শে ডিসেম্বরের এবং জানুয়ারি থেকে জুন পর্যন্ত যে পরিমাণ সেলস হবে তা ৩০শে জুন এর মধ্যে শতভাগ টাকা পরিশোধ করিতে হবে।</li>
+              <li>অতিরিক্ত সুযোগ-সুবিধার পুরো টাকা ক্রোজিন-এ এক সাথে প্রদান করা হবে।</li>
+              <li>দ্বিতীয় পক্ষ উল্লেখিত বিক্রয় লক্ষ্য মাত্রা অর্জন করিতে ব্যর্থ হইলে অতিরিক্ত সুযোগ সুবিধা থেকে বঞ্চিত হইবে।</li>
+              <li>মোট বিক্রয় লক্ষ্য মাত্রার ২৫% পণ্য প্রথম পক্ষ সরবরাহ করিতে ব্যর্থ হইলে দ্বিতীয় পক্ষ পণ্যের অজুহাতে বিক্রয় লক্ষ্য মাত্রা কমাইতে পারিবে না। বরং যে সকল পণ্য যথাযথ সরবরাহ থাকিবে সে সকল পণ্য বিক্রয় করিয়া লক্ষ্য মাত্রা পূরণ করিতে হইবে।</li>
+              <li>এই চুক্তি জুলাই থেকে ডিসেম্বর {toBn(agreementSessionYears.julyDecember)} এবং জানুয়ারি থেকে জুন {toBn(agreementSessionYears.januaryJune)} পর্যন্ত বলবৎ থাকিবে; যদি উভয় পক্ষ পরবর্তীতে আবার চুক্তি করিতে চাহিলে একই নিয়মে চুক্তি সম্পাদিত হইবে।</li>
+              <li>আন্তর্জাতিক বাজারের কারণে যে কোন সময় প্রথম পক্ষ পণ্যের দাম বাড়াইতে কিংবা কমাইতে পারিবে।</li>
+              <li>দ্বিতীয় পক্ষ প্রথম পক্ষকে ক্লোজিং মাস ছাড়া প্রতি মাসে {toBn(form.collectionDueDay)} তারিখের মধ্যে ন্যূনতম একটি কালেকশন দিতে হইবে, যার সর্বনিম্ন পরিমাণ <strong>{form.minimumCollection ? amount(form.minimumCollection) : '............................................'}</strong> কথায়: {form.minimumCollectionWords || '.......................................................................................'} টাকা। মাসিক কালেকশন বাদে বাকী যে টাকা থাকিবে তাহা কোম্পানীর ক্লোজিং এর নির্ধারিত সময়ের মধ্যে পরিশোধ করিতে হইবে।</li>
             </ol>
-            <p className="agreement-declaration">উভয় পক্ষ চুক্তির সকল শর্ত পড়ে, বুঝে ও স্বেচ্ছায় সম্মত হয়ে স্বাক্ষর করলেন।</p>
+            <p className="agreement-declaration">এমতাবস্থায় উপরোক্ত সকল বিষয় উভয় পক্ষ জেনে বুঝে স্বজ্ঞানে স্বেচ্ছায় নিম্নে স্বাক্ষর করিলেন।</p>
             <footer className="agreement-signatures">
               {['দ্বিতীয় পক্ষ (ডিলার)', 'দায়িত্বপ্রাপ্ত অফিসার', 'ম্যানেজার', 'প্রথম পক্ষ (কোম্পানি)'].map((signature) => (
                 <div key={signature}><span>{signature}</span></div>
