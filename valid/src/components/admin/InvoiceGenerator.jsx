@@ -48,6 +48,7 @@ export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCa
   } = useAgro();
   const [form, setForm] = useState(() => ({
     id: editInvoiceData?.id || '',
+    challanNo: editInvoiceData?.challanNo || '',
     date: editInvoiceData?.date || today(),
     session: INVOICE_SESSIONS.includes(editInvoiceData?.session)
       ? editInvoiceData.session
@@ -235,7 +236,8 @@ export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCa
     const invoice = {
       ...(editInvoiceData || {}),
       id: editInvoiceData?.id || candidateId,
-      invoiceNo: editInvoiceData?.invoiceNo || editInvoiceData?.id || candidateId,
+      invoiceNo: editInvoiceData?.id || candidateId,
+      challanNo: form.challanNo.trim(),
       seqNumber: editInvoiceData?.seqNumber || seqNumber,
       session: form.session,
       date: form.date,
@@ -334,6 +336,10 @@ export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCa
             <input value={editInvoiceData?.id || getNextInvoiceNumber(invoices).candidateId} readOnly className="mt-1 w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2" />
           </label>
           <label className="text-sm font-semibold text-slate-700">
+            চালান নং
+            <input value={form.challanNo} onChange={(event) => updateForm('challanNo', event.target.value)} maxLength={100} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" />
+          </label>
+          <label className="text-sm font-semibold text-slate-700">
             তারিখ <span className="text-rose-600">*</span>
             <input type="date" required value={form.date} onChange={(event) => updateForm('date', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" />
           </label>
@@ -425,8 +431,11 @@ export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCa
                       </select>
                     </label>
                     <label className="text-sm font-semibold text-slate-700">
-                      সংখ্যা ({item.unit})
+                      সংখ্যা (পিস/বোতল)
                       <input type="number" min="1" step="1" required value={item.quantity} onChange={(event) => updateReturnAdjustment(index, 'quantity', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" />
+                      <span className="mt-1 block text-xs font-medium text-slate-500">
+                        {toBnCurrency(Math.floor(returnAdjustments[index].quantity / (Number(item.packPerBox) || 1)))} কার্টুন {toBnCurrency(returnAdjustments[index].quantity % (Number(item.packPerBox) || 1))} {item.unit}
+                      </span>
                     </label>
                     <label className="text-sm font-semibold text-slate-700">
                       দর (৳/পিস)

@@ -59,6 +59,7 @@ const invoiceItemSchema = new Schema({
 const invoiceSchema = new Schema({
   id: { type: String, required: true, unique: true, index: true },
   invoiceNo: { type: String, default: '' },
+  challanNo: { type: String, default: '', maxlength: 100 },
   date: { type: String, required: true, match: /^\d{4}-\d{2}-\d{2}$/ },
   session: {
     type: String,

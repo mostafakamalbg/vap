@@ -85,6 +85,23 @@ function getInvoiceStockMovements(invoice) {
     movements.set(key, movement);
   });
 
+  (invoice.returnAdjustments || []).forEach((item) => {
+    if (!item.productId || !item.sku) return;
+
+    const key = `${item.productId}\u0000${item.sku}`;
+    const quantity = Number(item.quantity ?? item.quantityPieces) || 0;
+    const packPerBox = Number(item.packPerBox) || 1;
+    const movement = movements.get(key) || {
+      productId: item.productId,
+      sku: item.sku,
+      cartons: 0,
+      pieces: 0
+    };
+
+    movement.cartons -= Math.floor(quantity / packPerBox);
+    movements.set(key, movement);
+  });
+
   return movements;
 }
 
@@ -462,6 +479,8 @@ export function AgroProvider({ children }) {
     productName: ret.productName,
     sku: ret.sku,
     size: ret.size,
+    packPerBox: Number(ret.packPerBox) || 1,
+    unit: ret.unit || 'পিস/বোতল',
     quantityPieces: Number(ret.quantity) || 1,
     unitPrice: Number(ret.price) || 0,
     totalDamageValue: Number(ret.total) || 0,

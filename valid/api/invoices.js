@@ -75,6 +75,7 @@ function invoiceValues(body) {
   return {
     id: String(body.id).trim(),
     invoiceNo: String(body.invoiceNo || body.id).trim(),
+    challanNo: String(body.challanNo || '').trim().slice(0, 100),
     date: body.date,
     session: body.session,
     officerId: String(body.officerId),

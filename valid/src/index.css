@@ -284,10 +284,10 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
     white-space: nowrap !important;
   }
   .invoice-items-table th {
-    font-size: 8pt !important;
+    font-size: 9pt !important;
   }
   .invoice-items-table td {
-    font-size: 8pt !important;
+    font-size: 9pt !important;
   }
   .invoice-product-name {
     overflow: hidden !important;
@@ -362,7 +362,7 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
 
 .invoice-print-sheet {
   color: #17211b;
-  font-size: 0.75rem;
+  font-size: 0.85rem;
   line-height: 1.35;
 }
 
@@ -415,20 +415,20 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
 
 .invoice-company-copy h1 {
   color: #14532d;
-  font-size: 1.25rem;
+  font-size: 1.35rem;
   font-weight: 900;
   line-height: 1.3;
 }
 
 .invoice-company-copy h2 {
   color: #166534;
-  font-size: 1rem;
+  font-size: 1.1rem;
   font-weight: 800;
 }
 
 .invoice-company-copy p {
   color: #374151;
-  font-size: 0.68rem;
+  font-size: 0.76rem;
   line-height: 1.35;
 }
 
@@ -440,7 +440,7 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
   background: #f0fdf4;
   padding: 0.2rem 0.8rem;
   color: #14532d;
-  font-size: 0.75rem;
+  font-size: 0.85rem;
   font-weight: 800;
   text-align: center;
   print-color-adjust: exact;
@@ -451,7 +451,7 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
   background: #166534;
   padding: 0.3rem 0.5rem;
   color: #fff;
-  font-size: 0.92rem;
+  font-size: 1.02rem;
   font-weight: 900;
   line-height: 1.3;
   text-align: center;
@@ -482,13 +482,13 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
 .invoice-party h2 {
   margin-bottom: 0.15rem;
   color: #166534;
-  font-size: 0.82rem;
+  font-size: 0.92rem;
   font-weight: 900;
 }
 
 .invoice-party p {
   overflow: hidden;
-  font-size: 0.72rem;
+  font-size: 0.82rem;
   font-weight: 600;
   line-height: 1.35;
   text-overflow: ellipsis;
@@ -507,7 +507,7 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
 .invoice-section-heading {
   margin: 0 0 0.2rem;
   color: #1f2937;
-  font-size: 0.72rem;
+  font-size: 0.82rem;
   font-weight: 900;
 }
 
@@ -525,7 +525,7 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
   width: 100%;
   border-collapse: collapse;
   table-layout: fixed;
-  font-size: 0.62rem;
+  font-size: 0.72rem;
 }
 
 .invoice-items-table th,
@@ -609,7 +609,7 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
 
 .invoice-notes p {
   margin: 0.22rem 0;
-  font-size: 0.64rem;
+  font-size: 0.74rem;
   line-height: 1.35;
 }
 
@@ -623,7 +623,7 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
   justify-content: space-between;
   gap: 0.5rem;
   padding: 0.12rem 0;
-  font-size: 0.65rem;
+  font-size: 0.75rem;
   line-height: 1.25;
 }
 
@@ -642,7 +642,7 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
   margin-top: 0.1rem;
   border-top: 1px solid #9ca3af;
   color: #b91c1c;
-  font-size: 0.72rem !important;
+  font-size: 0.82rem !important;
   font-weight: 900;
 }
 
@@ -657,7 +657,7 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
 .invoice-signatures > div {
   border-top: 1px solid #6b7280;
   padding-top: 0.25rem;
-  font-size: 0.62rem;
+  font-size: 0.72rem;
   font-weight: 700;
   text-align: center;
 }
@@ -715,17 +715,17 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
   }
 
   .invoice-company-copy h1 {
-    font-size: 0.92rem;
+    font-size: 1rem;
     white-space: normal;
   }
 
   .invoice-company-copy h2 {
-    font-size: 0.78rem;
+    font-size: 0.86rem;
     white-space: normal;
   }
 
   .invoice-company-copy p {
-    font-size: 0.55rem;
+    font-size: 0.62rem;
   }
 
   .invoice-parties-grid {
@@ -780,7 +780,7 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
     max-width: none !important;
     margin: 0 !important;
     padding: 0 !important;
-    font-size: 7pt !important;
+    font-size: 8pt !important;
     line-height: 1.18 !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
@@ -801,27 +801,27 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
   }
 
   .invoice-company-copy h1 {
-    font-size: 12pt;
+    font-size: 13pt;
   }
 
   .invoice-company-copy h2 {
-    font-size: 9pt;
+    font-size: 10pt;
   }
 
   .invoice-company-copy p {
-    font-size: 7pt;
+    font-size: 8pt;
     line-height: 1.2;
   }
 
   .invoice-session-badge {
     margin: 1.2mm auto;
     padding: 0.5mm 3mm;
-    font-size: 8pt;
+    font-size: 9pt;
   }
 
   .invoice-title-bar {
     padding: 1mm;
-    font-size: 10pt;
+    font-size: 11pt;
   }
 
   .invoice-parties-grid {
@@ -835,11 +835,11 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
   .invoice-party h2,
   .invoice-section-heading {
     margin-bottom: 0.5mm;
-    font-size: 8pt;
+    font-size: 9pt;
   }
 
   .invoice-party p {
-    font-size: 7.5pt;
+    font-size: 8.5pt;
     font-weight: 600;
     line-height: 1.2;
   }
@@ -855,7 +855,7 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
   .invoice-items-table,
   .invoice-returns-table {
     min-width: 0 !important;
-    font-size: 6.5pt;
+    font-size: 7.5pt;
   }
 
   .invoice-items-table th,
@@ -881,7 +881,7 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
 
   .invoice-notes p,
   .invoice-totals > div {
-    font-size: 6.5pt;
+    font-size: 7.5pt;
     line-height: 1.12;
   }
 
@@ -890,7 +890,7 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
   }
 
   .invoice-due-total {
-    font-size: 7.5pt !important;
+    font-size: 8.5pt !important;
   }
 
   .invoice-signatures {
@@ -900,7 +900,7 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
   }
 
   .invoice-signatures > div {
-    font-size: 6.5pt;
+    font-size: 7.5pt;
   }
 
   html[data-theme="dark"] .invoice-print-sheet {

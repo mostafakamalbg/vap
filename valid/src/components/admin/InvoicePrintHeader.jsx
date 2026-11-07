@@ -2,6 +2,7 @@ import React from 'react';
 import { toBn, toBnDate } from '../../utils/bengali';
 import { formatDealerCode, formatOfficerCode } from '../../../shared/codes';
 import { normalizePaymentMethod, PAYMENT_METHODS } from '../../../shared/paymentMethods';
+import { LEGACY_INVOICE_SESSION } from '../../../shared/sessions';
 
 const money = (value) => {
   const amount = Number(value) || 0;
@@ -27,9 +28,12 @@ function getItemValues(item) {
 
 function getReturnValues(item) {
   const quantity = Number(item.quantity ?? item.quantityPieces) || 0;
+  const packPerBox = Number(item.packPerBox) || 1;
   const price = Number(item.price ?? item.unitPrice) || 0;
   return {
     quantity,
+    cartons: Math.floor(quantity / packPerBox),
+    loosePieces: quantity % packPerBox,
     price,
     total: Number(item.total) || quantity * price
   };
@@ -93,8 +97,8 @@ export default function InvoicePrintHeader({ invoice }) {
             <img src="/logos/mahananda-logo.png" alt="Mahananda Agro" />
           </div>
         </div>
-        <div className="invoice-session-badge">সেশন: জুলাই - ডিসেম্বর ২০২৬</div>
-        <h2 className="invoice-title-bar">ডিলার বিক্রয় চালান ও মেমো কপি</h2>
+        <div className="invoice-session-badge">সেশন: {invoice.session || LEGACY_INVOICE_SESSION}</div>
+        <h2 className="invoice-title-bar">ডিলার বিক্রয় ইনভয়েস ও মেমো কপি</h2>
       </header>
 
       <section className="invoice-parties-grid">
@@ -108,7 +112,8 @@ export default function InvoicePrintHeader({ invoice }) {
         </div>
         <div className="invoice-party invoice-party-invoice">
           <h2>চালান তথ্য</h2>
-          <p><strong>চালান নং:</strong> {toBn(invoice.invoiceNo || invoice.id)}</p>
+          <p><strong>ইনভয়েস নং:</strong> {toBn(invoice.invoiceNo || invoice.id)}</p>
+          <p><strong>চালান নং:</strong> {toBn(invoice.challanNo || '—')}</p>
           <p><strong>তারিখ:</strong> {toBnDate(invoice.date)}</p>
           <p className="invoice-officer-code"><strong>অফিসার কোড:</strong> {toBn(formatOfficerCode(invoice.officerCode, invoice.officerDesignation) || invoice.officerId || '—')}</p>
           <p><strong>সেলস অফিসার:</strong> {invoice.officerName || '—'}</p>
@@ -202,7 +207,7 @@ export default function InvoicePrintHeader({ invoice }) {
                   return (
                     <tr key={`${item.sku || item.productId}-return-${index}`}>
                       <td className="invoice-product-name">{getProductDescription({ ...item, productName: item.productName || 'ফেরত পণ্য' })}</td>
-                      <td>{toBn(values.quantity)} {item.unit || 'পিস/বোতল'}</td>
+                      <td>{toBn(values.cartons)} কার্টুন {toBn(values.loosePieces)} {item.unit || 'পিস/বোতল'}</td>
                       <td>{money(values.price)}</td>
                       <td className="invoice-return-deduction">− {money(values.total)}</td>
                     </tr>
