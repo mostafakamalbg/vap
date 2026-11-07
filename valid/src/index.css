@@ -862,10 +862,8 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
 }
 
 .agreement-brand-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-  align-items: center;
-  gap: 0.75rem;
+  display: flex;
+  justify-content: center;
 }
 
 .agreement-brand {
@@ -891,26 +889,6 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
   line-height: 1.3;
 }
 
-.agreement-brand-connector {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  color: #64748b;
-}
-
-.agreement-brand-connector span {
-  color: #b45309;
-  font-size: 1.6rem;
-  font-weight: 900;
-  line-height: 1;
-}
-
-.agreement-brand-connector small {
-  font-size: 0.62rem;
-  font-weight: 700;
-  white-space: nowrap;
-}
-
 .agreement-party-label {
   margin-bottom: 0.4rem !important;
   color: #14532d;
@@ -927,13 +905,8 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
 }
 
 @media (max-width: 640px) {
-  .agreement-brand-row {
-    gap: 0.35rem;
-  }
-
   .agreement-brand {
-    flex-direction: column;
-    gap: 0.25rem;
+    gap: 0.35rem;
   }
 
   .agreement-brand img {
@@ -943,12 +916,6 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
 
   .agreement-brand h1 {
     font-size: 0.82rem;
-  }
-
-  .agreement-brand-connector small {
-    max-width: 3.6rem;
-    white-space: normal;
-    text-align: center;
   }
 }
 
