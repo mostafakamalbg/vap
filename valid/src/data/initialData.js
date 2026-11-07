@@ -3,38 +3,38 @@
 
 export const INITIAL_OFFICERS = [
   {
-    id: 'OFF-05',
+    id: 'SO-05',
     code: '5',
     name: 'মো: মোন্তফা কামাল',
-    designation: 'ফিল্ড সেলস অফিসার (FSO)',
-    territory: 'পীরগঞ্জ ও বোচাগঞ্জ জোন',
+    designation: 'সেলস অফিসার (SO)',
+    territory: 'পীরগঞ্জ',
     phone: '০১৭৩১-২৮১৫৩৬',
     joinDate: '2024-01-01'
   },
   {
-    id: 'OFF-09',
+    id: 'SO-09',
     code: '9',
     name: 'মো: সেলিম রেজা',
-    designation: 'ফিল্ড সেলস অফিসার (FSO)',
-    territory: 'রাণীশংকৈল ও হরিপুর জোন',
+    designation: 'সেলস অফিসার (SO)',
+    territory: 'রাণীশংকৈল',
     phone: '০১৭৭৩-০৮২৭২৯',
     joinDate: '2024-01-01'
   },
   {
-    id: 'OFF-04',
+    id: 'SO-04',
     code: '4',
     name: 'মো: বদিরুল ইসলাম',
-    designation: 'ফিল্ড সেলস অফিসার (FSO)',
-    territory: 'বীরগঞ্জ ও কাহারোল জোন',
+    designation: 'সেলস অফিসার (SO)',
+    territory: 'বীরগঞ্জ ও কাহারোল',
     phone: '০১৭৯৬৭৯১৩৯৮',
     joinDate: '2024-01-01'
   },
   {
-    id: 'OFF-07',
+    id: 'SO-07',
     code: '7',
     name: 'মো: মাসুদ রানা',
-    designation: 'ফিল্ড সেলস অফিসার (FSO)',
-    territory: 'দিনাজপুর সদর ও বিরল জোন',
+    designation: 'সেলস অফিসার (SO)',
+    territory: 'দিনাজপুর সদর',
     phone: '০১৭৩০-৪৭৮৪৭৭',
     joinDate: '2024-01-01'
   }
