@@ -786,10 +786,6 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
     print-color-adjust: exact !important;
   }
 
-  .invoice-print-sheet .invoice-officer-name {
-    display: none !important;
-  }
-
   .invoice-company-header {
     padding-bottom: 1.2mm !important;
   }
