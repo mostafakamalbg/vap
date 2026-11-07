@@ -300,9 +300,6 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
   .no-print {
     display: none !important;
   }
-  .invoice-officer-name {
-    display: none !important;
-  }
   .print-only {
     display: block !important;
   }
@@ -787,6 +784,10 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
     line-height: 1.18 !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
+  }
+
+  .invoice-print-sheet .invoice-officer-name {
+    display: none !important;
   }
 
   .invoice-company-header {

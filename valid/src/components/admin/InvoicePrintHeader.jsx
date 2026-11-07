@@ -116,7 +116,7 @@ export default function InvoicePrintHeader({ invoice }) {
           <p><strong>ইনভয়েস নং:</strong> {toBn(formatInvoiceNumber(invoice.invoiceNo || invoice.id))}</p>
           <p><strong>তারিখ:</strong> {toBnDate(invoice.date)}</p>
           <p className="invoice-officer-code"><strong>অফিসার কোড:</strong> {toBn(formatOfficerCode(invoice.officerCode, invoice.officerDesignation) || invoice.officerId || '—')}</p>
-          <p className="invoice-officer-name"><strong>সেলস অফিসার:</strong> {invoice.officerName || '—'}</p>
+          <p className="invoice-officer-name no-print"><strong>সেলস অফিসার:</strong> {invoice.officerName || '—'}</p>
           <p><strong>পরিবহন মাধ্যম:</strong> {invoice.transport || '—'}</p>
         </div>
       </section>

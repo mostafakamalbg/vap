@@ -344,6 +344,16 @@ export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCa
             তারিখ <span className="text-rose-600">*</span>
             <input type="date" required value={form.date} onChange={(event) => updateForm('date', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" />
           </label>
+          <label className="text-sm font-semibold text-slate-700">
+            পরিবহনের মাধ্যম
+            <select value={form.transport} onChange={(event) => updateForm('transport', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2">
+              <option value="">পরিবহন মাধ্যম নির্বাচন করুন</option>
+              {form.transport && !TRANSPORT_OPTIONS.includes(form.transport) && (
+                <option value={form.transport}>{form.transport}</option>
+              )}
+              {TRANSPORT_OPTIONS.map((transport) => <option key={transport} value={transport}>{transport}</option>)}
+            </select>
+          </label>
           <SearchableRecordSelect
             label="সেলস অফিসার *"
             items={officers}
@@ -480,16 +490,6 @@ export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCa
                 ক্রেডিট ইনভয়েসে কোনো তাৎক্ষণিক পরিশোধ হবে না; সম্পূর্ণ ইনভয়েস বকেয়ায় যুক্ত হবে। ডিলারের পরবর্তী পেমেন্ট আলাদা লেজার এন্ট্রি হিসেবে যোগ করুন।
               </p>
             )}
-            <label className="text-sm font-semibold text-slate-700">
-              পরিবহনের মাধ্যম
-              <select value={form.transport} onChange={(event) => updateForm('transport', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2">
-                <option value="">পরিবহন মাধ্যম নির্বাচন করুন</option>
-                {form.transport && !TRANSPORT_OPTIONS.includes(form.transport) && (
-                  <option value={form.transport}>{form.transport}</option>
-                )}
-                {TRANSPORT_OPTIONS.map((transport) => <option key={transport} value={transport}>{transport}</option>)}
-              </select>
-            </label>
             <label className="text-sm font-semibold text-slate-700 sm:col-span-2">
               নোট
               <textarea rows="2" value={form.note} onChange={(event) => updateForm('note', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" />
