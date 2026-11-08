@@ -343,7 +343,7 @@ export function AgroProvider({ children }) {
   };
 
   const logout = async () => {
-    const response = await fetch('/api/auth/logout', { method: 'POST' });
+    const response = await fetch('/api/auth/me', { method: 'POST' });
     await readJsonResponse(response);
     setCurrentUser(null);
     setCloudError('');
