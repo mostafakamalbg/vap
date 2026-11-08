@@ -7,6 +7,11 @@ const OTP_LIFETIME_MS = 10 * 60 * 1000;
 const OTP_RESEND_DELAY_MS = 60 * 1000;
 const MAX_OTP_ATTEMPTS = 5;
 
+function isLocalOtpMode() {
+  return process.env.NODE_ENV === 'development'
+    && process.env.OTP_DELIVERY_MODE === 'console';
+}
+
 function hashOtp(otp, userId) {
   const secret = process.env.SESSION_SECRET;
   if (!secret || secret.length < 32) throw new Error('SESSION_SECRET is not configured.');
@@ -22,6 +27,12 @@ function toBangladeshNumber(value) {
 }
 
 async function sendSms(to, otp) {
+  if (isLocalOtpMode()) {
+    const maskedPhone = to.replace(/\d(?=\d{4})/g, '*');
+    console.info(`[TEST OTP] Phone: ${maskedPhone}, OTP: ${otp}`);
+    return;
+  }
+
   const { TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER } = process.env;
   if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_FROM_NUMBER) {
     throw new Error('পাসওয়ার্ড রিকভারির SMS সেবা কনফিগার করা নেই।');
@@ -84,6 +95,7 @@ export default async function handler(req, res) {
   }
   if (
     action === 'request'
+    && !isLocalOtpMode()
     && (!process.env.TWILIO_ACCOUNT_SID || !process.env.TWILIO_AUTH_TOKEN || !process.env.TWILIO_FROM_NUMBER)
   ) {
     return res.status(503).json({ error: 'পাসওয়ার্ড রিকভারির SMS সেবা কনফিগার করা নেই।' });
