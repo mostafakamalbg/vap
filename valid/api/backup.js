@@ -1,5 +1,5 @@
 import mongoose from 'mongoose';
-import dbConnect, { MongoConnectionError } from '../lib/mongodb.js';
+import dbConnect from '../lib/mongodb.js';
 import { authorize, hasSuperAdminAccess } from '../lib/auth.js';
 import { BusinessRecord, Dealer, Invoice, Product } from '../lib/models.js';
 import {
@@ -41,7 +41,9 @@ function isValidBackup(value) {
   return value?.version === 1
     && recordTypes.every((type) => (
       Array.isArray(value.data?.[type])
-      && value.data[type].every((record) => record && typeof record === 'object' && !Array.isArray(record))
+      && value.data[type].every((record) => (
+        record && typeof record === 'object' && !Array.isArray(record)
+      ))
     ));
 }
 
@@ -106,10 +108,7 @@ export default async function handler(req, res) {
     await replaceWithTransaction(req.body.data);
     return res.status(200).json({ imported: recordTypes.length });
   } catch (error) {
-    if (error instanceof MongoConnectionError) {
-      return res.status(503).json({ error: 'ডাটাবেস সাময়িকভাবে উপলব্ধ নয়।' });
-    }
     console.error('Backup import failed:', error);
-    return res.status(500).json({ error: 'ব্যাকআপ ইমপোর্ট করা যায়নি; কোনো ডেটা পরিবর্তন করা হয়নি।' });
+    return res.status(500).json({ error: 'ব্যাকআপ ইমপোর্ট করা যায়নি; ডেটা পরিবর্তন সম্পন্ন হয়নি।' });
   }
 }

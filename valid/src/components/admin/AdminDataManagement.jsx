@@ -17,8 +17,9 @@ export default function AdminDataManagement() {
     setMessage('');
     try {
       const backup = JSON.parse(await file.text());
-      const confirmed = window.confirm('ইমপোর্ট করলে বর্তমান সব ব্যবসায়িক ডেটা ব্যাকআপের ডেটা দিয়ে প্রতিস্থাপিত হবে। আগে বর্তমান ডেটার ব্যাকআপ নিয়েছেন কি?');
-      if (!confirmed) return;
+      if (!window.confirm('ইমপোর্ট করলে বর্তমান ব্যবসায়িক ডেটা ব্যাকআপের ডেটা দিয়ে প্রতিস্থাপিত হবে। আগে বর্তমান ডেটার ব্যাকআপ নিন। এগোবেন?')) {
+        return;
+      }
       await importBackup(backup);
       setMessage('ব্যাকআপ সফলভাবে ইমপোর্ট হয়েছে।');
     } catch (requestError) {

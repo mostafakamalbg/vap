@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import { useAgro } from '../../context/AgroContext';
 import { toBn, toBnDate } from '../../utils/bengali';
-import { formatDealerCode, formatOfficerCode } from '../../../shared/codes';
+import { formatDealerCode, formatOfficerCode, normalizeOfficerCode } from '../../../shared/codes';
 import { INVOICE_SESSIONS, LEGACY_INVOICE_SESSION } from '../../../shared/sessions';
 import SearchableRecordSelect from './SearchableRecordSelect';
 
@@ -104,7 +104,9 @@ export default function MonthlyReport() {
   } else if (filterMode === 'officer') {
     const off = officers.find((o) => String(o.code) === String(selectedOfficerCode) || o.id === selectedOfficerCode);
     filteredInvoices = invoices.filter((inv) => {
-      const isOfficer = String(inv.officerCode) === String(selectedOfficerCode) || inv.officerId === off?.id;
+      const isOfficer = inv.officerId === off?.id
+        || normalizeOfficerCode(inv.officerCode, off?.designation)
+          === normalizeOfficerCode(off?.code, off?.designation);
       const inDateRange = (!startDate || inv.date >= startDate) && (!endDate || inv.date <= endDate);
       return isOfficer && inDateRange;
     });
@@ -127,7 +129,7 @@ export default function MonthlyReport() {
     filteredDamages = damageLogs.filter(
       (entry) => entry.session === activeSession || invoiceIds.has(entry.invoiceRef)
     );
-    reportTitle = `সেশনভিত্তিক সেলস ও রিটার্ন রিপোর্ট`;
+    reportTitle = 'সেশনভিত্তিক সেলস ও রিটার্ন রিপোর্ট';
     reportSubtitle = `নির্বাচিত সেশন: ${activeSession}`;
   }
 
@@ -135,9 +137,9 @@ export default function MonthlyReport() {
   if (searchTerm) {
     filteredInvoices = filteredInvoices.filter(
       (inv) =>
-        inv.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        inv.dealerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        inv.officerName.toLowerCase().includes(searchTerm.toLowerCase())
+        String(inv.id || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        String(inv.dealerName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        String(inv.officerName || '').toLowerCase().includes(searchTerm.toLowerCase())
     );
   }
 
@@ -281,7 +283,7 @@ export default function MonthlyReport() {
                   placeholder="অফিসার নির্বাচন করুন"
                   searchPlaceholder="কোড বা নাম দিয়ে দ্রুত খুঁজুন"
                   optionLabel={(officer) => `${formatOfficerCode(officer.code, officer.designation)} • ${officer.name} • ${officer.designation}`}
-                  searchText={(officer) => `${officer.code} ${officer.name} ${officer.designation || ''}`}
+                  searchText={(officer) => `${formatOfficerCode(officer.code, officer.designation)} ${officer.name} ${officer.designation || ''}`}
                 />
               </div>
             )}

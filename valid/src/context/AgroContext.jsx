@@ -8,13 +8,28 @@ import {
   INITIAL_DAMAGES,
   INITIAL_PAYMENTS
 } from '../data/initialData';
-import { getNextDealerCode, normalizeOfficerCode } from '../../shared/codes';
+import { formatDealerCode, getNextDealerCode, normalizeOfficerCode } from '../../shared/codes';
 import { normalizePaymentMethod } from '../../shared/paymentMethods';
 
 const AgroContext = createContext();
 
 const isSalesInvoice = (invoice) =>
   invoice.invoiceType !== 'dealer_return' && invoice.invoiceType !== 'factory_damage';
+
+function normalizeBusinessRecords(type, records) {
+  return records.map((record) => {
+    const normalized = { ...record };
+    if (type === 'officers') {
+      normalized.code = normalizeOfficerCode(record.code, record.designation);
+    }
+    if (type === 'dealers') {
+      normalized.code = formatDealerCode(record.code);
+    }
+    if (record.officerCode) normalized.officerCode = normalizeOfficerCode(record.officerCode);
+    if (record.dealerCode) normalized.dealerCode = formatDealerCode(record.dealerCode);
+    return normalized;
+  });
+}
 
 function getInvoicePaymentFields(invoice) {
   const paymentMethod = normalizePaymentMethod(invoice.paymentMethod);
@@ -211,17 +226,17 @@ export function AgroProvider({ children }) {
 
   const [officers, setOfficers] = useState(() => {
     const saved = localStorage.getItem('vap_officers_v5');
-    return saved ? JSON.parse(saved) : INITIAL_OFFICERS;
+    return normalizeBusinessRecords('officers', saved ? JSON.parse(saved) : INITIAL_OFFICERS);
   });
 
   const [dealers, setDealers] = useState(() => {
     const saved = localStorage.getItem('vap_dealers_v5');
-    return saved ? JSON.parse(saved) : INITIAL_DEALERS;
+    return normalizeBusinessRecords('dealers', saved ? JSON.parse(saved) : INITIAL_DEALERS);
   });
 
   const [invoices, setInvoices] = useState(() => {
     const saved = localStorage.getItem('vap_invoices_v5');
-    return saved ? JSON.parse(saved) : INITIAL_INVOICES;
+    return normalizeBusinessRecords('invoices', saved ? JSON.parse(saved) : INITIAL_INVOICES);
   });
 
   const [stockInLogs, setStockInLogs] = useState(() => {
@@ -231,16 +246,15 @@ export function AgroProvider({ children }) {
 
   const [damageLogs, setDamageLogs] = useState(() => {
     const saved = localStorage.getItem('vap_damages_v5');
-    return saved ? JSON.parse(saved) : INITIAL_DAMAGES;
+    return normalizeBusinessRecords('damageLogs', saved ? JSON.parse(saved) : INITIAL_DAMAGES);
   });
-
   const [payments, setPayments] = useState(() => {
     const saved = localStorage.getItem('vap_payments_v5');
-    return saved ? JSON.parse(saved) : INITIAL_PAYMENTS;
+    return normalizeBusinessRecords('payments', saved ? JSON.parse(saved) : INITIAL_PAYMENTS);
   });
   const [salesAgreements, setSalesAgreements] = useState(() => {
     const saved = localStorage.getItem('vap_sales_agreements_v1');
-    return saved ? JSON.parse(saved) : [];
+    return normalizeBusinessRecords('salesAgreements', saved ? JSON.parse(saved) : []);
   });
   const localRecordsRef = useRef({
     products,
@@ -369,8 +383,9 @@ export function AgroProvider({ children }) {
     if (!Array.isArray(records) || !setters[type]) {
       throw new Error('সার্ভার থেকে সঠিক ডেটা পাওয়া যায়নি।');
     }
-    setters[type](records);
-    return records;
+    const normalizedRecords = normalizeBusinessRecords(type, records);
+    setters[type](normalizedRecords);
+    return normalizedRecords;
   };
 
   useEffect(() => {
@@ -400,7 +415,7 @@ export function AgroProvider({ children }) {
           if (!Array.isArray(records)) throw new Error(`সার্ভার থেকে ${type} ডেটা সঠিকভাবে পাওয়া যায়নি।`);
 
           if (records.length > 0 || currentUser.role === 'officer') {
-            if (!cancelled) setter(records);
+            if (!cancelled) setter(normalizeBusinessRecords(type, records));
           } else if (localRecords[type].length > 0) {
             const saveResponse = await fetch(`/api/records?type=${encodeURIComponent(type)}`, {
               method: 'PUT',
@@ -495,7 +510,9 @@ export function AgroProvider({ children }) {
     amount: Number(invoice.paidAmount),
     paymentMethod: normalizePaymentMethod(invoice.paymentMethod),
     reference: `চালান #${invoice.id}`,
-    receivedBy: invoice.officerCode ? `অফিসার কোড ${invoice.officerCode}` : 'ক্যাশিয়ার',
+    receivedBy: invoice.officerCode
+      ? `অফিসার কোড ${normalizeOfficerCode(invoice.officerCode)}`
+      : 'ক্যাশিয়ার',
     note: `ইনভয়েস #${invoice.id} এর বিপরীতে পরিশোধ`
   });
 
@@ -836,12 +853,12 @@ export function AgroProvider({ children }) {
     localStorage.removeItem('vap_sales_agreements_v1');
 
     setProducts(INITIAL_PRODUCTS);
-    setOfficers(INITIAL_OFFICERS);
-    setDealers(INITIAL_DEALERS);
-    setInvoices(INITIAL_INVOICES);
+    setOfficers(normalizeBusinessRecords('officers', INITIAL_OFFICERS));
+    setDealers(normalizeBusinessRecords('dealers', INITIAL_DEALERS));
+    setInvoices(normalizeBusinessRecords('invoices', INITIAL_INVOICES));
     setStockInLogs(INITIAL_STOCK_IN);
-    setDamageLogs(INITIAL_DAMAGES);
-    setPayments(INITIAL_PAYMENTS);
+    setDamageLogs(normalizeBusinessRecords('damageLogs', INITIAL_DAMAGES));
+    setPayments(normalizeBusinessRecords('payments', INITIAL_PAYMENTS));
     setSalesAgreements([]);
     return true;
   };
@@ -877,7 +894,6 @@ export function AgroProvider({ children }) {
       window.setTimeout(() => URL.revokeObjectURL(backupUrl), 1000);
       return;
     }
-
     const dataSets = [
       ['Products', products],
       ['Officers', officers],
@@ -964,12 +980,13 @@ export function AgroProvider({ children }) {
       backup?.version !== 1
       || recordTypes.some((type) => (
         !Array.isArray(backup.data?.[type])
-        || backup.data[type].some((record) => !record || typeof record !== 'object' || Array.isArray(record))
+        || backup.data[type].some((record) => (
+          !record || typeof record !== 'object' || Array.isArray(record)
+        ))
       ))
     ) {
       throw new Error('সঠিক JSON ব্যাকআপ নির্বাচন করুন; সব ডেটা তালিকা থাকা আবশ্যক।');
     }
-
     const response = await fetch('/api/backup', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -977,13 +994,13 @@ export function AgroProvider({ children }) {
     });
     await readJsonResponse(response);
     setProducts(backup.data.products);
-    setOfficers(backup.data.officers);
-    setDealers(backup.data.dealers);
-    setInvoices(backup.data.invoices);
+    setOfficers(normalizeBusinessRecords('officers', backup.data.officers));
+    setDealers(normalizeBusinessRecords('dealers', backup.data.dealers));
+    setInvoices(normalizeBusinessRecords('invoices', backup.data.invoices));
     setStockInLogs(backup.data.stockInLogs);
-    setDamageLogs(backup.data.damageLogs);
-    setPayments(backup.data.payments);
-    setSalesAgreements(backup.data.salesAgreements);
+    setDamageLogs(normalizeBusinessRecords('damageLogs', backup.data.damageLogs));
+    setPayments(normalizeBusinessRecords('payments', backup.data.payments));
+    setSalesAgreements(normalizeBusinessRecords('salesAgreements', backup.data.salesAgreements));
   };
 
   const exportBackupExcel = () => exportBackup('excel');

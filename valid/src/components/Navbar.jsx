@@ -199,7 +199,7 @@ export default function Navbar({ activeTab, setActiveTab }) {
               <LogOut className="h-4 w-4" /><span className="hidden min-[380px]:inline">{t('nav.logout')}</span>
             </button>
           )}
-          {currentUser?.role === 'admin' && (
+          {currentUser?.role === 'admin' && currentUser.isSuperAdmin && (
             <button
             onClick={() => handleNavClick('new-invoice')}
             aria-label={t('nav.newInvoice')}
@@ -253,7 +253,7 @@ export default function Navbar({ activeTab, setActiveTab }) {
               <button onClick={() => handleNavClick('officer-register')} className="w-full rounded-lg px-3 py-2.5 text-left text-sm font-medium text-slate-700 hover:bg-slate-50"><Users className="mr-3 inline h-4 w-4 text-emerald-600" />{t('nav.officerRegister')}</button>
             </div>
           )}
-          {currentUser?.role === 'admin' && currentUser.isSuperAdmin && (
+          {currentUser?.role === 'admin' && (
             <div className="mt-2 border-t border-slate-100 pt-2">
               <p className="px-2 py-1 text-[10px] font-bold text-slate-400">{t('nav.backupFormat')}</p>
               <div className="grid grid-cols-1 gap-1 sm:grid-cols-3">

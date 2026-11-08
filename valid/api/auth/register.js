@@ -29,15 +29,19 @@ export default async function handler(req, res) {
       normalizeOfficerCode(entry.code) === officerCode
       || normalizeOfficerCode(entry.code, entry.designation) === officerCode
     ));
-    const savedOfficerRecord = await BusinessRecord.findOne({
-      type: 'officers',
-      'data.code': officerCode
-    }).lean();
+    const savedOfficerRecords = await BusinessRecord.find({ type: 'officers' }).lean();
+    const savedOfficerRecord = savedOfficerRecords.find((record) => (
+      normalizeOfficerCode(record.data?.code, record.data?.designation) === officerCode
+    ));
     const listedOfficer = rosterOfficer || savedOfficerRecord?.data;
     if (listedOfficer && normalizePhone(listedOfficer.phone) !== phone) {
       return res.status(400).json({ error: 'এই অফিসার কোডের নিবন্ধিত ফোন নম্বরের সঙ্গে মিলছে না।' });
     }
-    if (await User.exists({ $or: [{ email }, { officerCode }] })) {
+    const existingUsers = await User.find({ role: 'officer' }).select('officerCode').lean();
+    if (
+      await User.exists({ email })
+      || existingUsers.some((user) => normalizeOfficerCode(user.officerCode) === officerCode)
+    ) {
       return res.status(409).json({ error: 'এই ইমেইল বা অফিসার কোড দিয়ে ইতিমধ্যে অ্যাকাউন্ট আছে।' });
     }
 

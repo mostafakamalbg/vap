@@ -4,6 +4,7 @@ import { INVOICE_SESSIONS } from '../../../shared/sessions';
 import { toBn, toBnDate } from '../../utils/bengali';
 import { useAgro } from '../../context/AgroContext';
 import SearchableRecordSelect from './SearchableRecordSelect';
+import { formatDealerCode } from '../../../shared/codes';
 
 const DEFAULT_AGREEMENT_START_SESSION = 'জানুয়ারি - জুন ২০২৭';
 const DEFAULT_AGREEMENT_END_SESSION = 'জুলাই - ডিসেম্বর ২০২৭';
@@ -301,8 +302,8 @@ export default function SalesAgreement() {
                 onChange={selectDealer}
                 placeholder="ডিলার নির্বাচন করুন"
                 searchPlaceholder="ডিলার কোড বা নাম দিয়ে খুঁজুন"
-                optionLabel={(dealer) => `${dealer.code || ''} • ${dealer.shopName}`}
-                searchText={(dealer) => `${dealer.code || ''} ${dealer.shopName || ''} ${dealer.proprietor || ''}`}
+                optionLabel={(dealer) => `${formatDealerCode(dealer.code)} • ${dealer.shopName}`}
+                searchText={(dealer) => `${formatDealerCode(dealer.code)} ${dealer.shopName || ''} ${dealer.proprietor || ''}`}
               />
             </div>
             {[

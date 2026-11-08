@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { ClipboardList, PackageCheck, Plus, Send, ShoppingCart, TrendingUp } from 'lucide-react';
 import { useAgro } from '../context/AgroContext';
 import { useUiPreferences } from '../context/UiPreferencesContext';
-import { formatOfficerCode } from '../../shared/codes';
+import { formatOfficerCode, normalizeOfficerCode } from '../../shared/codes';
 
 async function requestJson(url, options) {
   const response = await fetch(url, options);
@@ -34,7 +34,8 @@ export default function OfficerDashboard() {
       !['dealer_return', 'factory_damage'].includes(invoice.invoiceType)
       && (
         (currentUser?.officerId && invoice.officerId === currentUser.officerId)
-        || (currentUser?.officerCode && invoice.officerCode === currentUser.officerCode)
+        || (currentUser?.officerCode
+          && normalizeOfficerCode(invoice.officerCode) === normalizeOfficerCode(currentUser.officerCode))
       )
     )),
     [currentUser?.officerCode, currentUser?.officerId, invoices]
