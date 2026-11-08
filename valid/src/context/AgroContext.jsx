@@ -342,24 +342,6 @@ export function AgroProvider({ children }) {
     return readJsonResponse(response);
   };
 
-  const requestPasswordReset = async (identifier) => {
-    const response = await fetch('/api/auth/password-reset', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'request', identifier })
-    });
-    return readJsonResponse(response);
-  };
-
-  const confirmPasswordReset = async ({ identifier, otp, password }) => {
-    const response = await fetch('/api/auth/password-reset', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'confirm', identifier, otp, password })
-    });
-    return readJsonResponse(response);
-  };
-
   const logout = async () => {
     const response = await fetch('/api/auth/logout', { method: 'POST' });
     await readJsonResponse(response);
@@ -1042,8 +1024,6 @@ export function AgroProvider({ children }) {
         cloudReady,
         login,
         registerOfficer,
-        requestPasswordReset,
-        confirmPasswordReset,
         logout,
         refreshSharedRecords
       }}

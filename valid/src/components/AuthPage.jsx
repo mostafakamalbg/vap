@@ -4,15 +4,11 @@ import { useAgro } from '../context/AgroContext';
 import { useUiPreferences } from '../context/UiPreferencesContext';
 
 export default function AuthPage({ initialRole = 'admin', onNavigate, onLoginSuccess }) {
-  const { login, registerOfficer, requestPasswordReset, confirmPasswordReset } = useAgro();
+  const { login, registerOfficer } = useAgro();
   const { t } = useUiPreferences();
   const [role, setRole] = useState(initialRole.startsWith('officer') ? 'officer' : 'admin');
   const [isRegistering, setIsRegistering] = useState(initialRole === 'officer-register');
-  const [isRecovering, setIsRecovering] = useState(false);
-  const [recoveryStep, setRecoveryStep] = useState('request');
-  const [recoveryIdentifier, setRecoveryIdentifier] = useState('');
-  const [recoveryOtp, setRecoveryOtp] = useState('');
-  const [recoveryPassword, setRecoveryPassword] = useState('');
+  const [showAdminHelp, setShowAdminHelp] = useState(false);
   const [form, setForm] = useState({
     name: '',
     email: '',
@@ -50,40 +46,10 @@ export default function AuthPage({ initialRole = 'admin', onNavigate, onLoginSuc
     }
   };
 
-  const handleRecoverySubmit = async (event) => {
-    event.preventDefault();
-    setError('');
-    setMessage('');
-    setBusy(true);
-    try {
-      if (recoveryStep === 'request') {
-        const result = await requestPasswordReset(recoveryIdentifier);
-        setMessage(result.message);
-        setRecoveryStep('confirm');
-      } else {
-        const result = await confirmPasswordReset({
-          identifier: recoveryIdentifier,
-          otp: recoveryOtp,
-          password: recoveryPassword
-        });
-        setIsRecovering(false);
-        setRecoveryStep('request');
-        setRecoveryOtp('');
-        setRecoveryPassword('');
-        setMessage(result.message);
-      }
-    } catch (requestError) {
-      setError(requestError.message);
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const selectRole = (nextRole) => {
     setRole(nextRole);
     setIsRegistering(false);
-    setIsRecovering(false);
-    setRecoveryStep('request');
+    setShowAdminHelp(false);
     setError('');
     setMessage('');
   };
@@ -104,13 +70,13 @@ export default function AuthPage({ initialRole = 'admin', onNavigate, onLoginSuc
           </span>
           <div>
             <h1 className="text-xl font-black text-slate-900">
-              {isRegistering ? t('auth.register') : isRecovering ? 'পাসওয়ার্ড রিকভারি' : t('auth.secureLogin')}
+              {isRegistering ? t('auth.register') : showAdminHelp ? 'অ্যাডমিন সহায়তা' : t('auth.secureLogin')}
             </h1>
             <p className="text-xs text-slate-500">{t('auth.management')}</p>
           </div>
         </div>
 
-        {!isRegistering && !isRecovering && (
+        {!isRegistering && !showAdminHelp && (
           <div className="mb-5 grid grid-cols-2 gap-2 rounded-xl bg-slate-100 p-1">
             <button
               type="button"
@@ -133,7 +99,17 @@ export default function AuthPage({ initialRole = 'admin', onNavigate, onLoginSuc
           </div>
         )}
 
-        {!isRecovering ? (
+        {showAdminHelp ? (
+          <div className="space-y-4">
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-950">
+              <p className="font-bold">পাসওয়ার্ড রিসেটের জন্য অ্যাডমিনের সাহায্য নিন</p>
+              <p className="mt-1">অফিসার অ্যাকাউন্ট হলে অ্যাডমিনকে আপনার ইমেইল বা অফিসার কোড জানান। পরিচয় যাচাই করে অ্যাডমিন প্যানেল থেকে নতুন পাসওয়ার্ড সেট করতে পারবেন। অ্যাডমিন অ্যাকাউন্টের জন্য অন্য অ্যাডমিনের সাথে যোগাযোগ করুন।</p>
+            </div>
+            <button type="button" onClick={() => setShowAdminHelp(false)} className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50">
+              লগইনে ফিরে যান
+            </button>
+          </div>
+        ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
           {isRegistering && (
             <>
@@ -170,81 +146,24 @@ export default function AuthPage({ initialRole = 'admin', onNavigate, onLoginSuc
             {busy ? t('auth.wait') : isRegistering ? t('auth.registerSubmit') : t('auth.loginSubmit')}
           </button>
           </form>
-        ) : (
-          <form onSubmit={handleRecoverySubmit} className="space-y-4">
-            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-950">
-              <p className="font-bold">ইমেইলে OTP দিয়ে পাসওয়ার্ড রিসেট</p>
-              <p className="mt-1">নিবন্ধিত ইমেইল অথবা মোবাইল নম্বর দিন। OTP অ্যাকাউন্টে নিবন্ধিত ইমেইলে পাঠানো হবে।</p>
-            </div>
-            <label className="block space-y-1">
-              <span className="text-xs font-bold text-slate-700">নিবন্ধিত ইমেইল অথবা মোবাইল নম্বর</span>
-              <input
-                required
-                type="text"
-                autoComplete="username"
-                value={recoveryIdentifier}
-                onChange={(event) => setRecoveryIdentifier(event.target.value)}
-                disabled={recoveryStep === 'confirm'}
-                placeholder="ইমেইল অথবা মোবাইল নম্বর"
-                className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100 disabled:bg-slate-50"
-              />
-            </label>
-            {recoveryStep === 'confirm' && (
-              <>
-                <label className="block space-y-1">
-                  <span className="text-xs font-bold text-slate-700">ইমেইলে পাওয়া ৬ সংখ্যার OTP</span>
-                  <input
-                    required
-                    inputMode="numeric"
-                    pattern="[0-9]{6}"
-                    maxLength={6}
-                    value={recoveryOtp}
-                    onChange={(event) => setRecoveryOtp(event.target.value)}
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
-                  />
-                </label>
-                <label className="block space-y-1">
-                  <span className="text-xs font-bold text-slate-700">নতুন পাসওয়ার্ড (কমপক্ষে ১০ অক্ষর)</span>
-                  <input
-                    required
-                    minLength={10}
-                    maxLength={128}
-                    type="password"
-                    autoComplete="new-password"
-                    value={recoveryPassword}
-                    onChange={(event) => setRecoveryPassword(event.target.value)}
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
-                  />
-                </label>
-              </>
-            )}
-            {error && <p role="alert" className="rounded-lg bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">{error}</p>}
-            {message && <p role="status" className="rounded-lg bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-800">{message}</p>}
-            <button disabled={busy} className="w-full rounded-lg bg-emerald-700 px-4 py-3 text-sm font-black text-white shadow transition hover:bg-emerald-800 disabled:cursor-wait disabled:opacity-60">
-              {busy ? 'অপেক্ষা করুন…' : recoveryStep === 'request' ? 'OTP পাঠান' : 'OTP যাচাই করে পাসওয়ার্ড বদলান'}
-            </button>
-            <button type="button" onClick={() => { setIsRecovering(false); setError(''); setMessage(''); }} className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50">
-              লগইনে ফিরে যান
-            </button>
-          </form>
         )}
 
         <div className="mt-5 border-t border-slate-100 pt-4 text-center">
-          {isRecovering ? null : role === 'officer' && !isRegistering ? (
-            <div className="flex flex-wrap justify-center gap-4">
-              <button type="button" onClick={() => { setIsRegistering(true); setMessage(''); setError(''); }} className="text-sm font-bold text-emerald-700 hover:underline">
-                {t('auth.newOfficer')}
-              </button>
-              <button type="button" onClick={() => { setIsRecovering(true); setRecoveryStep('request'); setRecoveryIdentifier(''); setRecoveryOtp(''); setRecoveryPassword(''); setMessage(''); setError(''); }} className="text-sm font-bold text-slate-600 hover:underline">
-                পাসওয়ার্ড ভুলে গেছেন?
-              </button>
-            </div>
-          ) : isRegistering ? (
+          {showAdminHelp ? null : isRegistering ? (
             <button type="button" onClick={() => { setIsRegistering(false); setMessage(''); setError(''); }} className="text-sm font-bold text-emerald-700 hover:underline">
               {t('auth.existingOfficer')}
             </button>
           ) : (
-            <p className="text-xs text-slate-500">অফিসার নিবন্ধন অ্যাডমিনের অনুমোদনের পর সক্রিয় হবে।</p>
+            <div className="flex flex-wrap justify-center gap-4">
+              {role === 'officer' && (
+                <button type="button" onClick={() => { setIsRegistering(true); setMessage(''); setError(''); }} className="text-sm font-bold text-emerald-700 hover:underline">
+                  {t('auth.newOfficer')}
+                </button>
+              )}
+              <button type="button" onClick={() => setShowAdminHelp(true)} className="text-sm font-bold text-slate-600 hover:underline">
+                পাসওয়ার্ড ভুলে গেছেন? অ্যাডমিনের সাহায্য নিন
+              </button>
+            </div>
           )}
         </div>
       </div>

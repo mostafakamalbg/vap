@@ -16,14 +16,6 @@ const userSchema = new Schema({
   phone: { type: String, default: '' }
 }, { timestamps: true });
 
-const passwordResetChallengeSchema = new Schema({
-  userId: { type: Schema.Types.ObjectId, required: true, unique: true },
-  tokenHash: { type: String, required: true },
-  attempts: { type: Number, default: 0 },
-  expiresAt: { type: Date, required: true }
-}, { timestamps: true });
-passwordResetChallengeSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
-
 const adminSeatSchema = new Schema({
   _id: { type: Number, enum: [1, 2], required: true },
   email: { type: String, required: true, lowercase: true, trim: true }
@@ -100,8 +92,6 @@ const orderSchema = new Schema({
 }, flexibleOptions);
 
 export const User = mongoose.models.User || mongoose.model('User', userSchema);
-export const PasswordResetChallenge = mongoose.models.PasswordResetChallenge
-  || mongoose.model('PasswordResetChallenge', passwordResetChallengeSchema);
 export const AdminSeat = mongoose.models.AdminSeat || mongoose.model('AdminSeat', adminSeatSchema);
 export const BusinessRecord = mongoose.models.BusinessRecord
   || mongoose.model('BusinessRecord', businessRecordSchema);
