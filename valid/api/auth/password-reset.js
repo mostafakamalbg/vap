@@ -7,9 +7,13 @@ const OTP_LIFETIME_MS = 10 * 60 * 1000;
 const OTP_RESEND_DELAY_MS = 60 * 1000;
 const MAX_OTP_ATTEMPTS = 5;
 
-function isLocalOtpMode() {
-  return process.env.NODE_ENV === 'development'
-    && process.env.OTP_DELIVERY_MODE === 'console';
+function isEmailConfigured() {
+  return Boolean(
+    process.env.GMAIL_USER
+    && process.env.GOOGLE_OAUTH_CLIENT_ID
+    && process.env.GOOGLE_OAUTH_CLIENT_SECRET
+    && process.env.GOOGLE_OAUTH_REFRESH_TOKEN
+  );
 }
 
 function hashOtp(otp, userId) {
@@ -18,44 +22,47 @@ function hashOtp(otp, userId) {
   return createHmac('sha256', secret).update(`${userId}:${otp}`).digest('hex');
 }
 
-function toBangladeshNumber(value) {
-  const digits = normalizePhone(value);
-  if (digits.startsWith('880') && digits.length === 13) return `+${digits}`;
-  if (digits.startsWith('0') && digits.length === 11) return `+880${digits.slice(1)}`;
-  if (digits.length === 10) return `+880${digits}`;
-  throw new Error('নিবন্ধিত মোবাইল নম্বরটি SMS পাঠানোর উপযোগী নয়।');
-}
-
-async function sendSms(to, otp) {
-  if (isLocalOtpMode()) {
-    const maskedPhone = to.replace(/\d(?=\d{4})/g, '*');
-    console.info(`[TEST OTP] Phone: ${maskedPhone}, OTP: ${otp}`);
-    return;
+async function sendOtpEmail(to, otp) {
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
+    throw new Error('Officer email address is invalid.');
   }
-
-  const { TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER } = process.env;
-  if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_FROM_NUMBER) {
-    throw new Error('পাসওয়ার্ড রিকভারির SMS সেবা কনফিগার করা নেই।');
-  }
-  const body = new URLSearchParams({
-    To: to,
-    From: TWILIO_FROM_NUMBER,
-    Body: `Valid Agro password reset code: ${otp}. It expires in 10 minutes.`
+  const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: process.env.GOOGLE_OAUTH_CLIENT_ID,
+      client_secret: process.env.GOOGLE_OAUTH_CLIENT_SECRET,
+      refresh_token: process.env.GOOGLE_OAUTH_REFRESH_TOKEN,
+      grant_type: 'refresh_token'
+    })
   });
-  const response = await fetch(
-    `https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(TWILIO_ACCOUNT_SID)}/Messages.json`,
-    {
-      method: 'POST',
-      headers: {
-        Authorization: `Basic ${Buffer.from(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`).toString('base64')}`,
-        'Content-Type': 'application/x-www-form-urlencoded'
-      },
-      body
-    }
-  );
+  if (!tokenResponse.ok) {
+    console.error('Gmail OAuth token request failed with status:', tokenResponse.status);
+    throw new Error('Gmail authentication failed.');
+  }
+  const { access_token: accessToken } = await tokenResponse.json();
+  if (!accessToken) throw new Error('Gmail OAuth response did not contain an access token.');
+
+  const message = [
+    `From: Valid Agro <${process.env.GMAIL_USER}>`,
+    `To: ${to}`,
+    'Subject: Valid Agro password reset code',
+    'MIME-Version: 1.0',
+    'Content-Type: text/plain; charset=utf-8',
+    '',
+    `Your password reset code is ${otp}. It expires in 10 minutes.`
+  ].join('\r\n');
+  const response = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ raw: Buffer.from(message).toString('base64url') })
+  });
   if (!response.ok) {
-    console.error('Password recovery SMS failed with Twilio status:', response.status);
-    throw new Error('SMS পাঠানো যায়নি। কিছুক্ষণ পর আবার চেষ্টা করুন।');
+    console.error('Gmail API send failed with status:', response.status);
+    throw new Error('Gmail API could not send the OTP.');
   }
 }
 
@@ -66,13 +73,13 @@ async function findOfficer(identifier) {
       email: identifier.toLowerCase(),
       role: 'officer',
       status: 'active'
-    }).select('_id phone');
+    }).select('_id phone email');
   }
 
   const normalizedPhone = normalizePhone(identifier);
   if (normalizedPhone.length < 10) return null;
   const officers = await User.find({ role: 'officer', status: 'active' })
-    .select('_id phone')
+    .select('_id phone email')
     .lean();
   return officers.find((officer) => normalizePhone(officer.phone) === normalizedPhone) || null;
 }
@@ -95,10 +102,9 @@ export default async function handler(req, res) {
   }
   if (
     action === 'request'
-    && !isLocalOtpMode()
-    && (!process.env.TWILIO_ACCOUNT_SID || !process.env.TWILIO_AUTH_TOKEN || !process.env.TWILIO_FROM_NUMBER)
+    && !isEmailConfigured()
   ) {
-    return res.status(503).json({ error: 'পাসওয়ার্ড রিকভারির SMS সেবা কনফিগার করা নেই।' });
+    return res.status(503).json({ error: 'পাসওয়ার্ড রিকভারির Gmail সেবা কনফিগার করা নেই।' });
   }
 
   try {
@@ -119,18 +125,16 @@ export default async function handler(req, res) {
             { upsert: true, new: true, setDefaultsOnInsert: true }
           );
           try {
-            await sendSms(toBangladeshNumber(officer.phone), otp);
+            await sendOtpEmail(officer.email, otp);
           } catch (error) {
             await PasswordResetChallenge.deleteOne({ userId: officer._id });
-            if (error.message.includes('কনফিগার করা নেই')) {
-              return res.status(503).json({ error: error.message });
-            }
-            return res.status(502).json({ error: error.message });
+            console.error('Password recovery email failed:', error instanceof Error ? error.name : 'UnknownError');
+            return res.status(502).json({ error: 'OTP ইমেইল পাঠানো যায়নি। Gmail সেটিং যাচাই করে আবার চেষ্টা করুন।' });
           }
         }
       }
       return res.status(200).json({
-        message: 'তথ্য মিললে নিবন্ধিত মোবাইলে OTP পাঠানো হবে।'
+        message: 'তথ্য মিললে নিবন্ধিত ইমেইলে OTP পাঠানো হবে।'
       });
     }
 

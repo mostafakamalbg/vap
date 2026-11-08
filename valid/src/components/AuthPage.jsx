@@ -173,8 +173,8 @@ export default function AuthPage({ initialRole = 'admin', onNavigate, onLoginSuc
         ) : (
           <form onSubmit={handleRecoverySubmit} className="space-y-4">
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-950">
-              <p className="font-bold">নিবন্ধিত মোবাইলে OTP দিয়ে পাসওয়ার্ড রিসেট</p>
-              <p className="mt-1">নিবন্ধিত ইমেইল অথবা মোবাইল নম্বর দিন। নিরাপত্তার জন্য OTP অ্যাকাউন্টে নিবন্ধিত মোবাইল নম্বরে পাঠানো হবে।</p>
+              <p className="font-bold">ইমেইলে OTP দিয়ে পাসওয়ার্ড রিসেট</p>
+              <p className="mt-1">নিবন্ধিত ইমেইল অথবা মোবাইল নম্বর দিন। OTP অ্যাকাউন্টে নিবন্ধিত ইমেইলে পাঠানো হবে।</p>
             </div>
             <label className="block space-y-1">
               <span className="text-xs font-bold text-slate-700">নিবন্ধিত ইমেইল অথবা মোবাইল নম্বর</span>
@@ -192,7 +192,7 @@ export default function AuthPage({ initialRole = 'admin', onNavigate, onLoginSuc
             {recoveryStep === 'confirm' && (
               <>
                 <label className="block space-y-1">
-                  <span className="text-xs font-bold text-slate-700">SMS-এ পাওয়া ৬ সংখ্যার OTP</span>
+                  <span className="text-xs font-bold text-slate-700">ইমেইলে পাওয়া ৬ সংখ্যার OTP</span>
                   <input
                     required
                     inputMode="numeric"
