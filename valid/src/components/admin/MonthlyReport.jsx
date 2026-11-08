@@ -4,26 +4,23 @@ import {
   ArrowDownLeft,
   ArrowUpRight,
   Printer,
-  Calendar,
-  Layers,
   CheckCircle,
   Package,
   TrendingUp,
-  Building2,
-  Users,
-  UserCheck,
   Search,
   Filter,
   Clock
 } from 'lucide-react';
 import { useAgro } from '../../context/AgroContext';
-import { toBn, toBnCurrency, toBnDate } from '../../utils/bengali';
+import { toBn, toBnDate } from '../../utils/bengali';
 import { formatDealerCode, formatOfficerCode } from '../../../shared/codes';
+import { INVOICE_SESSIONS, LEGACY_INVOICE_SESSION } from '../../../shared/sessions';
+import SearchableRecordSelect from './SearchableRecordSelect';
 
 export default function MonthlyReport() {
   const { products, invoices, stockInLogs, damageLogs, payments, officers, dealers } = useAgro();
 
-  // Mode: 'month' | 'year' | 'dealer' | 'officer'
+  // Mode: 'month' | 'year' | 'dealer' | 'officer' | 'session'
   const [filterMode, setFilterMode] = useState('dealer');
 
   // Filter States
@@ -39,7 +36,22 @@ export default function MonthlyReport() {
   const [selectedYear, setSelectedYear] = useState(currentYearStr);
   const [selectedDealerId, setSelectedDealerId] = useState(dealers[0]?.id || '');
   const [selectedOfficerCode, setSelectedOfficerCode] = useState(officers[0]?.code || '5');
+  const [selectedSession, setSelectedSession] = useState(
+    invoices.find((invoice) => invoice.session)?.session || INVOICE_SESSIONS[0]
+  );
   const [searchTerm, setSearchTerm] = useState('');
+  const availableSessions = [...new Set([
+    ...INVOICE_SESSIONS,
+    ...invoices.map((invoice) => invoice.session || LEGACY_INVOICE_SESSION)
+  ])].map((session) => ({ id: session }));
+  const activeSession = availableSessions.some((session) => session.id === selectedSession)
+    ? selectedSession
+    : availableSessions[0]?.id || LEGACY_INVOICE_SESSION;
+  const availableYears = [...new Set([
+    currentYearStr,
+    ...invoices.map((invoice) => invoice.date?.slice(0, 4)),
+    ...damageLogs.map((entry) => entry.date?.slice(0, 4))
+  ].filter(Boolean))].sort((a, b) => b.localeCompare(a));
 
   // Date Preset Handlers
   const handlePresetDate = (months) => {
@@ -62,16 +74,16 @@ export default function MonthlyReport() {
   let reportSubtitle = '';
 
   if (filterMode === 'month') {
-    filteredInvoices = invoices.filter((inv) => inv.date.startsWith(selectedMonth));
-    filteredDamages = damageLogs.filter((d) => d.date.startsWith(selectedMonth));
+    filteredInvoices = invoices.filter((inv) => inv.date?.startsWith(selectedMonth));
+    filteredDamages = damageLogs.filter((d) => d.date?.startsWith(selectedMonth));
     const [y, m] = selectedMonth.split('-');
     const bMonths = ['জানুয়ারি', 'ফেব্রুয়ারি', 'মার্চ', 'এপ্রিল', 'মে', 'জুন', 'জুলাই', 'আগস্ট', 'সেপ্টেম্বর', 'অক্টোবর', 'নভেম্বর', 'ডিসেম্বর'];
     const bMonthName = bMonths[parseInt(m, 10) - 1] || 'অক্টোবর';
     reportTitle = `মাসিক সেলস ও ইনভেন্টরি রিপোর্ট (${bMonthName}, ${toBn(y)})`;
     reportSubtitle = `নির্দিষ্ট মাস অনুযায়ী বিক্রয়, কার্টুন প্রবাহ ও রিটার্ন বিবরণী`;
   } else if (filterMode === 'year') {
-    filteredInvoices = invoices.filter((inv) => inv.date.startsWith(selectedYear));
-    filteredDamages = damageLogs.filter((d) => d.date.startsWith(selectedYear));
+    filteredInvoices = invoices.filter((inv) => inv.date?.startsWith(selectedYear));
+    filteredDamages = damageLogs.filter((d) => d.date?.startsWith(selectedYear));
     reportTitle = `বার্ষিক সেলস ও ইনভেন্টরি স্টেটমেন্ট (সালঃ ${toBn(selectedYear)})`;
     reportSubtitle = `এক বছরে সম্পন্ন হওয়া সকল বিক্রয়, কার্টুন সরবরাহ ও আর্থিক সমন্বয়`;
   } else if (filterMode === 'dealer') {
@@ -107,6 +119,16 @@ export default function MonthlyReport() {
       `[${formatOfficerCode(off?.code, off?.designation)}]`
     );
     reportSubtitle = `টেরিটরি: ${off?.territory} | পদবী: ${off?.designation} • সময়কাল: ${toBnDate(startDate)} হতে ${toBnDate(endDate)}`;
+  } else if (filterMode === 'session') {
+    filteredInvoices = invoices.filter(
+      (invoice) => (invoice.session || LEGACY_INVOICE_SESSION) === activeSession
+    );
+    const invoiceIds = new Set(filteredInvoices.map((invoice) => invoice.id));
+    filteredDamages = damageLogs.filter(
+      (entry) => entry.session === activeSession || invoiceIds.has(entry.invoiceRef)
+    );
+    reportTitle = `সেশনভিত্তিক সেলস ও রিটার্ন রিপোর্ট`;
+    reportSubtitle = `নির্বাচিত সেশন: ${activeSession}`;
   }
 
   // Search filter
@@ -187,58 +209,23 @@ export default function MonthlyReport() {
         </button>
       </div>
 
-      {/* Filter Mode Switcher (4 Modes) */}
+      {/* Unified report selector */}
       <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm space-y-4 no-print">
-        <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-3">
-          <span className="text-xs font-bold text-slate-500 uppercase mr-2">ফিল্টার মোড:</span>
-
-          <button
-            onClick={() => setFilterMode('month')}
-            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold transition ${
-              filterMode === 'month'
-                ? 'bg-emerald-700 text-white shadow'
-                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-            }`}
-          >
-            <Calendar className="w-3.5 h-3.5" />
-            <span>মাসিক রিপোর্ট (Monthly)</span>
-          </button>
-
-          <button
-            onClick={() => setFilterMode('year')}
-            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold transition ${
-              filterMode === 'year'
-                ? 'bg-emerald-700 text-white shadow'
-                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-            }`}
-          >
-            <TrendingUp className="w-3.5 h-3.5" />
-            <span>বার্ষিক হিসাব (Yearly / Annual)</span>
-          </button>
-
-          <button
-            onClick={() => setFilterMode('dealer')}
-            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold transition ${
-              filterMode === 'dealer'
-                ? 'bg-emerald-700 text-white shadow'
-                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-            }`}
-          >
-            <Users className="w-3.5 h-3.5" />
-            <span>ডিলারভিত্তিক রিপোর্ট (By Dealer)</span>
-          </button>
-
-          <button
-            onClick={() => setFilterMode('officer')}
-            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold transition ${
-              filterMode === 'officer'
-                ? 'bg-emerald-700 text-white shadow'
-                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-            }`}
-          >
-            <UserCheck className="w-3.5 h-3.5" />
-            <span>অফিসারভিত্তিক রিপোর্ট (By Officer)</span>
-          </button>
+        <div className="grid grid-cols-1 gap-3 border-b border-slate-200 pb-3 sm:grid-cols-3">
+          <label className="text-xs font-bold text-slate-700">
+            রিপোর্টের ধরন নির্বাচন করুন:
+            <select
+              value={filterMode}
+              onChange={(event) => setFilterMode(event.target.value)}
+              className="mt-1 w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm font-bold"
+            >
+              <option value="month">মাসিক রিপোর্ট (Monthly)</option>
+              <option value="year">বার্ষিক হিসাব (Yearly / Annual)</option>
+              <option value="dealer">ডিলারভিত্তিক রিপোর্ট (By Dealer)</option>
+              <option value="officer">অফিসারভিত্তিক রিপোর্ট (By Officer)</option>
+              <option value="session">সেশনভিত্তিক রিপোর্ট</option>
+            </select>
+          </label>
         </div>
 
         {/* Dynamic Controls based on selected mode */}
@@ -264,44 +251,53 @@ export default function MonthlyReport() {
                   onChange={(e) => setSelectedYear(e.target.value)}
                   className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 font-mono font-bold text-slate-800"
                 >
-                  <option value="2026">২০২৬ সাল</option>
-                  <option value="2025">২০২৫ সাল</option>
-                  <option value="2024">২০২৪ সাল</option>
+                  {availableYears.map((year) => <option key={year} value={year}>{toBn(year)} সাল</option>)}
                 </select>
               </div>
             )}
 
             {filterMode === 'dealer' && (
               <div className="sm:col-span-2">
-                <label className="block font-bold text-slate-700 mb-1">ডিলার নির্বাচন করুন ({dealers.length} জন):</label>
-                <select
+                <SearchableRecordSelect
+                  label={`ডিলার নির্বাচন করুন (${dealers.length} জন):`}
+                  items={dealers}
                   value={selectedDealerId}
-                  onChange={(e) => setSelectedDealerId(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 font-bold text-slate-800"
-                >
-                  {dealers.map((d) => (
-                    <option key={d.id} value={d.id}>
-                      {formatDealerCode(d.code)} • {d.shopName}
-                    </option>
-                  ))}
-                </select>
+                  onChange={setSelectedDealerId}
+                  placeholder="ডিলার নির্বাচন করুন"
+                  searchPlaceholder="কোড বা নাম দিয়ে দ্রুত খুঁজুন"
+                  optionLabel={(dealer) => `${formatDealerCode(dealer.code)} • ${dealer.shopName}`}
+                  searchText={(dealer) => `${formatDealerCode(dealer.code)} ${dealer.shopName} ${dealer.proprietor || ''}`}
+                />
               </div>
             )}
 
             {filterMode === 'officer' && (
               <div className="sm:col-span-2">
-                <label className="block font-bold text-slate-700 mb-1">ফিল্ড অফিসার নির্বাচন করুন:</label>
-                <select
+                <SearchableRecordSelect
+                  label="ফিল্ড অফিসার নির্বাচন করুন:"
+                  items={officers.map((officer) => ({ ...officer, id: officer.code }))}
                   value={selectedOfficerCode}
-                  onChange={(e) => setSelectedOfficerCode(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 font-bold text-slate-800"
-                >
-                  {officers.map((o) => (
-                    <option key={o.id} value={o.code}>
-                      {formatOfficerCode(o.code, o.designation)} • {o.name} • {o.designation}
-                    </option>
-                  ))}
-                </select>
+                  onChange={setSelectedOfficerCode}
+                  placeholder="অফিসার নির্বাচন করুন"
+                  searchPlaceholder="কোড বা নাম দিয়ে দ্রুত খুঁজুন"
+                  optionLabel={(officer) => `${formatOfficerCode(officer.code, officer.designation)} • ${officer.name} • ${officer.designation}`}
+                  searchText={(officer) => `${officer.code} ${officer.name} ${officer.designation || ''}`}
+                />
+              </div>
+            )}
+
+            {filterMode === 'session' && (
+              <div className="sm:col-span-2">
+                <SearchableRecordSelect
+                  label="সেশন নির্বাচন করুন:"
+                  items={availableSessions}
+                  value={activeSession}
+                  onChange={setSelectedSession}
+                  placeholder="সেশন নির্বাচন করুন"
+                  searchPlaceholder="সেশনের নাম দিয়ে দ্রুত খুঁজুন"
+                  optionLabel={(session) => session.id}
+                  searchText={(session) => session.id}
+                />
               </div>
             )}
 

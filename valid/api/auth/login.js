@@ -1,6 +1,6 @@
 import dbConnect, { MongoConnectionError } from '../../lib/mongodb.js';
 import { User } from '../../lib/models.js';
-import { publicUser, setSessionCookie, verifyPassword } from '../../lib/auth.js';
+import { hasSuperAdminAccess, publicUser, setSessionCookie, verifyPassword } from '../../lib/auth.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method Not Allowed' });
@@ -24,7 +24,9 @@ export default async function handler(req, res) {
     }
 
     setSessionCookie(res, user._id);
-    return res.status(200).json({ user: publicUser(user) });
+    return res.status(200).json({
+      user: publicUser(user, user.role === 'admin' && await hasSuperAdminAccess(user))
+    });
   } catch (error) {
     if (error instanceof MongoConnectionError) {
       return res.status(503).json({ error: 'ডাটাবেস সাময়িকভাবে উপলব্ধ নয়।' });

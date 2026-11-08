@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Check, ClipboardCheck, KeyRound, RefreshCw, ShieldX, Users } from 'lucide-react';
 import { useAgro } from '../../context/AgroContext';
+import { formatOfficerCode } from '../../../shared/codes';
 
 async function requestJson(url, options) {
   const response = await fetch(url, options);
@@ -134,7 +135,7 @@ export default function AdminAccess() {
             <div key={user.id} className="flex flex-col justify-between gap-3 px-5 py-4 sm:flex-row sm:items-center">
               <div>
                 <p className="font-bold text-slate-900">{user.name}</p>
-                <p className="text-xs text-slate-500">{user.email} • অফিসার কোড {user.officerCode} • {user.phone}</p>
+                <p className="text-xs text-slate-500">{user.email} • অফিসার কোড {formatOfficerCode(user.officerCode)} • {user.phone}</p>
               </div>
               <div className="flex gap-2">
                 <button disabled={busyId === user.id} onClick={() => updateOfficer(user.id, 'active')} className="inline-flex items-center gap-1 rounded-lg bg-emerald-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50"><Check className="h-4 w-4" /> অনুমোদন</button>
@@ -156,7 +157,7 @@ export default function AdminAccess() {
             <div key={user.id} className="flex flex-col justify-between gap-3 px-5 py-4 sm:flex-row sm:items-center">
               <div>
                 <p className="font-bold text-slate-900">{user.name}</p>
-                <p className="text-xs text-slate-500">{user.email} • অফিসার কোড {user.officerCode} • {user.phone}</p>
+                <p className="text-xs text-slate-500">{user.email} • অফিসার কোড {formatOfficerCode(user.officerCode)} • {user.phone}</p>
               </div>
               {resettingUserId === user.id ? (
                 <form onSubmit={(event) => resetOfficerPassword(event, user.id)} className="flex flex-wrap items-center gap-2">
@@ -196,7 +197,7 @@ export default function AdminAccess() {
             <article key={order.id} className="space-y-3 px-5 py-4">
               <div className="flex flex-col justify-between gap-2 sm:flex-row">
                 <div>
-                  <p className="font-bold text-slate-900">{order.officerName} <span className="text-xs font-medium text-slate-500">• কোড {order.officerCode}</span></p>
+                  <p className="font-bold text-slate-900">{order.officerName} <span className="text-xs font-medium text-slate-500">• কোড {formatOfficerCode(order.officerCode)}</span></p>
                   <p className="text-xs text-slate-500">{order.id} • {new Date(order.createdAt).toLocaleString('bn-BD')}</p>
                 </div>
                 <span className="h-fit rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-bold text-amber-800">অনুমোদনের অপেক্ষায়</span>

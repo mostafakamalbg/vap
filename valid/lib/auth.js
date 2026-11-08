@@ -5,7 +5,8 @@ import {
   timingSafeEqual
 } from 'node:crypto';
 import { promisify } from 'node:util';
-import { User } from './models.js';
+import { AdminSeat, User } from './models.js';
+import { normalizeOfficerCode } from '../shared/codes.js';
 
 const scrypt = promisify(nodeScrypt);
 const SESSION_COOKIE = 'vap_session';
@@ -95,6 +96,18 @@ export async function getSessionUser(req) {
   return user;
 }
 
+export async function hasSuperAdminAccess(user) {
+  const email = String(user?.email || '').trim().toLowerCase();
+  if (!email) return false;
+  const authorizedEmails = String(process.env.SUPER_ADMIN_EMAILS || '')
+    .split(',')
+    .map((entry) => entry.trim().toLowerCase())
+    .filter(Boolean);
+  if (authorizedEmails.includes(email)) return true;
+  const primarySeat = await AdminSeat.findById(1).select('email').lean();
+  return primarySeat?.email === email;
+}
+
 export async function authorize(req, res, allowedRoles) {
   try {
     const user = await getSessionUser(req);
@@ -114,7 +127,7 @@ export async function authorize(req, res, allowedRoles) {
   }
 }
 
-export function publicUser(user) {
+export function publicUser(user, isSuperAdmin = false) {
   return {
     id: String(user._id),
     name: user.name,
@@ -122,8 +135,9 @@ export function publicUser(user) {
     role: user.role,
     status: user.status,
     officerId: user.officerId || '',
-    officerCode: user.officerCode || '',
-    phone: user.phone || ''
+    officerCode: normalizeOfficerCode(user.officerCode),
+    phone: user.phone || '',
+    isSuperAdmin
   };
 }
 

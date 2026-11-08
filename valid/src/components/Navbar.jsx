@@ -43,7 +43,8 @@ export default function Navbar({ activeTab, setActiveTab }) {
     { id: 'dealer-ledger', label: t('nav.dealerLedger'), icon: Users },
     { id: 'sales-agreements', label: 'সেলস ও কালেকশন চুক্তি', icon: FileText },
     { id: 'officer-tracking', label: t('nav.officerTracking'), icon: UserCheck },
-    { id: 'monthly-reports', label: t('nav.reports'), icon: BarChart3 }
+    { id: 'monthly-reports', label: t('nav.reports'), icon: BarChart3 },
+    { id: 'data-management', label: 'ডেটা এক্সপোর্ট/ইমপোর্ট', icon: Download }
   ];
   const navItems = currentUser?.role === 'admin'
     ? [...publicItems, ...adminItems]
@@ -134,9 +135,9 @@ export default function Navbar({ activeTab, setActiveTab }) {
                 )}
               </div>
             )}
-            {currentUser?.role === 'admin' && (
+            {currentUser?.role === 'admin' && currentUser.isSuperAdmin && (
               <button
-                onClick={resetToFactoryData}
+                onClick={() => resetToFactoryData().catch((error) => window.alert(error.message))}
                 title={t('nav.resetData')}
                 className="hidden items-center gap-1 rounded px-2 py-0.5 text-emerald-300 transition hover:bg-emerald-800 hover:text-white lg:flex"
               >
@@ -252,7 +253,7 @@ export default function Navbar({ activeTab, setActiveTab }) {
               <button onClick={() => handleNavClick('officer-register')} className="w-full rounded-lg px-3 py-2.5 text-left text-sm font-medium text-slate-700 hover:bg-slate-50"><Users className="mr-3 inline h-4 w-4 text-emerald-600" />{t('nav.officerRegister')}</button>
             </div>
           )}
-          {currentUser?.role === 'admin' && (
+          {currentUser?.role === 'admin' && currentUser.isSuperAdmin && (
             <div className="mt-2 border-t border-slate-100 pt-2">
               <p className="px-2 py-1 text-[10px] font-bold text-slate-400">{t('nav.backupFormat')}</p>
               <div className="grid grid-cols-1 gap-1 sm:grid-cols-3">
@@ -260,7 +261,7 @@ export default function Navbar({ activeTab, setActiveTab }) {
                 <button onClick={() => { exportBackup('google-docs'); setMobileMenuOpen(false); }} className="flex items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold text-emerald-800 hover:bg-emerald-50"><Download className="h-4 w-4" />Google Docs</button>
                 <button onClick={() => { exportBackup('word'); setMobileMenuOpen(false); }} className="flex items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold text-emerald-800 hover:bg-emerald-50"><Download className="h-4 w-4" />Microsoft Word</button>
               </div>
-              <button onClick={resetToFactoryData} className="mt-1 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold text-rose-600 hover:bg-rose-50">
+              <button onClick={() => resetToFactoryData().catch((error) => window.alert(error.message))} className="mt-1 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold text-rose-600 hover:bg-rose-50">
                 <RotateCw className="h-4 w-4" />{t('nav.resetData')}
               </button>
             </div>

@@ -46,7 +46,7 @@ export default function OfficerPerformance() {
     return (
       o.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       o.territory.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (o.code && o.code.toString().includes(searchTerm)) ||
+      normalizeOfficerCode(o.code, o.designation).toLowerCase().includes(searchTerm.toLowerCase()) ||
       o.phone.includes(searchTerm)
     );
   });

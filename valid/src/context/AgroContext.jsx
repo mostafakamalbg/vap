@@ -328,6 +328,24 @@ export function AgroProvider({ children }) {
     return readJsonResponse(response);
   };
 
+  const requestPasswordReset = async (identifier) => {
+    const response = await fetch('/api/auth/password-reset', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'request', identifier })
+    });
+    return readJsonResponse(response);
+  };
+
+  const confirmPasswordReset = async ({ identifier, otp, password }) => {
+    const response = await fetch('/api/auth/password-reset', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'confirm', identifier, otp, password })
+    });
+    return readJsonResponse(response);
+  };
+
   const logout = async () => {
     const response = await fetch('/api/auth/logout', { method: 'POST' });
     await readJsonResponse(response);
@@ -672,8 +690,8 @@ export function AgroProvider({ children }) {
 
   // Add New Officer
   const addNewOfficer = (officerData) => {
-    const code = String(officerData.code || '').trim().toUpperCase();
-    if (!/^(FSO|SO|TSO|ASM|RSM)-\d{2,}$/.test(code)) {
+    const code = normalizeOfficerCode(officerData.code, officerData.designation);
+    if (!/^(SO|TSO|ASM|RSM)-\d{2,}$/.test(code)) {
       throw new Error('অফিসার কোডের সঠিক ফরম্যাট দিন।');
     }
     if (officers.some((officer) => normalizeOfficerCode(officer.code, officer.designation) === code)) {
@@ -789,14 +807,24 @@ export function AgroProvider({ children }) {
   };
 
   // Reset to factory data
-  const resetToFactoryData = () => {
+  const resetToFactoryData = async () => {
+    if (currentUser?.role !== 'admin' || !currentUser.isSuperAdmin) {
+      throw new Error('এই রিসেট ব্যবহারের অনুমতি নেই।');
+    }
     const confirmed = window.confirm(
       'সতর্কতা: রিসেট করলে পণ্য, স্টক, ইনভয়েস, ডিলার, সেলস ও কালেকশন চুক্তি এবং হিসাবসহ সব বর্তমান ডাটা মুছে যাবে এবং মূল ডাটায় ফিরে যাবে। আগে Excel ব্যাকআপ নিন। আপনি কি এগোতে চান?'
     );
-    if (!confirmed) return;
+    if (!confirmed) return false;
 
     const confirmationText = window.prompt('নিশ্চিত করতে RESET লিখুন।');
-    if (confirmationText !== 'RESET') return;
+    if (confirmationText !== 'RESET') return false;
+
+    const response = await fetch('/api/backup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'factory-reset' })
+    });
+    await readJsonResponse(response);
 
     localStorage.removeItem('vap_products_v5');
     localStorage.removeItem('vap_officers_v5');
@@ -815,11 +843,41 @@ export function AgroProvider({ children }) {
     setDamageLogs(INITIAL_DAMAGES);
     setPayments(INITIAL_PAYMENTS);
     setSalesAgreements([]);
+    return true;
   };
 
   const exportBackup = (format = 'excel') => {
     const exportedAt = new Date().toISOString();
     const dateSuffix = exportedAt.slice(0, 10);
+    if (format === 'json') {
+      const backup = {
+        version: 1,
+        exportedAt,
+        data: {
+          products,
+          officers,
+          dealers,
+          invoices,
+          stockInLogs,
+          damageLogs,
+          payments,
+          salesAgreements
+        }
+      };
+      const backupBlob = new Blob([JSON.stringify(backup, null, 2)], {
+        type: 'application/json;charset=utf-8'
+      });
+      const backupUrl = URL.createObjectURL(backupBlob);
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.href = backupUrl;
+      downloadAnchor.download = `Valid_Agro_Backup_${dateSuffix}.json`;
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(backupUrl), 1000);
+      return;
+    }
+
     const dataSets = [
       ['Products', products],
       ['Officers', officers],
@@ -885,6 +943,49 @@ export function AgroProvider({ children }) {
     window.setTimeout(() => URL.revokeObjectURL(backupUrl), 1000);
   };
 
+  const importBackup = async (backup) => {
+    const recordTypes = [
+      'products',
+      'officers',
+      'dealers',
+      'invoices',
+      'stockInLogs',
+      'damageLogs',
+      'payments',
+      'salesAgreements'
+    ];
+    if (currentUser?.role !== 'admin') {
+      throw new Error('ব্যাকআপ ইমপোর্ট করার অনুমতি নেই।');
+    }
+    if (!cloudReady) {
+      throw new Error('ডেটাবেসের সঙ্গে সংযোগ সম্পন্ন হলে আবার চেষ্টা করুন।');
+    }
+    if (
+      backup?.version !== 1
+      || recordTypes.some((type) => (
+        !Array.isArray(backup.data?.[type])
+        || backup.data[type].some((record) => !record || typeof record !== 'object' || Array.isArray(record))
+      ))
+    ) {
+      throw new Error('সঠিক JSON ব্যাকআপ নির্বাচন করুন; সব ডেটা তালিকা থাকা আবশ্যক।');
+    }
+
+    const response = await fetch('/api/backup', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(backup)
+    });
+    await readJsonResponse(response);
+    setProducts(backup.data.products);
+    setOfficers(backup.data.officers);
+    setDealers(backup.data.dealers);
+    setInvoices(backup.data.invoices);
+    setStockInLogs(backup.data.stockInLogs);
+    setDamageLogs(backup.data.damageLogs);
+    setPayments(backup.data.payments);
+    setSalesAgreements(backup.data.salesAgreements);
+  };
+
   const exportBackupExcel = () => exportBackup('excel');
 
   return (
@@ -916,6 +1017,7 @@ export function AgroProvider({ children }) {
         resetToFactoryData,
         exportBackupExcel,
         exportBackup,
+        importBackup,
         currentUser,
         authLoading,
         authError,
@@ -923,6 +1025,8 @@ export function AgroProvider({ children }) {
         cloudReady,
         login,
         registerOfficer,
+        requestPasswordReset,
+        confirmPasswordReset,
         logout,
         refreshSharedRecords
       }}

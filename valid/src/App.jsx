@@ -19,6 +19,7 @@ import DealerLedger from './components/admin/DealerLedger';
 import OfficerPerformance from './components/admin/OfficerPerformance';
 import MonthlyReport from './components/admin/MonthlyReport';
 import SalesAgreement from './components/admin/SalesAgreement';
+import AdminDataManagement from './components/admin/AdminDataManagement';
 
 function AppContent() {
   const {
@@ -109,6 +110,7 @@ function AppContent() {
     if (activeTab === 'dealer-ledger') return <DealerLedger />;
     if (activeTab === 'officer-tracking') return <OfficerPerformance />;
     if (activeTab === 'monthly-reports') return <MonthlyReport />;
+    if (activeTab === 'data-management') return <AdminDataManagement />;
     if (activeTab === 'sales-agreements') return <SalesAgreement />;
     return <Home onNavigate={handleNavigate} />;
   };

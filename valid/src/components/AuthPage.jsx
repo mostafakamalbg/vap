@@ -4,11 +4,15 @@ import { useAgro } from '../context/AgroContext';
 import { useUiPreferences } from '../context/UiPreferencesContext';
 
 export default function AuthPage({ initialRole = 'admin', onNavigate, onLoginSuccess }) {
-  const { login, registerOfficer } = useAgro();
+  const { login, registerOfficer, requestPasswordReset, confirmPasswordReset } = useAgro();
   const { t } = useUiPreferences();
   const [role, setRole] = useState(initialRole.startsWith('officer') ? 'officer' : 'admin');
   const [isRegistering, setIsRegistering] = useState(initialRole === 'officer-register');
   const [isRecovering, setIsRecovering] = useState(false);
+  const [recoveryStep, setRecoveryStep] = useState('request');
+  const [recoveryIdentifier, setRecoveryIdentifier] = useState('');
+  const [recoveryOtp, setRecoveryOtp] = useState('');
+  const [recoveryPassword, setRecoveryPassword] = useState('');
   const [form, setForm] = useState({
     name: '',
     email: '',
@@ -46,10 +50,40 @@ export default function AuthPage({ initialRole = 'admin', onNavigate, onLoginSuc
     }
   };
 
+  const handleRecoverySubmit = async (event) => {
+    event.preventDefault();
+    setError('');
+    setMessage('');
+    setBusy(true);
+    try {
+      if (recoveryStep === 'request') {
+        const result = await requestPasswordReset(recoveryIdentifier);
+        setMessage(result.message);
+        setRecoveryStep('confirm');
+      } else {
+        const result = await confirmPasswordReset({
+          identifier: recoveryIdentifier,
+          otp: recoveryOtp,
+          password: recoveryPassword
+        });
+        setIsRecovering(false);
+        setRecoveryStep('request');
+        setRecoveryOtp('');
+        setRecoveryPassword('');
+        setMessage(result.message);
+      }
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const selectRole = (nextRole) => {
     setRole(nextRole);
     setIsRegistering(false);
     setIsRecovering(false);
+    setRecoveryStep('request');
     setError('');
     setMessage('');
   };
@@ -110,7 +144,7 @@ export default function AuthPage({ initialRole = 'admin', onNavigate, onLoginSuc
               <div className="grid grid-cols-2 gap-3">
                 <label className="block space-y-1">
                   <span className="text-xs font-bold text-slate-700">{t('auth.officerCode')}</span>
-                  <input required name="officerCode" value={form.officerCode} onChange={changeForm} placeholder="যেমন: FSO-09" autoCapitalize="characters" className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100" />
+                  <input required name="officerCode" value={form.officerCode} onChange={changeForm} placeholder="যেমন: SO-09" autoCapitalize="characters" className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100" />
                 </label>
                 <label className="block space-y-1">
                   <span className="text-xs font-bold text-slate-700">{t('auth.phone')}</span>
@@ -137,15 +171,62 @@ export default function AuthPage({ initialRole = 'admin', onNavigate, onLoginSuc
           </button>
           </form>
         ) : (
-          <div className="space-y-4">
+          <form onSubmit={handleRecoverySubmit} className="space-y-4">
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-950">
-              <p className="font-bold">অ্যাডমিন-ভেরিফাইড পাসওয়ার্ড রিসেট</p>
-              <p className="mt-1">আপনার অফিসার কোড ও নিবন্ধিত ফোন নম্বর দিয়ে পরিচয় যাচাই করতে অ্যাডমিনের সাথে যোগাযোগ করুন। যাচাইয়ের পর অ্যাডমিন অফিসার অ্যাকাউন্ট থেকে নতুন পাসওয়ার্ড সেট করবেন।</p>
+              <p className="font-bold">নিবন্ধিত মোবাইলে OTP দিয়ে পাসওয়ার্ড রিসেট</p>
+              <p className="mt-1">নিবন্ধিত ইমেইল অথবা মোবাইল নম্বর দিন। নিরাপত্তার জন্য OTP অ্যাকাউন্টে নিবন্ধিত মোবাইল নম্বরে পাঠানো হবে।</p>
             </div>
-            <button type="button" onClick={() => setIsRecovering(false)} className="w-full rounded-lg bg-emerald-700 px-4 py-3 text-sm font-black text-white shadow transition hover:bg-emerald-800">
+            <label className="block space-y-1">
+              <span className="text-xs font-bold text-slate-700">নিবন্ধিত ইমেইল অথবা মোবাইল নম্বর</span>
+              <input
+                required
+                type="text"
+                autoComplete="username"
+                value={recoveryIdentifier}
+                onChange={(event) => setRecoveryIdentifier(event.target.value)}
+                disabled={recoveryStep === 'confirm'}
+                placeholder="ইমেইল অথবা মোবাইল নম্বর"
+                className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100 disabled:bg-slate-50"
+              />
+            </label>
+            {recoveryStep === 'confirm' && (
+              <>
+                <label className="block space-y-1">
+                  <span className="text-xs font-bold text-slate-700">SMS-এ পাওয়া ৬ সংখ্যার OTP</span>
+                  <input
+                    required
+                    inputMode="numeric"
+                    pattern="[0-9]{6}"
+                    maxLength={6}
+                    value={recoveryOtp}
+                    onChange={(event) => setRecoveryOtp(event.target.value)}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
+                  />
+                </label>
+                <label className="block space-y-1">
+                  <span className="text-xs font-bold text-slate-700">নতুন পাসওয়ার্ড (কমপক্ষে ১০ অক্ষর)</span>
+                  <input
+                    required
+                    minLength={10}
+                    maxLength={128}
+                    type="password"
+                    autoComplete="new-password"
+                    value={recoveryPassword}
+                    onChange={(event) => setRecoveryPassword(event.target.value)}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
+                  />
+                </label>
+              </>
+            )}
+            {error && <p role="alert" className="rounded-lg bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">{error}</p>}
+            {message && <p role="status" className="rounded-lg bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-800">{message}</p>}
+            <button disabled={busy} className="w-full rounded-lg bg-emerald-700 px-4 py-3 text-sm font-black text-white shadow transition hover:bg-emerald-800 disabled:cursor-wait disabled:opacity-60">
+              {busy ? 'অপেক্ষা করুন…' : recoveryStep === 'request' ? 'OTP পাঠান' : 'OTP যাচাই করে পাসওয়ার্ড বদলান'}
+            </button>
+            <button type="button" onClick={() => { setIsRecovering(false); setError(''); setMessage(''); }} className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50">
               লগইনে ফিরে যান
             </button>
-          </div>
+          </form>
         )}
 
         <div className="mt-5 border-t border-slate-100 pt-4 text-center">
@@ -154,7 +235,7 @@ export default function AuthPage({ initialRole = 'admin', onNavigate, onLoginSuc
               <button type="button" onClick={() => { setIsRegistering(true); setMessage(''); setError(''); }} className="text-sm font-bold text-emerald-700 hover:underline">
                 {t('auth.newOfficer')}
               </button>
-              <button type="button" onClick={() => { setIsRecovering(true); setMessage(''); setError(''); }} className="text-sm font-bold text-slate-600 hover:underline">
+              <button type="button" onClick={() => { setIsRecovering(true); setRecoveryStep('request'); setRecoveryIdentifier(''); setRecoveryOtp(''); setRecoveryPassword(''); setMessage(''); setError(''); }} className="text-sm font-bold text-slate-600 hover:underline">
                 পাসওয়ার্ড ভুলে গেছেন?
               </button>
             </div>

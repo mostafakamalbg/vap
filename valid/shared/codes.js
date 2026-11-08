@@ -1,5 +1,5 @@
 export const OFFICER_DESIGNATIONS = [
-  { value: 'ফিল্ড সেলস অফিসার (FSO)', prefix: 'FSO' },
+  { value: 'ফিল্ড সেলস অফিসার (FSO)', prefix: 'SO' },
   { value: 'সেলস অফিসার (SO)', prefix: 'SO' },
   { value: 'টেরিটরি সেলস অফিসার (TSO)', prefix: 'TSO' },
   { value: 'এরিয়া সেলস ম্যানেজার (ASM)', prefix: 'ASM' },
@@ -7,7 +7,7 @@ export const OFFICER_DESIGNATIONS = [
 ];
 
 export function getOfficerCodePrefix(designation = '') {
-  return OFFICER_DESIGNATIONS.find((entry) => entry.value === designation)?.prefix || 'FSO';
+  return OFFICER_DESIGNATIONS.find((entry) => entry.value === designation)?.prefix || 'SO';
 }
 
 export function formatOfficerCode(code, designation = '') {
@@ -17,7 +17,7 @@ export function formatOfficerCode(code, designation = '') {
 export function normalizeOfficerCode(code, designation = '') {
   const value = String(code || '').trim().toUpperCase();
   const match = value.match(/^(FSO|SO|TSO|ASM|RSM)-?(\d+)$/);
-  if (match) return `${match[1]}-${match[2].padStart(2, '0')}`;
+  if (match) return `${match[1] === 'FSO' ? 'SO' : match[1]}-${match[2].padStart(2, '0')}`;
   if (!/^\d+$/.test(value)) return '';
   return `${getOfficerCodePrefix(designation)}-${value.padStart(2, '0')}`;
 }
@@ -27,14 +27,15 @@ export function createOfficerCode(serial, designation) {
   const match = value.match(/^(?:FSO|SO|TSO|ASM|RSM)-?(\d+)$/);
   const number = match ? match[1] : value;
   if (!/^\d+$/.test(number)) return '';
-  return `${getOfficerCodePrefix(designation)}-${number.padStart(2, '0')}`;
+  const prefix = match?.[0].startsWith('FSO') ? 'SO' : getOfficerCodePrefix(designation);
+  return `${prefix}-${number.padStart(2, '0')}`;
 }
 
 export function getNextOfficerCode(officers, designation) {
   const prefix = getOfficerCodePrefix(designation);
   const maxSerial = officers.reduce((max, officer) => {
     const code = String(officer.code || '').toUpperCase();
-    const match = code.match(new RegExp(`^${prefix}-(\\d+)$`));
+    const match = code.match(new RegExp(`^(?:${prefix === 'SO' ? 'FSO|SO' : prefix})-(\\d+)$`));
     const legacyMatch = /^\d+$/.test(code)
       && getOfficerCodePrefix(officer.designation) === prefix
       ? code

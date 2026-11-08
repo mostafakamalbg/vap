@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { ClipboardList, PackageCheck, Plus, Send, ShoppingCart, TrendingUp } from 'lucide-react';
 import { useAgro } from '../context/AgroContext';
 import { useUiPreferences } from '../context/UiPreferencesContext';
+import { formatOfficerCode } from '../../shared/codes';
 
 async function requestJson(url, options) {
   const response = await fetch(url, options);
@@ -92,7 +93,7 @@ export default function OfficerDashboard() {
       <header className="rounded-2xl bg-gradient-to-r from-emerald-900 to-emerald-700 p-6 text-white shadow-lg sm:p-8">
         <p className="text-xs font-bold uppercase tracking-wider text-emerald-200">{t('officer.dashboard')}</p>
         <h1 className="mt-1 text-2xl font-black">{t('officer.welcome')} {currentUser?.name}</h1>
-        <p className="mt-1 text-sm text-emerald-100">{t('officer.code')} {currentUser?.officerCode || '—'} • {t('officer.onlineSales')}</p>
+        <p className="mt-1 text-sm text-emerald-100">{t('officer.code')} {formatOfficerCode(currentUser?.officerCode) || '—'} • {t('officer.onlineSales')}</p>
       </header>
 
       <section className="grid gap-4 sm:grid-cols-3">
@@ -126,7 +127,7 @@ export default function OfficerDashboard() {
                       <td className="px-4 py-3 font-bold text-emerald-800">{invoice.id}</td>
                       <td className="px-4 py-3">{invoice.date}</td>
                       <td className="px-4 py-3">{invoice.dealerName || '—'}</td>
-                      <td className="px-4 py-3">{invoice.officerName || invoice.officerCode || '—'}</td>
+                      <td className="px-4 py-3">{invoice.officerName || formatOfficerCode(invoice.officerCode) || '—'}</td>
                       <td className="px-4 py-3 text-right font-bold">৳{(Number(invoice.grandTotal) || 0).toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}</td>
                     </tr>
                   ))}
