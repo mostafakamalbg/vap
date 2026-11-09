@@ -186,9 +186,9 @@ export const INITIAL_PRODUCTS = [
     category: 'ছত্রাকনাশক',
     description: 'ব্রড-স্পেকট্রাম প্রতিরোধক ও নিরাময়ক সিস্টেমিক ছত্রাকনাশক।',
     variants: [
-      { sku: 'STAR-500ML', size: '৫০০মিলি × ১০', packPerBox: 10, unit: 'বোতল', cartonPrice: 8500, tp: 850, commission: 20, stockCartons: 30, stock: 300 },
-      { sku: 'STAR-100ML', size: '১০০মিলি × ৩০', packPerBox: 30, unit: 'বোতল', cartonPrice: 5400, tp: 180, commission: 20, stockCartons: 50, stock: 1500 },
-      { sku: 'STAR-50ML', size: '৫০মিলি × ৩০', packPerBox: 30, unit: 'বোতল', cartonPrice: 2900, tp: 96.67, commission: 20, stockCartons: 50, stock: 1500 },
+      { sku: 'STAR-500ML', size: '৫০০মিলি × ১০', packPerBox: 10, unit: 'বোতল', cartonPrice: 0, tp: 0, commission: 20, stockCartons: 30, stock: 300 },
+      { sku: 'STAR-100ML', size: '১০০মিলি × ৩০', packPerBox: 30, unit: 'বোতল', cartonPrice: 0, tp: 0, commission: 20, stockCartons: 50, stock: 1500 },
+      { sku: 'STAR-50ML', size: '৫০মিলি × ৩০', packPerBox: 30, unit: 'বোতল', cartonPrice: 0, tp: 0, commission: 20, stockCartons: 50, stock: 1500 },
     ]
   },
   {
@@ -345,6 +345,13 @@ export const INITIAL_PRODUCTS = [
     ]
   }
 ];
+
+INITIAL_PRODUCTS.forEach((product) => {
+  product.variants.forEach((variant) => {
+    variant.stockCartons = 1;
+    variant.stock = variant.stockCartons * (Number(variant.packPerBox) || 1);
+  });
+});
 
 // All 83 Authorized Dealers as provided by client across Pirganj, Ranisankail, Birganj, Dinajpur
 export const INITIAL_DEALERS = [
@@ -1405,18 +1412,20 @@ export const INITIAL_DEALERS = [
 export const INITIAL_INVOICES = [
   {
     id: 'VAP-2026-0001',
-    session: 'জুলাই - ডিসেম্বর ২০২৬',
+    invoiceNo: 'VAP-2026-0001',
+    session: 'জানুয়ারি - জুন ২০২৭',
     seqNumber: 1,
-    date: '2026-10-05',
+    date: '2027-01-10',
     dealerId: 'DLR-1',
     dealerCode: '1',
     dealerName: 'মেসার্স আর্নিকা ট্রেডার্স',
     dealerProprietor: 'মোঃ আনিসুর রহমান',
     dealerAddress: 'পীরগঞ্জ কলেজ বাজার ,পীরগঞ্জ,ঠাকুরগাঁও।',
     dealerPhone: '০১৭৬২-৯১৯২৯৮',
-    officerId: 'OFF-05',
+    officerId: 'SO-05',
     officerCode: '5',
     officerName: 'মো: মোন্তফা কামাল',
+    officerDesignation: 'সেলস অফিসার (SO)',
     items: [
       {
         productId: 'prod-01',
@@ -1424,95 +1433,34 @@ export const INITIAL_INVOICES = [
         sku: 'MAH-1L',
         size: '১লিঃ × ১২',
         packPerBox: 12,
-        cartons: 2,
-        totalPieces: 24,
+        cartons: 1,
+        quantity: 1,
+        totalPieces: 12,
         cartonPrice: 8100,
         unitPrice: 675,
         commission: 20,
-        total: 16200
-      },
-      {
-        productId: 'prod-04',
-        productName: 'মহাপ্রিড -২০এস এল',
-        sku: 'MPR-100ML',
-        size: '১০০মিলি × ৩০',
-        packPerBox: 30,
-        cartons: 1,
-        totalPieces: 30,
-        cartonPrice: 5250,
-        unitPrice: 175,
-        commission: 20,
-        total: 5250
+        total: 8100
       }
     ],
     returnAdjustments: [],
-    totalCartons: 3,
-    subtotal: 21450,
-    commissionAmount: 4290, // 20%
+    totalCartons: 1,
+    subtotal: 8100,
+    commissionAmount: 1620,
     returnAdjustmentTotal: 0,
-    transportCost: 300,
-    grandTotal: 17460,
+    transportCost: 0,
+    totalAmount: 6480,
+    grandTotal: 6480,
     previousDue: 0,
-    netPayable: 17460,
-    paidAmount: 15000,
-    currentDue: 2460,
-    paymentMethod: 'নগদ জমা',
-    transport: 'ভ্যান',
-    note: 'পীরগঞ্জ কলেজ বাজার ডেলিভারি সম্পন্ন।'
+    netPayable: 6480,
+    paidAmount: 0,
+    currentDue: 6480,
+    dueAmount: 6480,
+    paymentMethod: 'credit',
+    transport: '',
+    note: ''
   }
 ];
 
-export const INITIAL_STOCK_IN = [
-  {
-    id: 'STK-IN-01',
-    date: '2026-10-01',
-    source: 'কারখানা হতে সেন্ট্রাল চালান লট-০১',
-    productId: 'prod-01',
-    productName: 'মহাথ্রিন ১০ ইসি',
-    sku: 'MAH-1L',
-    size: '১লিঃ × ১২',
-    cartons: 20,
-    quantityPieces: 240,
-    batchNo: 'VAP-2610A',
-    receivedBy: 'গোডাউন ইনচার্জ, বগুড়া',
-    note: 'রিসিভ সম্পন্ন'
-  }
-];
-
-export const INITIAL_DAMAGES = [
-  {
-    id: 'DMG-2026-001',
-    date: '2026-10-08',
-    dealerId: 'DLR-9',
-    dealerName: 'মেসার্স মাইশা ট্রেডার্স',
-    officerId: 'OFF-05',
-    officerName: 'মো: মোন্তফা কামাল',
-    productId: 'prod-01',
-    productName: 'মহাথ্রিন ১০ ইসি',
-    sku: 'MAH-1L',
-    size: '১লিঃ × ১২',
-    quantityPieces: 1,
-    unitPrice: 675,
-    totalDamageValue: 675,
-    reason: 'মেয়াদোত্তীর্ণ ১ বোতল ফেরত',
-    action: 'ডিলার লেজারে টাকা ক্রেডিট করা হয়েছে',
-    actionType: 'ledger_credit',
-    status: 'নিষ্পন্ন'
-  }
-];
-
-export const INITIAL_PAYMENTS = [
-  {
-    id: 'PAY-2026-001',
-    date: '2026-10-05',
-    dealerId: 'DLR-1',
-    dealerName: 'মেসার্স আর্নিকা ট্রেডার্স',
-    officerId: 'OFF-05',
-    officerName: 'মো: মোন্তফা কামাল',
-    amount: 15000,
-    paymentMethod: 'নগদ জমা',
-    reference: 'ইনভয়েস #VAP-2026-0001',
-    receivedBy: 'মো: মোন্তফা কামাল',
-    note: 'প্রথম চালানের ক্যাশ আদায়'
-  }
-];
+export const INITIAL_STOCK_IN = [];
+export const INITIAL_DAMAGES = [];
+export const INITIAL_PAYMENTS = [];

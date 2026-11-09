@@ -390,13 +390,19 @@ export function AgroProvider({ children }) {
 
     async function loadSharedRecords() {
       try {
-        for (const [type, setter] of Object.entries(setters)) {
-          if (type === 'salesAgreements' && currentUser.role !== 'admin') continue;
+        const recordTypes = Object.entries(setters)
+          .filter(([type]) => type !== 'salesAgreements' || currentUser.role === 'admin');
+        const sharedRecords = await Promise.all(recordTypes.map(async ([type]) => {
           const response = await fetch(`/api/records?type=${encodeURIComponent(type)}`);
           const records = await readJsonResponse(response);
           if (!Array.isArray(records)) throw new Error(`সার্ভার থেকে ${type} ডেটা সঠিকভাবে পাওয়া যায়নি।`);
+          return [type, records];
+        }));
+        const hasSharedData = sharedRecords.some(([, records]) => records.length > 0);
 
-          if (records.length > 0 || currentUser.role === 'officer') {
+        for (const [type, records] of sharedRecords) {
+          const setter = setters[type];
+          if (records.length > 0 || currentUser.role === 'officer' || hasSharedData) {
             if (!cancelled) setter(normalizeBusinessRecords(type, records));
           } else if (localRecords[type].length > 0) {
             const saveResponse = await fetch(`/api/records?type=${encodeURIComponent(type)}`, {
