@@ -84,21 +84,23 @@ export default function InvoicePrintHeader({ invoice }) {
     <article className="invoice-print-sheet mx-auto w-full max-w-4xl bg-white p-4 text-slate-900 sm:p-8">
       <header className="invoice-company-header">
         <div className="invoice-print-company-row">
-          <div className="invoice-print-logo invoice-print-logo-valid">
-            <img src="/logos/valid-logo.png" alt="Valid Agro" />
-          </div>
-          <div className="invoice-company-copy">
-            <h1>ভ্যালিড এগ্রো প্রোডাক্ট লিমিটেড</h1>
-            <h2>মহানন্দা এগ্রো ইন্ডাস্ট্রিজ</h2>
-            <p>হেড অফিস ও ডিস্ট্রিবিউশন হাব: নিশিন্দারা, বগুড়া।</p>
-            <p>হটলাইন: 01867912167 • উন্নত ফসল সুরক্ষা ও বালাইনাশক</p>
-          </div>
-          <div className="invoice-print-logo invoice-print-logo-mahananda">
-            <img src="/logos/mahananda-logo-transparent.png" alt="Mahananda Agro" />
+          <div className="invoice-print-company-group">
+            <div className="invoice-print-logo invoice-print-logo-valid">
+              <img src="/logos/valid-logo.png" alt="Valid Agro" />
+            </div>
+            <div className="invoice-company-copy">
+              <h1>ভ্যালিড এগ্রো প্রোডাক্ট লিমিটেড</h1>
+              <h2>মহানন্দা এগ্রো ইন্ডাস্ট্রিজ</h2>
+              <p>হেড অফিস ও ডিস্ট্রিবিউশন হাব: নিশিন্দারা, বগুড়া।</p>
+              <p>হটলাইন: 01867912167 • উন্নত ফসল সুরক্ষা ও বালাইনাশক</p>
+            </div>
+            <div className="invoice-print-logo invoice-print-logo-mahananda">
+              <img src="/logos/mahananda-logo-transparent.png" alt="Mahananda Agro" />
+            </div>
           </div>
         </div>
         <div className="invoice-session-badge">সেশন: {invoice.session || LEGACY_INVOICE_SESSION}</div>
-        <h2 className="invoice-title-bar">ডিলার বিক্রয় ইনভয়েস ও মেমো কপি</h2>
+        <h2 className="invoice-title-bar">{invoice.invoiceType === 'factory_damage' ? 'ডেমেজ / ক্ষতিগ্রস্ত পণ্য ফেরত বিবরণী' : 'ডিলার বিক্রয় ইনভয়েস ও মেমো কপি'}</h2>
       </header>
 
       <section className="invoice-parties-grid">

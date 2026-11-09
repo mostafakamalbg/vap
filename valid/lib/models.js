@@ -86,10 +86,13 @@ const invoiceSchema = new Schema({
 const orderItemSchema = new Schema({}, { _id: false, strict: false });
 const orderSchema = new Schema({
   id: { type: String, required: true, unique: true, index: true },
+  invoiceNo: { type: String, default: undefined },
+  seqNumber: { type: Number, default: 0 },
   officerId: { type: String, required: true, index: true },
   status: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },
   items: { type: [orderItemSchema], default: [] }
 }, flexibleOptions);
+orderSchema.index({ invoiceNo: 1 }, { unique: true, sparse: true });
 
 export const User = mongoose.models.User || mongoose.model('User', userSchema);
 export const AdminSeat = mongoose.models.AdminSeat || mongoose.model('AdminSeat', adminSeatSchema);

@@ -312,7 +312,18 @@ export default function StockManagement() {
 
           {/* Product & Variant Table */}
           <div className="border border-slate-200 rounded-lg overflow-x-auto">
-            <table className="w-full text-left text-sm">
+            <table className="w-full min-w-[1080px] table-fixed text-left text-sm">
+              <colgroup>
+                <col className="w-[50px]" />
+                <col className="w-[180px]" />
+                <col className="w-[190px]" />
+                <col className="w-[135px]" />
+                <col className="w-[115px]" />
+                <col className="w-[90px]" />
+                <col className="w-[90px]" />
+                <col className="w-[120px]" />
+                <col className="w-[120px]" />
+              </colgroup>
               <thead className="bg-slate-100 text-slate-700 text-xs font-bold uppercase">
                 <tr>
                   <th className="py-3 px-3">নং</th>
@@ -347,7 +358,7 @@ export default function StockManagement() {
                             </td>
                             <td
                               rowSpan={prod.variants.length}
-                              className="py-3 px-3 font-bold text-slate-800 align-top border-r border-slate-100"
+                              className="py-3 px-3 font-bold text-slate-800 align-top border-r border-slate-100 break-words"
                             >
                               <div>{prod.name}</div>
                               <span className="inline-block mt-1 text-[11px] font-semibold px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200">
@@ -356,7 +367,7 @@ export default function StockManagement() {
                             </td>
                             <td
                               rowSpan={prod.variants.length}
-                              className="py-3 px-3 text-xs text-slate-500 align-top max-w-[220px] border-r border-slate-100"
+                              className="py-3 px-3 text-xs text-slate-500 align-top border-r border-slate-100 break-words"
                             >
                               <div className="font-medium text-slate-700">{prod.generic}</div>
                               <div className="text-[11px] text-slate-400 line-clamp-2 mt-0.5">{prod.description}</div>
@@ -364,11 +375,11 @@ export default function StockManagement() {
                           </>
                         )}
 
-                        <td className="py-2.5 px-3 font-semibold text-slate-800 text-xs">
+                        <td className="py-2.5 px-3 font-semibold text-slate-800 text-xs whitespace-normal break-words">
                           {v.size}
                         </td>
 
-                        <td className="py-2.5 px-3 text-center text-xs text-slate-600">
+                        <td className="py-2.5 px-2 text-center text-xs text-slate-600 whitespace-normal">
                           {v.packPerBox} {v.unit} / বক্স
                         </td>
 
@@ -392,8 +403,8 @@ export default function StockManagement() {
                           </span>
                         </td>
 
-                        <td className="py-2.5 px-3 text-center text-xs text-slate-600">
-                          <span className="font-semibold text-slate-800">{cartonEquivalent}</span> কার্টুন
+                        <td className="py-2.5 px-2 text-center text-xs text-slate-600 whitespace-nowrap">
+                          <span className="font-semibold text-slate-800">{Number(v.stockCartons ?? cartonEquivalent) || 0}</span> কার্টুন
                           {remainderPcs > 0 && <span className="text-slate-400 text-[11px]"> + {remainderPcs} পিস</span>}
                         </td>
                       </tr>

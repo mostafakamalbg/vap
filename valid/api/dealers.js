@@ -14,9 +14,18 @@ export default async function handler(req, res) {
   }
   if (req.method === 'GET') {
     try {
+      const officerCodeMatch = String(user.officerCode || '').match(/\d+/);
+      const officerCodeDigits = officerCodeMatch ? String(Number(officerCodeMatch[0])) : '';
       const ownerConditions = [
         ...(user.officerId ? [{ assignedOfficerId: user.officerId }] : []),
-        ...(user.officerCode ? [{ assignedOfficerCode: user.officerCode }, { officerCode: user.officerCode }] : [])
+        ...(user.officerCode ? [
+          { assignedOfficerCode: user.officerCode },
+          { officerCode: user.officerCode },
+          ...(officerCodeDigits ? [
+            { assignedOfficerCode: officerCodeDigits },
+            { officerCode: officerCodeDigits }
+          ] : [])
+        ] : [])
       ];
       const filter = user.role === 'admin'
         ? {}

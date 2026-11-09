@@ -36,15 +36,29 @@ export default async function handler(req, res) {
       if (Model) {
         let filter = {};
         if (user.role !== 'admin' && type === 'dealers') {
+          const officerCodeMatch = String(user.officerCode || '').match(/\d+/);
+          const officerCodeDigits = officerCodeMatch ? String(Number(officerCodeMatch[0])) : '';
           const conditions = [
             ...(user.officerId ? [{ assignedOfficerId: user.officerId }] : []),
-            ...(user.officerCode ? [{ assignedOfficerCode: user.officerCode }, { officerCode: user.officerCode }] : [])
+            ...(user.officerCode ? [
+              { assignedOfficerCode: user.officerCode },
+              { officerCode: user.officerCode },
+              ...(officerCodeDigits ? [
+                { assignedOfficerCode: officerCodeDigits },
+                { officerCode: officerCodeDigits }
+              ] : [])
+            ] : [])
           ];
           filter = conditions.length ? { $or: conditions } : { id: '__no_records__' };
         } else if (user.role !== 'admin' && type === 'invoices') {
+          const officerCodeMatch = String(user.officerCode || '').match(/\d+/);
+          const officerCodeDigits = officerCodeMatch ? String(Number(officerCodeMatch[0])) : '';
           const conditions = [
             ...(user.officerId ? [{ officerId: user.officerId }] : []),
-            ...(user.officerCode ? [{ officerCode: user.officerCode }] : [])
+            ...(user.officerCode ? [
+              { officerCode: user.officerCode },
+              ...(officerCodeDigits ? [{ officerCode: officerCodeDigits }] : [])
+            ] : [])
           ];
           filter = conditions.length ? { $or: conditions } : { id: '__no_records__' };
         }
@@ -62,9 +76,14 @@ export default async function handler(req, res) {
         if (type === 'officers') {
           filter = { type, recordId: user.officerId };
         } else if (['stockInLogs', 'damageLogs', 'payments'].includes(type)) {
+          const officerCodeMatch = String(user.officerCode || '').match(/\d+/);
+          const officerCodeDigits = officerCodeMatch ? String(Number(officerCodeMatch[0])) : '';
           const ownerConditions = [
             ...(user.officerId ? [{ 'data.officerId': user.officerId }] : []),
-            ...(user.officerCode ? [{ 'data.officerCode': user.officerCode }] : [])
+            ...(user.officerCode ? [
+              { 'data.officerCode': user.officerCode },
+              ...(officerCodeDigits ? [{ 'data.officerCode': officerCodeDigits }] : [])
+            ] : [])
           ];
           filter = { type, ...(ownerConditions.length ? { $or: ownerConditions } : { recordId: '__no_records__' }) };
         }

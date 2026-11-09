@@ -30,6 +30,7 @@ function AppContent() {
   } = useAgro();
   const [activeTab, setActiveTab] = useState('website-home');
   const [editingInvoice, setEditingInvoice] = useState(null);
+  const [invoiceToPrintId, setInvoiceToPrintId] = useState('');
 
   const handleNavigate = (tab) => {
     const publicTabs = ['website-home', 'website-products', 'website-about'];
@@ -50,6 +51,7 @@ function AppContent() {
 
   const handleStartNewInvoice = () => {
     setEditingInvoice(null);
+    setInvoiceToPrintId('');
     handleNavigate('new-invoice');
   };
 
@@ -92,7 +94,12 @@ function AppContent() {
       );
     }
     if (activeTab === 'website-about') return <AboutCompany />;
-    if (activeTab === 'admin-access') return <AdminAccess />;
+    if (activeTab === 'admin-access') {
+      return <AdminAccess onInvoiceCreated={(invoice) => {
+        setInvoiceToPrintId(invoice.id);
+        setActiveTab('invoice-list');
+      }} />;
+    }
     if (activeTab === 'new-invoice') {
       return (
         <InvoiceGenerator
@@ -103,7 +110,13 @@ function AppContent() {
       );
     }
     if (activeTab === 'invoice-list') {
-      return <InvoiceList onNewInvoiceClick={handleStartNewInvoice} onEditInvoice={handleEditInvoice} />;
+      return (
+        <InvoiceList
+          onNewInvoiceClick={handleStartNewInvoice}
+          onEditInvoice={handleEditInvoice}
+          initialInvoiceId={invoiceToPrintId}
+        />
+      );
     }
     if (activeTab === 'inventory') return <StockManagement />;
     if (activeTab === 'damage-returns') return <DamageReturns />;

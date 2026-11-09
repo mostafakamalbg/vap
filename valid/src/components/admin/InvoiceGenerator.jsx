@@ -7,6 +7,7 @@ import { normalizePaymentMethod, PAYMENT_METHODS } from '../../../shared/payment
 import { toBnCurrency } from '../../utils/bengali';
 import InvoicePrintHeader from './InvoicePrintHeader';
 import SearchableRecordSelect from './SearchableRecordSelect';
+import { printInvoiceSheet } from '../../utils/printInvoice';
 
 const today = () => new Date().toISOString().slice(0, 10);
 const TRANSPORT_OPTIONS = ['কাভার্ড ভ্যান', 'অটো', 'ভ্যান'];
@@ -43,6 +44,7 @@ export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCa
     createInvoice,
     updateInvoice,
     invoices,
+    currentUser,
     officers,
     dealers,
     getDealerSummary
@@ -58,7 +60,9 @@ export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCa
     dealerId: editInvoiceData?.dealerId || dealers[0]?.id || '',
     paidAmount: String(editInvoiceData?.paidAmount ?? ''),
     transportCost: String(editInvoiceData?.transportCost ?? ''),
-    paymentMethod: normalizePaymentMethod(editInvoiceData?.paymentMethod),
+    paymentMethod: editInvoiceData
+      ? normalizePaymentMethod(editInvoiceData.paymentMethod)
+      : 'credit',
     transport: editInvoiceData?.transport || '',
     note: editInvoiceData?.note || '',
     returnAdjustments: editInvoiceData?.returnAdjustments?.map((item) => ({
@@ -212,7 +216,7 @@ export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCa
       : current.items.filter((_, itemIndex) => itemIndex !== index)
   }));
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault();
     setError('');
     const invalidItem = items.some((item) => (
@@ -233,7 +237,28 @@ export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCa
       return;
     }
 
-    const { candidateId, seqNumber } = getNextInvoiceNumber(invoices);
+    let numberedInvoices = invoices;
+    if (!editInvoiceData && currentUser?.role === 'admin') {
+      try {
+        const response = await fetch('/api/orders');
+        let pendingOrders;
+        try {
+          pendingOrders = await response.json();
+        } catch {
+          throw new Error('অর্ডার তালিকা থেকে ইনভয়েস নম্বর যাচাই করা যায়নি।');
+        }
+        if (!response.ok) throw new Error(pendingOrders.error || 'ইনভয়েস নম্বর যাচাই করা যায়নি।');
+        numberedInvoices = [
+          ...invoices,
+          ...pendingOrders.map((order) => ({ id: order.invoiceNo }))
+        ];
+      } catch (numberError) {
+        setError(numberError.message || 'ইনভয়েস নম্বর যাচাই করা যায়নি।');
+        return;
+      }
+    }
+
+    const { candidateId, seqNumber } = getNextInvoiceNumber(numberedInvoices);
     const invoice = {
       ...(editInvoiceData || {}),
       id: editInvoiceData?.id || candidateId,
@@ -517,7 +542,7 @@ export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCa
       {savedInvoice && (
         <section className="space-y-4">
           <div className="no-print flex justify-end">
-            <button type="button" onClick={() => window.print()} className="rounded-lg bg-slate-800 px-4 py-2 font-semibold text-white">
+            <button type="button" onClick={() => printInvoiceSheet(document.querySelector('.invoice-print-sheet'))} className="rounded-lg bg-slate-800 px-4 py-2 font-semibold text-white">
               <Printer className="mr-2 inline h-4 w-4" /> ইনভয়েস প্রিন্ট / PDF
             </button>
           </div>
