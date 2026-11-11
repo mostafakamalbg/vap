@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ArrowLeft, KeyRound, ShieldCheck, UserRound, UserRoundPlus } from 'lucide-react';
+import { ArrowLeft, Eye, EyeOff, KeyRound, ShieldCheck, UserRound, UserRoundPlus } from 'lucide-react';
 import { useAgro } from '../context/AgroContext';
 import { useUiPreferences } from '../context/UiPreferencesContext';
 
@@ -9,6 +9,7 @@ export default function AuthPage({ initialRole = 'admin', onNavigate, onLoginSuc
   const [role, setRole] = useState(initialRole.startsWith('officer') ? 'officer' : 'admin');
   const [isRegistering, setIsRegistering] = useState(initialRole === 'officer-register');
   const [showAdminHelp, setShowAdminHelp] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [form, setForm] = useState({
     name: '',
     email: '',
@@ -136,7 +137,18 @@ export default function AuthPage({ initialRole = 'admin', onNavigate, onLoginSuc
           </label>
           <label className="block space-y-1">
             <span className="text-xs font-bold text-slate-700">{t('auth.password')} {isRegistering && `(${t('auth.minimumPassword')})`}</span>
-            <input required minLength={isRegistering ? 10 : undefined} type="password" name="password" value={form.password} onChange={changeForm} autoComplete={isRegistering ? 'new-password' : 'current-password'} className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100" />
+            <span className="relative block">
+              <input required minLength={isRegistering ? 10 : undefined} type={showPassword ? 'text' : 'password'} name="password" value={form.password} onChange={changeForm} autoComplete={isRegistering ? 'new-password' : 'current-password'} className="w-full rounded-lg border border-slate-300 px-3 py-2.5 pr-11 text-sm outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100" />
+              <button
+                type="button"
+                onClick={() => setShowPassword((visible) => !visible)}
+                aria-label={showPassword ? 'পাসওয়ার্ড লুকান' : 'পাসওয়ার্ড দেখান'}
+                aria-pressed={showPassword}
+                className="absolute inset-y-0 right-0 flex items-center px-3 text-slate-500 hover:text-emerald-700"
+              >
+                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </span>
           </label>
 
           {error && <p role="alert" className="rounded-lg bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">{error}</p>}

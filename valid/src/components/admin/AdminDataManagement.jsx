@@ -20,7 +20,9 @@ export default function AdminDataManagement() {
       if (!window.confirm('ইমপোর্ট করলে বর্তমান ব্যবসায়িক ডেটা ব্যাকআপের ডেটা দিয়ে প্রতিস্থাপিত হবে। আগে বর্তমান ডেটার ব্যাকআপ নিন। এগোবেন?')) {
         return;
       }
-      await importBackup(backup);
+      const password = window.prompt('ব্যাকআপ ইমপোর্ট নিশ্চিত করতে আপনার অ্যাডমিন পাসওয়ার্ড দিন।');
+      if (!password) return;
+      await importBackup(backup, password);
       setMessage('ব্যাকআপ সফলভাবে ইমপোর্ট হয়েছে।');
     } catch (requestError) {
       setError(requestError instanceof SyntaxError

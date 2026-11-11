@@ -9,7 +9,8 @@ import {
   INITIAL_PAYMENTS
 } from '../data/initialData';
 import { formatDealerCode, getNextDealerCode, normalizeOfficerCode } from '../../shared/codes';
-import { normalizePaymentMethod } from '../../shared/paymentMethods';
+import { isDealerCollection, normalizePaymentMethod } from '../../shared/paymentMethods';
+import { applyInvoiceStockChanges } from '../../shared/invoiceStock';
 
 const AgroContext = createContext();
 
@@ -20,6 +21,7 @@ function normalizeBusinessRecords(type, records) {
   return records.map((record) => {
     const normalized = { ...record };
     if (type === 'officers') {
+      normalized.id = String(record.id || record.officerId || normalizeOfficerCode(record.code, record.designation));
       normalized.code = normalizeOfficerCode(record.code, record.designation);
     }
     if (type === 'dealers') {
@@ -74,95 +76,6 @@ export function getNextInvoiceNumber(existingInvoices = []) {
   }
 
   return { candidateId, seqNumber: nextSeq };
-}
-
-function getInvoiceStockMovements(invoice) {
-  const direction = invoice.invoiceType === 'dealer_return' ? 1 : -1;
-  const movements = new Map();
-
-  (invoice.items || []).forEach((item) => {
-    if (!item.productId || !item.sku) return;
-
-    const key = `${item.productId}\u0000${item.sku}`;
-    const cartons = Number(item.cartons) || 0;
-    const pieces = item.totalPieces != null
-      ? Number(item.totalPieces) || 0
-      : cartons * (Number(item.packPerBox) || 0);
-    const movement = movements.get(key) || {
-      productId: item.productId,
-      sku: item.sku,
-      cartons: 0,
-      pieces: 0
-    };
-
-    movement.cartons += cartons * direction;
-    movement.pieces += pieces * direction;
-    movements.set(key, movement);
-  });
-
-  (invoice.returnAdjustments || []).forEach((item) => {
-    if (!item.productId || !item.sku) return;
-
-    const key = `${item.productId}\u0000${item.sku}`;
-    const quantity = Number(item.quantity ?? item.quantityPieces) || 0;
-    const packPerBox = Number(item.packPerBox) || 1;
-    const movement = movements.get(key) || {
-      productId: item.productId,
-      sku: item.sku,
-      cartons: 0,
-      pieces: 0
-    };
-
-    movement.cartons -= Math.floor(quantity / packPerBox);
-    movements.set(key, movement);
-  });
-
-  return movements;
-}
-
-export function getInvoiceStockChanges(previousInvoice, nextInvoice) {
-  const changes = new Map();
-
-  [[previousInvoice, -1], [nextInvoice, 1]].forEach(([invoice, multiplier]) => {
-    if (!invoice) return;
-
-    getInvoiceStockMovements(invoice).forEach((movement, key) => {
-      const change = changes.get(key) || {
-        productId: movement.productId,
-        sku: movement.sku,
-        cartons: 0,
-        pieces: 0
-      };
-      change.cartons += movement.cartons * multiplier;
-      change.pieces += movement.pieces * multiplier;
-      changes.set(key, change);
-    });
-  });
-
-  return changes;
-}
-
-function applyInvoiceStockChanges(products, previousInvoice, nextInvoice) {
-  const changes = getInvoiceStockChanges(previousInvoice, nextInvoice);
-
-  return products.map((product) => {
-    const productChanges = [...changes.values()].filter((change) => change.productId === product.id);
-    if (productChanges.length === 0) return product;
-
-    return {
-      ...product,
-      variants: (product.variants || []).map((variant) => {
-        const change = productChanges.find((entry) => entry.sku === variant.sku);
-        if (!change) return variant;
-
-        return {
-          ...variant,
-          stockCartons: Math.max(0, (Number(variant.stockCartons) || 0) + change.cartons),
-          stock: Math.max(0, (Number(variant.stock) || 0) + change.pieces)
-        };
-      })
-    };
-  });
 }
 
 function escapeXml(value) {
@@ -404,6 +317,15 @@ export function AgroProvider({ children }) {
           const setter = setters[type];
           if (records.length > 0 || currentUser.role === 'officer' || hasSharedData) {
             if (!cancelled) setter(normalizeBusinessRecords(type, records));
+          } else if (localRecords[type].length > 0 && type === 'invoices') {
+            for (const invoice of localRecords[type]) {
+              const saveResponse = await fetch('/api/invoices', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(invoice)
+              });
+              await readJsonResponse(saveResponse);
+            }
           } else if (localRecords[type].length > 0) {
             const saveResponse = await fetch(`/api/records?type=${encodeURIComponent(type)}`, {
               method: 'PUT',
@@ -444,7 +366,6 @@ export function AgroProvider({ children }) {
     syncRecords('products', products);
     syncRecords('officers', officers);
     syncRecords('dealers', dealers);
-    syncRecords('invoices', invoices);
     syncRecords('stockInLogs', stockInLogs);
     syncRecords('damageLogs', damageLogs);
     syncRecords('payments', payments);
@@ -455,7 +376,6 @@ export function AgroProvider({ children }) {
     products,
     officers,
     dealers,
-    invoices,
     stockInLogs,
     damageLogs,
     payments,
@@ -487,7 +407,7 @@ export function AgroProvider({ children }) {
   }, [products]);
 
   const createInvoicePayment = (invoice) => ({
-    id: `PAY-${Date.now().toString().slice(-6)}`,
+    id: `PAY-${globalThis.crypto.randomUUID()}`,
     sourceInvoiceId: invoice.id,
     date: invoice.date,
     dealerId: invoice.dealerId,
@@ -505,7 +425,7 @@ export function AgroProvider({ children }) {
   });
 
   const createInvoiceDamageLogs = (invoice) => (invoice.returnAdjustments || []).map((ret, index) => ({
-    id: `DMG-${invoice.id}-${Date.now().toString().slice(-6)}-${index}`,
+    id: `DMG-${invoice.id}-${globalThis.crypto.randomUUID()}-${index}`,
     date: invoice.date,
     dealerId: invoice.dealerId,
     dealerName: invoice.dealerName,
@@ -529,7 +449,7 @@ export function AgroProvider({ children }) {
   }));
 
   // Create new Invoice with strict duplicate prevention, type tracking and stock update
-  const createInvoice = (newInvoice) => {
+  const createInvoice = async (newInvoice) => {
     let finalId = newInvoice.id;
     if (!finalId || invoices.some((inv) => inv.id === finalId)) {
       const { candidateId } = getNextInvoiceNumber(invoices);
@@ -549,26 +469,32 @@ export function AgroProvider({ children }) {
       totalCartons: calculatedTotalCartons
     };
 
-    setInvoices((prev) => [invoiceToSave, ...prev]);
+    const response = await fetch('/api/invoices', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(invoiceToSave)
+    });
+    const savedInvoice = await readJsonResponse(response);
+    setInvoices((prev) => [savedInvoice, ...prev.filter((invoice) => invoice.id !== savedInvoice.id)]);
 
     // Send to MongoDB Atlas API
     setProducts((prevProducts) => applyInvoiceStockChanges(prevProducts, null, invoiceToSave));
 
-    const damageEntries = createInvoiceDamageLogs(invoiceToSave);
+    const damageEntries = createInvoiceDamageLogs(savedInvoice);
     if (damageEntries.length) {
       setDamageLogs((prev) => [...damageEntries, ...prev]);
     }
 
     // Record payment if paid
-    if (Number(invoiceToSave.paidAmount) > 0) {
-      setPayments((prev) => [createInvoicePayment(invoiceToSave), ...prev]);
+    if (Number(savedInvoice.paidAmount) > 0) {
+      setPayments((prev) => [createInvoicePayment(savedInvoice), ...prev]);
     }
 
-    return invoiceToSave;
+    return savedInvoice;
   };
 
   // Update existing invoice (Edit capability)
-  const updateInvoice = (updatedInvoice) => {
+  const updateInvoice = async (updatedInvoice) => {
     const calculatedTotalCartons = (updatedInvoice.items || []).reduce(
       (sum, it) => sum + (Number(it.cartons) || 0),
       0
@@ -581,46 +507,68 @@ export function AgroProvider({ children }) {
     };
 
     const previousInvoice = invoices.find((invoice) => invoice.id === finalInvoice.id);
+    const response = await fetch('/api/invoices', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ invoice: finalInvoice })
+    });
+    const savedInvoice = await readJsonResponse(response);
     if (previousInvoice) {
       setProducts((prevProducts) =>
-        applyInvoiceStockChanges(prevProducts, previousInvoice, finalInvoice)
+        applyInvoiceStockChanges(prevProducts, previousInvoice, savedInvoice)
       );
     }
 
     setInvoices((prev) =>
-      prev.map((inv) => (inv.id === finalInvoice.id ? finalInvoice : inv))
+      prev.map((inv) => (inv.id === savedInvoice.id ? savedInvoice : inv))
     );
     setDamageLogs((prev) => [
-      ...createInvoiceDamageLogs(finalInvoice),
-      ...prev.filter((entry) => entry.invoiceRef !== finalInvoice.id)
+      ...createInvoiceDamageLogs(savedInvoice),
+      ...prev.filter((entry) => entry.invoiceRef !== savedInvoice.id)
     ]);
 
     setPayments((prev) => {
       const retainedPayments = prev.filter((payment) => (
-        payment.sourceInvoiceId !== finalInvoice.id
+        payment.sourceInvoiceId !== savedInvoice.id
         && !(
-          payment.reference === `চালান #${finalInvoice.id}`
-          && payment.note === `ইনভয়েস #${finalInvoice.id} এর বিপরীতে পরিশোধ`
+          payment.reference === `চালান #${savedInvoice.id}`
+          && payment.note === `ইনভয়েস #${savedInvoice.id} এর বিপরীতে পরিশোধ`
         )
       ));
-      return Number(finalInvoice.paidAmount) > 0
-        ? [createInvoicePayment(finalInvoice), ...retainedPayments]
+      return Number(savedInvoice.paidAmount) > 0
+        ? [createInvoicePayment(savedInvoice), ...retainedPayments]
         : retainedPayments;
     });
 
-    return finalInvoice;
+    return savedInvoice;
   };
 
   // Delete invoice
-  const deleteInvoice = (invoiceId) => {
+  const deleteInvoice = async (invoiceId, password) => {
+    const response = await fetch('/api/invoices', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: invoiceId, password })
+    });
+    const result = await readJsonResponse(response);
+    const invoice = invoices.find((entry) => entry.id === invoiceId);
     setInvoices((prev) => prev.filter((inv) => inv.id !== invoiceId));
+    setDamageLogs((prev) => prev.filter((entry) => entry.invoiceRef !== invoiceId));
+    setPayments((prev) => prev.filter((entry) => (
+      entry.sourceInvoiceId !== invoiceId
+      && !(entry.reference === `চালান #${invoiceId}` && entry.note === `ইনভয়েস #${invoiceId} এর বিপরীতে পরিশোধ`)
+    )));
+    if (invoice) {
+      setProducts((prev) => applyInvoiceStockChanges(prev, invoice, null));
+    }
+    return result;
   };
 
   // Stock In (ডিস্ট্রিবিউশন অফিসে মালামাল গ্রহণ)
   const addStockIn = (stockEntry) => {
     const entry = {
       ...stockEntry,
-      id: `STK-IN-${Date.now().toString().slice(-6)}`
+      id: `STK-IN-${globalThis.crypto.randomUUID()}`
     };
     setStockInLogs((prev) => [entry, ...prev]);
 
@@ -646,7 +594,7 @@ export function AgroProvider({ children }) {
   const recordDamageReturn = (damageEntry) => {
     const entry = {
       ...damageEntry,
-      id: `DMG-${Date.now().toString().slice(-6)}`,
+      id: `DMG-${globalThis.crypto.randomUUID()}`,
       status: 'গৃহীত'
     };
     setDamageLogs((prev) => [entry, ...prev]);
@@ -656,7 +604,7 @@ export function AgroProvider({ children }) {
   const addDealerPayment = (paymentData) => {
     const newPayment = {
       ...paymentData,
-      id: `PAY-${Date.now().toString().slice(-6)}`
+      id: `PAY-${globalThis.crypto.randomUUID()}`,
     };
     setPayments((prev) => [newPayment, ...prev]);
   };
@@ -749,8 +697,11 @@ export function AgroProvider({ children }) {
     const returnInvoices = dealerInvoices.filter((inv) => inv.invoiceType === 'dealer_return');
     const totalReturnCredits = returnInvoices.reduce((acc, curr) => acc + (Number(curr.grandTotal) || 0), 0);
 
-    const dealerPays = payments.filter((p) => p.dealerId === dealer.id || p.dealerName === dealer.shopName);
-    const totalPaid = dealerPays.reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0);
+    const dealerPays = payments.filter((p) => (
+      isDealerCollection(p) && (p.dealerId === dealer.id || p.dealerName === dealer.shopName)
+    ));
+    const totalPaid = dealerPays
+      .reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0);
 
     const damageCredits = damageLogs
       .filter((d) => (d.dealerId === dealer.id || d.dealerName === dealer.shopName) && d.actionType === 'ledger_credit' && !d.invoiceRef)
@@ -778,7 +729,9 @@ export function AgroProvider({ children }) {
     if (!officer) return null;
 
     const officerInvoices = invoices.filter(
-      (inv) => inv.officerId === officer.id || inv.officerCode === officer.code
+      (inv) => inv.officerId === officer.id
+        || normalizeOfficerCode(inv.officerCode, officer.designation)
+          === normalizeOfficerCode(officer.code, officer.designation)
     );
 
     const totalSalesAmount = officerInvoices
@@ -793,9 +746,12 @@ export function AgroProvider({ children }) {
       });
 
     const officerPayments = payments.filter(
-      (p) => p.officerId === officer.id || p.officerCode === officer.code || p.officerName === officer.name
+      (p) => p.officerId === officer.id
+        || normalizeOfficerCode(p.officerCode, officer.designation)
+          === normalizeOfficerCode(officer.code, officer.designation)
+        || p.officerName === officer.name
     );
-    const totalCollected = officerPayments.reduce(
+    const totalCollected = officerPayments.filter(isDealerCollection).reduce(
       (acc, curr) => acc + (Number(curr.amount) || 0),
       0
     );
@@ -823,11 +779,13 @@ export function AgroProvider({ children }) {
 
     const confirmationText = window.prompt('নিশ্চিত করতে RESET লিখুন।');
     if (confirmationText !== 'RESET') return false;
+    const password = window.prompt('ফ্যাক্টরি রিসেট নিশ্চিত করতে আপনার অ্যাডমিন পাসওয়ার্ড দিন।');
+    if (!password) return false;
 
     const response = await fetch('/api/backup', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'factory-reset' })
+      body: JSON.stringify({ action: 'factory-reset', password })
     });
     await readJsonResponse(response);
 
@@ -947,7 +905,7 @@ export function AgroProvider({ children }) {
     window.setTimeout(() => URL.revokeObjectURL(backupUrl), 1000);
   };
 
-  const importBackup = async (backup) => {
+  const importBackup = async (backup, password) => {
     const recordTypes = [
       'products',
       'officers',
@@ -964,6 +922,9 @@ export function AgroProvider({ children }) {
     if (!cloudReady) {
       throw new Error('ডেটাবেসের সঙ্গে সংযোগ সম্পন্ন হলে আবার চেষ্টা করুন।');
     }
+    if (typeof password !== 'string' || !password) {
+      throw new Error('ব্যাকআপ ইমপোর্টের জন্য পাসওয়ার্ড দিন।');
+    }
     if (
       backup?.version !== 1
       || recordTypes.some((type) => (
@@ -978,7 +939,7 @@ export function AgroProvider({ children }) {
     const response = await fetch('/api/backup', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(backup)
+      body: JSON.stringify({ ...backup, password })
     });
     await readJsonResponse(response);
     setProducts(backup.data.products);

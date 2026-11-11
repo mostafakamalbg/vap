@@ -323,7 +323,9 @@ export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCa
     };
 
     try {
-      const saved = editInvoiceData ? updateInvoice(invoice) : createInvoice(invoice);
+      const saved = editInvoiceData
+        ? await updateInvoice(invoice)
+        : await createInvoice(invoice);
       setSavedInvoice(saved);
       setSuccess(editInvoiceData ? 'ইনভয়েস আপডেট হয়েছে।' : 'ইনভয়েস তৈরি হয়েছে।');
     } catch (saveError) {
@@ -543,7 +545,7 @@ export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCa
         <section className="space-y-4">
           <div className="no-print flex justify-end">
             <button type="button" onClick={() => printInvoiceSheet(document.querySelector('.invoice-print-sheet'))} className="rounded-lg bg-slate-800 px-4 py-2 font-semibold text-white">
-              <Printer className="mr-2 inline h-4 w-4" /> ইনভয়েস প্রিন্ট / PDF
+              <Printer className="mr-2 inline h-4 w-4" /> ইনভয়েস প্রিন্ট করুন
             </button>
           </div>
           <div className="rounded-xl border border-slate-200 bg-slate-100 p-3 sm:p-6">

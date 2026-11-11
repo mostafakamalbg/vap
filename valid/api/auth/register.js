@@ -51,7 +51,7 @@ export default async function handler(req, res) {
       passwordHash: await hashPassword(password),
       role: 'officer',
       status: 'pending',
-      officerId: listedOfficer?.id || `OFF-${randomUUID().slice(0, 8).toUpperCase()}`,
+      officerId: listedOfficer?.id || listedOfficer?.officerId || `OFF-${randomUUID().slice(0, 8).toUpperCase()}`,
       officerCode,
       phone: listedOfficer?.phone || phone
     });

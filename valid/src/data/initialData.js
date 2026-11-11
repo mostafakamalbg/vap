@@ -3,7 +3,7 @@
 
 export const INITIAL_OFFICERS = [
   {
-    id: 'SO-05',
+    officerId: 'SO-05',
     code: '5',
     name: 'মো: মোন্তফা কামাল',
     designation: 'সেলস অফিসার (SO)',

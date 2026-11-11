@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import dbConnect from '../lib/mongodb.js';
-import { authorize, hasSuperAdminAccess } from '../lib/auth.js';
+import { authorize, hasSuperAdminAccess, verifyPassword } from '../lib/auth.js';
+import { User } from '../lib/models.js';
 import { BusinessRecord, Dealer, Invoice, Product } from '../lib/models.js';
 import {
   INITIAL_DAMAGES,
@@ -61,7 +62,7 @@ async function replaceRecords(data, session) {
     if (records.length) {
       await BusinessRecord.insertMany(records.map((record, index) => ({
         type,
-        recordId: String(record.id || record._id || `${type}-${index}`),
+        recordId: String(record.id || record.officerId || record._id || `${type}-${index}`),
         data: record
       })), { session });
     }
@@ -84,6 +85,11 @@ export default async function handler(req, res) {
   if (!await dbConnect()) return res.status(503).json({ error: 'MongoDB is not configured.' });
   const user = await authorize(req, res, ['admin']);
   if (!user) return;
+  const password = String(req.body?.password || '');
+  const credential = await User.findById(user._id).select('+passwordHash').lean();
+  if (!password || !credential || !await verifyPassword(password, credential.passwordHash)) {
+    return res.status(401).json({ error: 'সঠিক অ্যাডমিন পাসওয়ার্ড দিন।' });
+  }
 
   if (req.method === 'POST') {
     if (req.body?.action !== 'factory-reset') {

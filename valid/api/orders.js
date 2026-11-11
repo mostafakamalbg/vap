@@ -4,6 +4,8 @@ import dbConnect from '../lib/mongodb.js';
 import { Dealer, Invoice, Order, Product } from '../lib/models.js';
 import { authorize } from '../lib/auth.js';
 import { INVOICE_SESSIONS } from '../shared/sessions.js';
+import { BusinessRecord } from '../lib/models.js';
+import { normalizeOfficerCode } from '../shared/codes.js';
 
 const invoiceIdPattern = /^VAP-(\d{4})-(\d+)$/;
 
@@ -67,13 +69,28 @@ async function loadOrderItems(requestedItems, session) {
   return items;
 }
 
-function getDealerScope(user) {
+async function getDealerScope(user) {
   const officerCodeMatch = String(user.officerCode || '').match(/\d+/);
   const officerCodeDigits = officerCodeMatch ? String(Number(officerCodeMatch[0])) : '';
+  const normalizedCode = normalizeOfficerCode(user.officerCode);
+  const officerRecords = await BusinessRecord.find({ type: 'officers' }).select('data').lean();
+  const officerIds = officerRecords
+    .filter((record) => (
+      normalizeOfficerCode(record.data?.code, record.data?.designation) === normalizedCode
+      || record.data?.id === user.officerId
+      || record.data?.officerId === user.officerId
+    ))
+    .flatMap((record) => [record.data?.id, record.data?.officerId])
+    .filter(Boolean);
   return [
     ...(user.officerId ? [{ assignedOfficerId: user.officerId }] : []),
+    ...officerIds.map((id) => ({ assignedOfficerId: id })),
+    ...(officerCodeDigits ? [
+      { assignedOfficerId: `OFF-${officerCodeDigits.padStart(2, '0')}` }
+    ] : []),
     ...(user.officerCode ? [
       { assignedOfficerCode: user.officerCode },
+      ...(normalizedCode ? [{ assignedOfficerCode: normalizedCode }] : []),
       { officerCode: user.officerCode },
       ...(officerCodeDigits ? [
         { assignedOfficerCode: officerCodeDigits },
@@ -103,7 +120,7 @@ export default async function handler(req, res) {
 
     if (req.method === 'POST') {
       if (user.role !== 'officer') return res.status(403).json({ error: 'অর্ডার কেবল অফিসার জমা দিতে পারবেন।' });
-      const dealerScope = getDealerScope(user);
+      const dealerScope = await getDealerScope(user);
       const dealer = await Dealer.findOne({
         id: String(req.body?.dealerId || ''),
         ...(dealerScope.length ? { $or: dealerScope } : { id: '__no_records__' })

@@ -56,6 +56,7 @@ export default function InvoiceList({ onNewInvoiceClick, onEditInvoice, initialI
   const { invoices, damageLogs, deleteInvoice } = useAgro();
   const [search, setSearch] = useState('');
   const [printInvoice, setPrintInvoice] = useState(null);
+  const [deletingId, setDeletingId] = useState('');
   const printSelectedInvoice = () => {
     printInvoiceSheet(document.querySelector('.invoice-print-sheet'));
   };
@@ -89,10 +90,42 @@ export default function InvoiceList({ onNewInvoiceClick, onEditInvoice, initialI
     if (invoice) setPrintInvoice(invoice);
   }, [initialInvoiceId, invoices]);
 
-  const handleDelete = (invoice) => {
-    if (!window.confirm(`ইনভয়েস ${invoice.id} মুছে ফেলবেন?`)) return;
-    deleteInvoice(invoice.id);
-    if (printInvoice?.id === invoice.id) setPrintInvoice(null);
+  const getCreatedAt = (invoice) => {
+    const createdAt = invoice.createdAt
+      ? new Date(invoice.createdAt)
+      : new Date(`${invoice.date}T00:00:00.000Z`);
+    return Number.isNaN(createdAt.valueOf()) ? null : createdAt;
+  };
+  const isWithinEditWindow = (invoice) => {
+    const createdAt = getCreatedAt(invoice);
+    if (!createdAt) return false;
+    const age = Date.now() - createdAt.valueOf();
+    return age >= 0 && age <= 15 * 24 * 60 * 60 * 1000;
+  };
+  const isWithinDeleteWindow = (invoice) => {
+    const createdAt = getCreatedAt(invoice);
+    if (!createdAt || createdAt.valueOf() > Date.now()) return false;
+    const year = createdAt.getUTCFullYear();
+    const month = createdAt.getUTCMonth() + 1;
+    const day = createdAt.getUTCDate();
+    const lastDayOfMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+    const deadline = new Date(createdAt);
+    deadline.setUTCFullYear(year, month, Math.min(day, lastDayOfMonth));
+    return Date.now() <= deadline.valueOf();
+  };
+  const handleDelete = async (invoice) => {
+    if (!window.confirm(`ইনভয়েস ${invoice.id} মুছে ফেলবেন? সংশ্লিষ্ট লেজার ও স্টকও সমন্বয় হবে।`)) return;
+    const password = window.prompt('ইনভয়েস মুছতে আপনার অ্যাডমিন পাসওয়ার্ড দিন।');
+    if (!password) return;
+    setDeletingId(invoice.id);
+    try {
+      await deleteInvoice(invoice.id, password);
+      if (printInvoice?.id === invoice.id) setPrintInvoice(null);
+    } catch (error) {
+      window.alert(error.message || 'ইনভয়েস মুছতে ব্যর্থ হয়েছে।');
+    } finally {
+      setDeletingId('');
+    }
   };
 
   return (
@@ -140,8 +173,8 @@ export default function InvoiceList({ onNewInvoiceClick, onEditInvoice, initialI
                 <td className="p-3">
                   <div className="flex gap-1">
                     <button type="button" title="প্রিন্ট" onClick={() => setPrintInvoice(invoice)} className="rounded p-2 text-slate-600 hover:bg-slate-100"><Printer className="h-4 w-4" /></button>
-                    {!isDamage && onEditInvoice && <button type="button" title="সম্পাদনা" onClick={() => onEditInvoice(invoice)} className="rounded p-2 text-blue-700 hover:bg-blue-50"><Pencil className="h-4 w-4" /></button>}
-                    {!isDamage && <button type="button" title="মুছুন" onClick={() => handleDelete(invoice)} className="rounded p-2 text-rose-700 hover:bg-rose-50"><Trash2 className="h-4 w-4" /></button>}
+                    {!isDamage && onEditInvoice && <button type="button" title={isWithinEditWindow(invoice) ? 'সম্পাদনা' : 'ইনভয়েস তৈরির ১৫ দিনের পর সম্পাদনা করা যাবে না'} disabled={!isWithinEditWindow(invoice)} onClick={() => onEditInvoice(invoice)} className="rounded p-2 text-blue-700 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-40"><Pencil className="h-4 w-4" /></button>}
+                    {!isDamage && <button type="button" title={isWithinDeleteWindow(invoice) ? 'পাসওয়ার্ড দিয়ে মুছুন' : 'ইনভয়েস তৈরির এক মাস পর মুছতে পারবেন না'} disabled={!isWithinDeleteWindow(invoice) || deletingId === invoice.id} onClick={() => handleDelete(invoice)} className="rounded p-2 text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-40"><Trash2 className="h-4 w-4" /></button>}
                   </div>
                 </td>
               </tr>
@@ -156,7 +189,7 @@ export default function InvoiceList({ onNewInvoiceClick, onEditInvoice, initialI
         <section className="space-y-3">
           <div className="no-print flex justify-end">
             <button type="button" onClick={printSelectedInvoice} className="rounded-lg bg-slate-800 px-4 py-2 font-semibold text-white">
-              <Printer className="mr-2 inline h-4 w-4" /> প্রিন্ট / PDF
+              <Printer className="mr-2 inline h-4 w-4" /> প্রিন্ট করুন
             </button>
           </div>
           <div className="rounded-xl bg-slate-100 p-3 sm:p-6"><InvoicePrintHeader invoice={printInvoice} /></div>

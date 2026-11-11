@@ -15,7 +15,7 @@ const recordTypes = new Set([
 const databaseModels = { products: Product, dealers: Dealer, invoices: Invoice };
 
 function getRecordId(record, index) {
-  return String(record?.id || record?._id || `${Date.now()}-${index}`);
+  return String(record?.id || record?.officerId || record?._id || `${Date.now()}-${index}`);
 }
 
 export default async function handler(req, res) {
@@ -29,6 +29,9 @@ export default async function handler(req, res) {
 
   const type = String(req.query?.type || '');
   if (!recordTypes.has(type)) return res.status(400).json({ error: 'Unknown record type.' });
+  if (req.method === 'PUT' && type === 'invoices') {
+    return res.status(405).json({ error: 'ইনভয়েস সংরক্ষণ, সম্পাদনা ও মুছতে নির্দিষ্ট ইনভয়েস অপশন ব্যবহার করুন।' });
+  }
 
   try {
     const Model = databaseModels[type];
@@ -38,14 +41,32 @@ export default async function handler(req, res) {
         if (user.role !== 'admin' && type === 'dealers') {
           const officerCodeMatch = String(user.officerCode || '').match(/\d+/);
           const officerCodeDigits = officerCodeMatch ? String(Number(officerCodeMatch[0])) : '';
+          const officerRecords = await BusinessRecord.find({ type: 'officers' }).select('data').lean();
+          const normalizedUserCode = normalizeOfficerCode(user.officerCode);
+          const relatedOfficerIds = officerRecords
+            .filter((record) => (
+              normalizeOfficerCode(record.data?.code, record.data?.designation) === normalizedUserCode
+              || record.data?.id === user.officerId
+              || record.data?.officerId === user.officerId
+            ))
+            .flatMap((record) => [record.data?.id, record.data?.officerId])
+            .filter(Boolean);
+          const officerIds = [...new Set([
+            user.officerId,
+            ...relatedOfficerIds,
+            ...(officerCodeDigits ? [`OFF-${officerCodeDigits.padStart(2, '0')}`] : [])
+          ])];
           const conditions = [
-            ...(user.officerId ? [{ assignedOfficerId: user.officerId }] : []),
+            ...(officerIds.length ? [{ assignedOfficerId: { $in: officerIds } }] : []),
             ...(user.officerCode ? [
               { assignedOfficerCode: user.officerCode },
+              ...(normalizedUserCode ? [{ assignedOfficerCode: normalizedUserCode }] : []),
               { officerCode: user.officerCode },
               ...(officerCodeDigits ? [
                 { assignedOfficerCode: officerCodeDigits },
-                { officerCode: officerCodeDigits }
+                { assignedOfficerCode: `OFF-${officerCodeDigits}` },
+                { officerCode: officerCodeDigits },
+                { assignedOfficerCode: `OFF-${officerCodeDigits.padStart(2, '0')}` }
               ] : [])
             ] : [])
           ];
@@ -55,6 +76,10 @@ export default async function handler(req, res) {
           const officerCodeDigits = officerCodeMatch ? String(Number(officerCodeMatch[0])) : '';
           const conditions = [
             ...(user.officerId ? [{ officerId: user.officerId }] : []),
+            ...(officerCodeDigits ? [
+              { officerId: `OFF-${officerCodeDigits.padStart(2, '0')}` },
+              { officerCode: `SO-${officerCodeDigits.padStart(2, '0')}` }
+            ] : []),
             ...(user.officerCode ? [
               { officerCode: user.officerCode },
               ...(officerCodeDigits ? [{ officerCode: officerCodeDigits }] : [])

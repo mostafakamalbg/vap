@@ -12,8 +12,13 @@ async function requestJson(url, options) {
 }
 
 export default function OfficerDashboard() {
-  const { currentUser, invoices, allProductVariants, dealers } = useAgro();
+  const { currentUser, invoices, allProductVariants, dealers, officers } = useAgro();
   const { t, language } = useUiPreferences();
+  const currentOfficer = officers.find((entry) => (
+    normalizeOfficerCode(entry.code, entry.designation)
+      === normalizeOfficerCode(currentUser?.officerCode, entry.designation)
+  ));
+  const officerCode = normalizeOfficerCode(currentUser?.officerCode, currentOfficer?.designation);
   const [orders, setOrders] = useState([]);
   const [items, setItems] = useState([{ productId: '', sku: '', cartons: 1 }]);
   const [dealerId, setDealerId] = useState(dealers[0]?.id || '');
@@ -37,17 +42,32 @@ export default function OfficerDashboard() {
       !['dealer_return', 'factory_damage'].includes(invoice.invoiceType)
       && (
         (currentUser?.officerId && invoice.officerId === currentUser.officerId)
-        || (currentUser?.officerCode
-          && normalizeOfficerCode(invoice.officerCode) === normalizeOfficerCode(currentUser.officerCode))
+        || (officerCode
+          && normalizeOfficerCode(invoice.officerCode, currentOfficer?.designation) === officerCode)
       )
     )),
-    [currentUser?.officerCode, currentUser?.officerId, invoices]
+    [currentUser?.officerCode, currentUser?.officerId, currentOfficer?.designation, invoices, officerCode]
   );
-  const availableDealers = useMemo(() => dealers.filter((dealer) => (
-    (dealer.assignedOfficerId && dealer.assignedOfficerId === currentUser?.officerId)
-    || normalizeOfficerCode(dealer.assignedOfficerCode || dealer.officerCode)
-      === normalizeOfficerCode(currentUser?.officerCode)
-  )), [currentUser?.officerCode, currentUser?.officerId, dealers]);
+  const availableDealers = useMemo(() => {
+    const codeNumber = officerCode.match(/\d+$/)?.[0];
+    const officerIds = new Set([
+      currentUser?.officerId,
+      currentOfficer?.id,
+      currentOfficer?.officerId,
+      ...(codeNumber ? [`OFF-${codeNumber.padStart(2, '0')}`] : [])
+    ].filter(Boolean));
+    return dealers.filter((dealer) => {
+      const dealerCodes = [dealer.assignedOfficerCode, dealer.officerCode]
+        .map((code) => normalizeOfficerCode(code, currentOfficer?.designation))
+        .filter(Boolean);
+      return officerIds.has(dealer.assignedOfficerId) || dealerCodes.includes(officerCode);
+    });
+  }, [currentOfficer, currentUser?.officerId, dealers, officerCode]);
+  useEffect(() => {
+    if (!availableDealers.some((dealer) => dealer.id === dealerId)) {
+      setDealerId(availableDealers[0]?.id || '');
+    }
+  }, [availableDealers, dealerId]);
   const sessions = useMemo(
     () => [...new Set(salesInvoices.map((invoice) => invoice.session).filter(Boolean))].sort().reverse(),
     [salesInvoices]

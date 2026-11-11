@@ -14,6 +14,7 @@ import {
 import { useAgro } from '../../context/AgroContext';
 import { toBn, toBnDate } from '../../utils/bengali';
 import { formatDealerCode, formatOfficerCode, normalizeOfficerCode } from '../../../shared/codes';
+import { isDealerCollection, normalizePaymentType, PAYMENT_TYPES } from '../../../shared/paymentMethods';
 import { INVOICE_SESSIONS, LEGACY_INVOICE_SESSION } from '../../../shared/sessions';
 import SearchableRecordSelect from './SearchableRecordSelect';
 
@@ -36,6 +37,10 @@ export default function MonthlyReport() {
   const [selectedYear, setSelectedYear] = useState(currentYearStr);
   const [selectedDealerId, setSelectedDealerId] = useState(dealers[0]?.id || '');
   const [selectedOfficerCode, setSelectedOfficerCode] = useState(officers[0]?.code || '5');
+  const [selectedOfficerMonth, setSelectedOfficerMonth] = useState(currentMonthStr);
+  const [selectedOfficerSession, setSelectedOfficerSession] = useState(
+    invoices.find((invoice) => invoice.session)?.session || INVOICE_SESSIONS[0]
+  );
   const [selectedSession, setSelectedSession] = useState(
     invoices.find((invoice) => invoice.session)?.session || INVOICE_SESSIONS[0]
   );
@@ -47,6 +52,10 @@ export default function MonthlyReport() {
   const activeSession = availableSessions.some((session) => session.id === selectedSession)
     ? selectedSession
     : availableSessions[0]?.id || LEGACY_INVOICE_SESSION;
+  const activeOfficerSession = selectedOfficerSession === 'ALL'
+    || availableSessions.some((session) => session.id === selectedOfficerSession)
+    ? selectedOfficerSession
+    : 'ALL';
   const availableYears = [...new Set([
     currentYearStr,
     ...invoices.map((invoice) => invoice.date?.slice(0, 4)),
@@ -107,20 +116,18 @@ export default function MonthlyReport() {
       const isOfficer = inv.officerId === off?.id
         || normalizeOfficerCode(inv.officerCode, off?.designation)
           === normalizeOfficerCode(off?.code, off?.designation);
-      const inDateRange = (!startDate || inv.date >= startDate) && (!endDate || inv.date <= endDate);
-      return isOfficer && inDateRange;
+      return isOfficer && inv.date?.startsWith(selectedOfficerMonth);
     });
     filteredDamages = damageLogs.filter((dmg) => {
       const isOfficer = dmg.officerId === off?.id || dmg.officerName === off?.name;
-      const inDateRange = (!startDate || dmg.date >= startDate) && (!endDate || dmg.date <= endDate);
-      return isOfficer && inDateRange;
+      return isOfficer && dmg.date?.startsWith(selectedOfficerMonth);
     });
-    reportTitle = `অফিসার সেলস ও পারফরম্যান্স রিপোর্ট: কোড [${toBn(selectedOfficerCode)}]`;
+    reportTitle = `অফিসার মাসিক সেলস, কালেকশন ও খরচ অ্যাপ্রেইজাল: ${off?.name || 'অফিসার'}`;
     reportTitle = reportTitle.replace(
-      `[${toBn(selectedOfficerCode)}]`,
-      `[${formatOfficerCode(off?.code, off?.designation)}]`
+      off?.name || 'অফিসার',
+      `${off?.name || 'অফিসার'} (${formatOfficerCode(off?.code, off?.designation)})`
     );
-    reportSubtitle = `টেরিটরি: ${off?.territory} | পদবী: ${off?.designation} • সময়কাল: ${toBnDate(startDate)} হতে ${toBnDate(endDate)}`;
+    reportSubtitle = `টেরিটরি: ${off?.territory || '—'} | পদবী: ${off?.designation || '—'} • মাস: ${selectedOfficerMonth} • সেশন পণ্য: ${activeOfficerSession === 'ALL' ? 'সব সেশন' : activeOfficerSession}`;
   } else if (filterMode === 'session') {
     filteredInvoices = invoices.filter(
       (invoice) => (invoice.session || LEGACY_INVOICE_SESSION) === activeSession
@@ -131,10 +138,15 @@ export default function MonthlyReport() {
     );
     reportTitle = 'সেশনভিত্তিক সেলস ও রিটার্ন রিপোর্ট';
     reportSubtitle = `নির্বাচিত সেশন: ${activeSession}`;
+  } else if (filterMode === 'stock') {
+    filteredInvoices = invoices.filter((invoice) => invoice.date?.startsWith(selectedMonth));
+    filteredDamages = damageLogs.filter((entry) => entry.date?.startsWith(selectedMonth));
+    reportTitle = `মাসশেষ ইনভেন্টরি স্টক রিপোর্ট (${selectedMonth})`;
+    reportSubtitle = 'মাসের শেষ দিনের অবশিষ্ট স্টক, স্টক ইন, বিক্রয়, ফেরত ও ড্যামেজ';
   }
 
   // Search filter
-  if (searchTerm) {
+  if (searchTerm && filterMode !== 'stock') {
     filteredInvoices = filteredInvoices.filter(
       (inv) =>
         String(inv.id || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -186,6 +198,162 @@ export default function MonthlyReport() {
     0
   );
 
+  const selectedOfficer = officers.find((officer) => (
+    String(officer.code) === String(selectedOfficerCode) || officer.id === selectedOfficerCode
+  ));
+  const officerMatches = (record) => (
+    record.officerId === selectedOfficer?.id
+    || record.officerId === selectedOfficer?.officerId
+    || record.officerId === `OFF-${String(selectedOfficer?.code || '').match(/\d+$/)?.[0]?.padStart(2, '0')}`
+    || record.officerName === selectedOfficer?.name
+    || Boolean(normalizeOfficerCode(record.officerCode, selectedOfficer?.designation))
+      && normalizeOfficerCode(record.officerCode, selectedOfficer?.designation)
+        === normalizeOfficerCode(selectedOfficer?.code, selectedOfficer?.designation)
+  );
+  const monthlyOfficerPayments = filterMode === 'officer'
+    ? payments.filter((payment) => (
+      officerMatches(payment) && String(payment.date || '').startsWith(selectedOfficerMonth)
+    ))
+    : [];
+  const officerMonthlyExpenses = monthlyOfficerPayments
+    .filter((payment) => ['salary', 'vehicle_rent', 'lc_commission'].includes(normalizePaymentType(payment.paymentType)))
+    .reduce((sum, payment) => sum + (Number(payment.amount) || 0), 0);
+  const officerExpenseTransactions = monthlyOfficerPayments.filter((payment) => (
+    ['salary', 'vehicle_rent', 'lc_commission'].includes(normalizePaymentType(payment.paymentType))
+  ));
+  const officerCollectionTransactions = monthlyOfficerPayments.filter(isDealerCollection);
+  const reportPaymentTransactions = payments.filter((payment) => {
+    if (filterMode === 'month' || filterMode === 'stock') {
+      return String(payment.date || '').startsWith(selectedMonth);
+    }
+    if (filterMode === 'year') return String(payment.date || '').startsWith(selectedYear);
+    if (filterMode === 'dealer') {
+      const dealer = dealers.find((entry) => entry.id === selectedDealerId);
+      return (payment.dealerId === selectedDealerId || payment.dealerName === dealer?.shopName)
+        && (!startDate || payment.date >= startDate)
+        && (!endDate || payment.date <= endDate);
+    }
+    if (filterMode === 'officer') {
+      return officerMatches(payment) && String(payment.date || '').startsWith(selectedOfficerMonth);
+    }
+    if (filterMode === 'session') {
+      const invoiceIds = new Set(filteredInvoices.map((invoice) => invoice.id));
+      return invoiceIds.has(payment.sourceInvoiceId) || payment.session === activeSession;
+    }
+    return false;
+  });
+  const reportExpenseTransactions = reportPaymentTransactions.filter((payment) => (
+    ['salary', 'vehicle_rent', 'lc_commission'].includes(normalizePaymentType(payment.paymentType))
+  ));
+  const reportUnloggedInvoiceCollection = filteredInvoices
+    .filter((invoice) => !['dealer_return', 'factory_damage'].includes(invoice.invoiceType))
+    .filter((invoice) => !reportPaymentTransactions.some((payment) => (
+      payment.sourceInvoiceId === invoice.id
+      || (
+        payment.reference === `চালান #${invoice.id}`
+        && payment.note === `ইনভয়েস #${invoice.id} এর বিপরীতে পরিশোধ`
+      )
+    )))
+    .reduce((sum, invoice) => sum + (Number(invoice.paidAmount) || 0), 0);
+  const reportCollection = reportPaymentTransactions
+    .filter(isDealerCollection)
+    .reduce((sum, payment) => sum + (Number(payment.amount) || 0), reportUnloggedInvoiceCollection);
+  const reportExpenses = reportExpenseTransactions
+    .reduce((sum, payment) => sum + (Number(payment.amount) || 0), 0);
+  const officerSalesInvoices = filteredInvoices.filter((invoice) => (
+    !['dealer_return', 'factory_damage'].includes(invoice.invoiceType)
+  ));
+  const sessionSalesInvoices = filterMode === 'officer'
+    ? invoices.filter((invoice) => (
+      officerMatches(invoice)
+      && (activeOfficerSession === 'ALL'
+        || (invoice.session || LEGACY_INVOICE_SESSION) === activeOfficerSession)
+      && !['dealer_return', 'factory_damage'].includes(invoice.invoiceType)
+    ))
+    : [];
+  const summarizeProducts = (entries) => {
+    const totals = new Map();
+    entries.forEach((invoice) => {
+      (invoice.items || []).forEach((item) => {
+        const key = `${item.productId || item.productName}::${item.sku || item.size}`;
+        const summary = totals.get(key) || {
+          key,
+          name: item.productName || 'পণ্য',
+          size: item.size || '',
+          cartons: 0,
+          pieces: 0
+        };
+        summary.cartons += Number(item.cartons ?? item.quantity) || 0;
+        summary.pieces += Number(item.totalPieces)
+          || (Number(item.cartons ?? item.quantity) || 0) * (Number(item.packPerBox) || 1);
+        totals.set(key, summary);
+      });
+    });
+    return [...totals.values()];
+  };
+  const officerMonthProducts = filterMode === 'officer' ? summarizeProducts(officerSalesInvoices) : [];
+  const officerSessionProducts = summarizeProducts(sessionSalesInvoices);
+
+  const monthEnd = selectedMonth ? new Date(`${selectedMonth}-01T00:00:00.000Z`) : new Date();
+  monthEnd.setUTCMonth(monthEnd.getUTCMonth() + 1, 0);
+  const monthEndDate = monthEnd.toISOString().slice(0, 10);
+  const stockReportRows = products.flatMap((product) => (product.variants || []).map((variant) => {
+    const productKey = `${product.id}::${variant.sku}`;
+    const stockInsInRange = stockInLogs.filter((entry) => (
+      entry.productId === product.id && entry.sku === variant.sku
+      && entry.date >= `${selectedMonth}-01` && entry.date <= monthEndDate
+    ));
+    const stockInvoicesInRange = invoices.filter((invoice) => invoice.date?.startsWith(selectedMonth));
+    const salesInRange = stockInvoicesInRange
+      .filter((invoice) => !['dealer_return', 'factory_damage'].includes(invoice.invoiceType))
+      .flatMap((invoice) => invoice.items || [])
+      .filter((item) => item.productId === product.id && item.sku === variant.sku);
+    const returnsInRange = stockInvoicesInRange
+      .filter((invoice) => invoice.invoiceType === 'dealer_return')
+      .flatMap((invoice) => invoice.items || [])
+      .filter((item) => item.productId === product.id && item.sku === variant.sku);
+    const adjustedReturnsInRange = stockInvoicesInRange
+      .flatMap((invoice) => invoice.returnAdjustments || [])
+      .filter((item) => item.productId === product.id && item.sku === variant.sku);
+    const damageInRange = filteredDamages.filter((entry) => (
+      entry.productId === product.id && entry.sku === variant.sku
+    ));
+    let futureMovementPieces = stockInLogs
+      .filter((entry) => entry.productId === product.id && entry.sku === variant.sku && entry.date > monthEndDate)
+      .reduce((sum, entry) => sum + (Number(entry.quantityPieces) || 0), 0);
+    invoices.filter((invoice) => invoice.date > monthEndDate).forEach((invoice) => {
+      const direction = invoice.invoiceType === 'dealer_return' ? 1 : -1;
+      (invoice.items || []).filter((item) => item.productId === product.id && item.sku === variant.sku)
+        .forEach((item) => {
+          futureMovementPieces += direction * (Number(item.totalPieces)
+            || (Number(item.cartons ?? item.quantity) || 0) * (Number(item.packPerBox) || 1));
+        });
+      (invoice.returnAdjustments || []).filter((item) => item.productId === product.id && item.sku === variant.sku)
+        .forEach((item) => {
+          futureMovementPieces -= Number(item.quantity ?? item.quantityPieces) || 0;
+        });
+    });
+    const packPerBox = Number(variant.packPerBox) || 1;
+    const piecesRemaining = Math.max(0, (Number(variant.stock) || 0) - futureMovementPieces);
+    return {
+      key: productKey,
+      productName: product.name,
+      size: variant.size || '',
+      packPerBox,
+      remainingPieces: piecesRemaining,
+      remainingCartons: Math.floor(piecesRemaining / packPerBox),
+      stockIn: stockInsInRange.reduce((sum, entry) => sum + (Number(entry.quantityPieces) || 0), 0),
+      soldCartons: salesInRange.reduce((sum, item) => sum + (Number(item.cartons ?? item.quantity) || 0), 0),
+      returnedPieces: returnsInRange.reduce((sum, item) => sum + (Number(item.totalPieces)
+        || (Number(item.cartons ?? item.quantity) || 0) * (Number(item.packPerBox) || packPerBox)), 0)
+        + adjustedReturnsInRange.reduce((sum, item) => sum + (Number(item.quantity ?? item.quantityPieces) || 0), 0),
+      damagedPieces: damageInRange.reduce((sum, entry) => sum + (Number(entry.quantityPieces) || 0), 0)
+    };
+  }));
+  const visibleStockReportRows = stockReportRows.filter((row) => (
+    row.remainingPieces || row.stockIn || row.soldCartons || row.returnedPieces || row.damagedPieces
+  ));
+
   return (
     <div className="py-6 px-4 max-w-7xl mx-auto space-y-6">
       {/* Header Bar */}
@@ -225,15 +393,16 @@ export default function MonthlyReport() {
               <option value="year">বার্ষিক হিসাব (Yearly / Annual)</option>
               <option value="dealer">ডিলারভিত্তিক রিপোর্ট (By Dealer)</option>
               <option value="officer">অফিসারভিত্তিক রিপোর্ট (By Officer)</option>
-              <option value="session">সেশনভিত্তিক রিপোর্ট</option>
+                <option value="session">সেশনভিত্তিক রিপোর্ট</option>
+                <option value="stock">মাসশেষ স্টক রিপোর্ট</option>
             </select>
           </label>
         </div>
 
         {/* Dynamic Controls based on selected mode */}
         <div className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-center text-xs">
-            {filterMode === 'month' && (
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 items-center text-xs">
+            {(filterMode === 'month' || filterMode === 'stock') && (
               <div>
                 <label className="block font-bold text-slate-700 mb-1">মাস নির্বাচন করুন:</label>
                 <input
@@ -288,6 +457,65 @@ export default function MonthlyReport() {
               </div>
             )}
 
+            {(filterMode === 'month' || filterMode === 'stock') && (
+              <section className="space-y-3 rounded-lg border border-slate-200 p-4">
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <div><span className="text-xs font-semibold text-slate-500">মাসের মোট কালেকশন / আয়</span><p className="mt-1 text-lg font-black text-emerald-800">৳{toBn(reportCollection)}</p></div>
+                  <div><span className="text-xs font-semibold text-slate-500">মাসের মোট খরচ</span><p className="mt-1 text-lg font-black text-rose-700">৳{toBn(reportExpenses)}</p></div>
+                  <div><span className="text-xs font-semibold text-slate-500">নিট নগদ প্রবাহ</span><p className="mt-1 text-lg font-black text-slate-900">৳{toBn(reportCollection - reportExpenses)}</p></div>
+                </div>
+                <div className="overflow-x-auto rounded-lg border border-slate-200">
+                  <h5 className="bg-slate-100 px-3 py-2 text-xs font-bold text-slate-800">কোম্পানির মাসিক আয়-ব্যয়ের পোস্টিং</h5>
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-50 text-slate-700">
+                      <tr><th className="p-2">তারিখ</th><th className="p-2">ধরন</th><th className="p-2">ডিলার / অফিসার</th><th className="p-2">রেফারেন্স</th><th className="p-2 text-right">আয়</th><th className="p-2 text-right">ব্যয়</th></tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {reportPaymentTransactions.map((payment) => {
+                        const income = isDealerCollection(payment);
+                        const label = PAYMENT_TYPES.find((type) => type.value === normalizePaymentType(payment.paymentType))?.label;
+                        return (
+                          <tr key={payment.id}>
+                            <td className="p-2">{toBnDate(payment.date)}</td>
+                            <td className="p-2">{label}</td>
+                            <td className="p-2">{payment.dealerName || payment.officerName || '—'}</td>
+                            <td className="p-2">{payment.reference || payment.note || '—'}</td>
+                            <td className="p-2 text-right text-emerald-800">{income ? `৳${toBn(payment.amount)}` : '—'}</td>
+                            <td className="p-2 text-right text-rose-700">{income ? '—' : `৳${toBn(payment.amount)}`}</td>
+                          </tr>
+                        );
+                      })}
+                      {!reportPaymentTransactions.length && <tr><td colSpan={6} className="p-3 text-center text-slate-500">এই মাসে কোনো পেমেন্ট বা খরচ পোস্টিং নেই।</td></tr>}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            )}
+
+            {filterMode === 'officer' && (
+              <>
+                <label className="block font-bold text-slate-700">
+                  মাসিক রিপোর্টের মাস:
+                  <input
+                    type="month"
+                    value={selectedOfficerMonth}
+                    onChange={(event) => setSelectedOfficerMonth(event.target.value)}
+                    className="mt-1 w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 font-mono font-bold"
+                  />
+                </label>
+                <SearchableRecordSelect
+                  label="সেশনের পণ্য রিপোর্ট:"
+                  items={[{ id: 'ALL' }, ...availableSessions]}
+                  value={activeOfficerSession}
+                  onChange={setSelectedOfficerSession}
+                  placeholder="সেশন নির্বাচন করুন"
+                  searchPlaceholder="সেশনের নাম দিয়ে খুঁজুন"
+                  optionLabel={(session) => session.id === 'ALL' ? 'সব সেশন' : session.id}
+                  searchText={(session) => session.id}
+                />
+              </>
+            )}
+
             {filterMode === 'session' && (
               <div className="sm:col-span-2">
                 <SearchableRecordSelect
@@ -304,23 +532,25 @@ export default function MonthlyReport() {
             )}
 
             {/* Quick search input */}
-            <div className="relative">
-              <label className="block font-bold text-slate-700 mb-1">তালিকায় দ্রুত সার্চ:</label>
+            {filterMode !== 'stock' && (
               <div className="relative">
-                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  placeholder="চালান নং বা নাম দিয়ে খুঁজুন..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-8 pr-3 py-2 bg-slate-50 border border-slate-300 rounded-lg"
-                />
+                <label className="block font-bold text-slate-700 mb-1">তালিকায় দ্রুত সার্চ:</label>
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    placeholder="চালান নং বা নাম দিয়ে খুঁজুন..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full pl-8 pr-3 py-2 bg-slate-50 border border-slate-300 rounded-lg"
+                  />
+                </div>
               </div>
-            </div>
+            )}
           </div>
 
           {/* Date Range Selector for Dealer and Officer Modes */}
-          {(filterMode === 'dealer' || filterMode === 'officer') && (
+          {filterMode === 'dealer' && (
             <div className="p-3 bg-emerald-50/60 rounded-xl border border-emerald-100 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 text-xs">
               <div className="flex flex-wrap items-center gap-3">
                 <span className="font-bold text-slate-700 flex items-center gap-1">
@@ -430,7 +660,7 @@ export default function MonthlyReport() {
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
           <div>
             <p className="text-xs font-semibold text-slate-500 uppercase">মোট ক্যাশ কালেকশন</p>
-            <p className="text-2xl font-black text-emerald-700 mt-1 font-mono">৳{totalCollected.toLocaleString()}</p>
+            <p className="text-2xl font-black text-emerald-700 mt-1 font-mono">৳{reportCollection.toLocaleString()}</p>
             <p className="text-[11px] text-slate-400 mt-0.5">নগদ ও চেক জমা</p>
           </div>
           <div className="w-10 h-10 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center">
@@ -451,7 +681,7 @@ export default function MonthlyReport() {
       </div>
 
       {/* Official Printable Statement Sheet */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-8 space-y-6">
+      <div className="monthly-report-sheet bg-white rounded-xl border border-slate-200 shadow-sm p-8 space-y-6">
         <div className="border-b-2 border-emerald-800 pb-4">
           <div className="flex items-center justify-between mb-3">
             <img
@@ -483,7 +713,7 @@ export default function MonthlyReport() {
         </div>
 
         {/* Summary Metric Ribbon */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 bg-slate-50 p-4 rounded-lg border border-slate-200 text-xs">
+        <div className={`grid grid-cols-2 ${filterMode === 'officer' ? 'md:grid-cols-5' : 'md:grid-cols-4'} gap-4 bg-slate-50 p-4 rounded-lg border border-slate-200 text-xs`}>
           <div>
             <span className="text-slate-500 font-medium">মোট বিক্রিত কার্টুন:</span>
             <p className="text-base font-black text-emerald-800 font-mono">{totalCartonsSold} কার্টুন</p>
@@ -495,13 +725,123 @@ export default function MonthlyReport() {
           </div>
           <div>
             <span className="text-slate-500 font-medium">আদায়কৃত নগদ / চেক:</span>
-            <p className="text-base font-black text-emerald-700 font-mono">৳{totalCollected.toLocaleString()}</p>
+            <p className="text-base font-black text-emerald-700 font-mono">৳{reportCollection.toLocaleString()}</p>
           </div>
           <div>
             <span className="text-slate-500 font-medium">অবশিষ্ট বকেয়া / বাকি:</span>
             <p className="text-base font-black text-rose-700 font-mono">৳{totalDueOutstanding.toLocaleString()}</p>
           </div>
+          {filterMode === 'officer' && (
+            <div>
+              <span className="text-slate-500 font-medium">মাসিক অফিসার খরচ:</span>
+              <p className="text-base font-black text-rose-700 font-mono">৳{officerMonthlyExpenses.toLocaleString()}</p>
+            </div>
+          )}
         </div>
+
+        {filterMode === 'officer' && (
+          <section className="space-y-4">
+            <h4 className="text-sm font-black text-slate-800">মাসিক সেলস অ্যাপ্রেইজাল: পণ্য ও সেশনভিত্তিক বিতরণ</h4>
+            <div className="grid gap-4 lg:grid-cols-2">
+              {[
+                { title: `নির্বাচিত মাসে বিক্রিত পণ্য (${selectedOfficerMonth})`, rows: officerMonthProducts },
+                { title: `নির্বাচিত সেশনে সরবরাহকৃত পণ্য (${activeOfficerSession === 'ALL' ? 'সব সেশন' : activeOfficerSession})`, rows: officerSessionProducts }
+              ].map(({ title, rows }) => (
+                <div key={title} className="overflow-x-auto rounded-lg border border-slate-200">
+                  <h5 className="bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-900">{title}</h5>
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-100 text-slate-700">
+                      <tr><th className="p-2">পণ্য</th><th className="p-2">প্যাক সাইজ</th><th className="p-2 text-right">কার্টুন</th><th className="p-2 text-right">পিস</th></tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {rows.map((row) => (
+                        <tr key={row.key}>
+                          <td className="p-2 font-semibold">{row.name}</td>
+                          <td className="p-2">{row.size || '—'}</td>
+                          <td className="p-2 text-right">{toBn(row.cartons)}</td>
+                          <td className="p-2 text-right">{toBn(row.pieces)}</td>
+                        </tr>
+                      ))}
+                      {!rows.length && <tr><td colSpan={4} className="p-3 text-center text-slate-500">এই ফিল্টারে পণ্য সরবরাহ নেই।</td></tr>}
+                    </tbody>
+                  </table>
+                </div>
+              ))}
+            </div>
+            <div className="overflow-x-auto rounded-lg border border-slate-200">
+              <h5 className="bg-rose-50 px-3 py-2 text-xs font-bold text-rose-900">মাসিক খরচের পোস্টিং</h5>
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-100 text-slate-700">
+                  <tr><th className="p-2">তারিখ</th><th className="p-2">খরচের ধরন</th><th className="p-2">রেফারেন্স / নোট</th><th className="p-2 text-right">পরিমাণ</th></tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {officerExpenseTransactions.map((payment) => (
+                    <tr key={payment.id}>
+                      <td className="p-2">{toBnDate(payment.date)}</td>
+                      <td className="p-2">{PAYMENT_TYPES.find((type) => type.value === normalizePaymentType(payment.paymentType))?.label}</td>
+                      <td className="p-2">{payment.reference || payment.note || '—'}</td>
+                      <td className="p-2 text-right font-bold text-rose-700">৳{toBn(payment.amount)}</td>
+                    </tr>
+                  ))}
+                  {!officerExpenseTransactions.length && <tr><td colSpan={4} className="p-3 text-center text-slate-500">নির্বাচিত মাসে কোনো খরচ পোস্টিং নেই।</td></tr>}
+                </tbody>
+              </table>
+            </div>
+            <div className="overflow-x-auto rounded-lg border border-slate-200">
+              <h5 className="bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-900">মাসিক কালেকশন পোস্টিং</h5>
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-100 text-slate-700">
+                  <tr><th className="p-2">তারিখ</th><th className="p-2">ডিলার</th><th className="p-2">মাধ্যম / রেফারেন্স</th><th className="p-2 text-right">পরিমাণ</th></tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {officerCollectionTransactions.map((payment) => (
+                    <tr key={payment.id}>
+                      <td className="p-2">{toBnDate(payment.date)}</td>
+                      <td className="p-2">{payment.dealerName || payment.dealerId || '—'}</td>
+                      <td className="p-2">{payment.reference || payment.paymentMethod || '—'}</td>
+                      <td className="p-2 text-right font-bold text-emerald-800">৳{toBn(payment.amount)}</td>
+                    </tr>
+                  ))}
+                  {!officerCollectionTransactions.length && <tr><td colSpan={4} className="p-3 text-center text-slate-500">নির্বাচিত মাসে কোনো কালেকশন পোস্টিং নেই।</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
+
+        {filterMode === 'stock' && (
+          <section className="space-y-3">
+            <div className="rounded-lg bg-emerald-50 p-3 text-xs font-semibold text-emerald-900">
+              রিপোর্টের শেষ তারিখ: {toBnDate(monthEndDate)} • অবশিষ্ট স্টক বর্তমান মজুদ থেকে পরবর্তী তারিখের নথিভুক্ত স্টক ইন, বিক্রয় ও ফেরত সমন্বয় করে হিসাব করা।
+            </div>
+            <div className="overflow-x-auto rounded-lg border border-slate-200">
+              <table className="w-full min-w-[850px] text-left text-xs">
+                <thead className="bg-slate-100 text-slate-700">
+                  <tr>
+                    <th className="p-2">পণ্য</th><th className="p-2">প্যাক</th>
+                    <th className="p-2 text-right">মাসশেষ অবশিষ্ট</th><th className="p-2 text-right">স্টক ইন (পিস)</th>
+                    <th className="p-2 text-right">বিক্রয় (কার্টুন)</th><th className="p-2 text-right">ফেরত (পিস)</th>
+                    <th className="p-2 text-right">ড্যামেজ (পিস)</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {visibleStockReportRows.map((row) => (
+                    <tr key={row.key}>
+                      <td className="p-2 font-semibold">{row.productName}</td>
+                      <td className="p-2">{row.size}</td>
+                      <td className="p-2 text-right font-bold text-emerald-800">{toBn(row.remainingCartons)} কার্টুন + {toBn(row.remainingPieces % row.packPerBox)} পিস</td>
+                      <td className="p-2 text-right">{toBn(row.stockIn)}</td>
+                      <td className="p-2 text-right">{toBn(row.soldCartons)}</td>
+                      <td className="p-2 text-right">{toBn(row.returnedPieces)}</td>
+                      <td className="p-2 text-right text-rose-700">{toBn(row.damagedPieces)}</td>
+                    </tr>
+                  ))}
+                  {!visibleStockReportRows.length && <tr><td colSpan={7} className="p-5 text-center text-slate-500">এই মাসে স্টক বা পণ্য চলাচলের কোনো রেকর্ড নেই।</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
 
         {/* Product Carton Dispatch Breakdown */}
         <div className="space-y-2">

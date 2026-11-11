@@ -1,8 +1,9 @@
+import mongoose from 'mongoose';
 import dbConnect from '../lib/mongodb.js';
-import { Invoice } from '../lib/models.js';
-import { authorize } from '../lib/auth.js';
-import { INVOICE_SESSIONS } from '../shared/sessions.js';
+import { BusinessRecord, Invoice, Product, User } from '../lib/models.js';
+import { authorize, verifyPassword } from '../lib/auth.js';
 import { normalizePaymentMethod } from '../shared/paymentMethods.js';
+import { getInvoiceStockChanges } from '../shared/invoiceStock.js';
 
 const isValidDate = (value) => {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -11,7 +12,7 @@ const isValidDate = (value) => {
 };
 
 function validateInvoice(body) {
-  if (!body?.id || !isValidDate(body.date) || !INVOICE_SESSIONS.includes(body.session)) {
+  if (!body?.id || !isValidDate(body.date) || !String(body.session || '').trim() || String(body.session).length > 100) {
     return 'ইনভয়েস নম্বর, সঠিক তারিখ ও সেশন নির্বাচন করুন।';
   }
   if (!body.officerId || !body.dealerId) return 'সেলস অফিসার ও ডিলার নির্বাচন করুন।';
@@ -106,8 +107,51 @@ function invoiceValues(body) {
   };
 }
 
+function getInvoiceCreatedAt(invoice) {
+  const date = invoice.createdAt
+    ? new Date(invoice.createdAt)
+    : new Date(`${invoice.date}T00:00:00.000Z`);
+  return Number.isNaN(date.valueOf()) ? null : date;
+}
+
+function isWithinEditWindow(invoice) {
+  const createdAt = getInvoiceCreatedAt(invoice);
+  const age = createdAt ? Date.now() - createdAt.valueOf() : Number.POSITIVE_INFINITY;
+  return age >= 0 && age <= 15 * 24 * 60 * 60 * 1000;
+}
+
+function isWithinDeleteWindow(invoice) {
+  const createdAt = getInvoiceCreatedAt(invoice);
+  if (!createdAt || createdAt.valueOf() > Date.now()) return false;
+  const year = createdAt.getUTCFullYear();
+  const month = createdAt.getUTCMonth() + 1;
+  const day = createdAt.getUTCDate();
+  const lastDayOfMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  const deadline = new Date(createdAt);
+  deadline.setUTCFullYear(year, month, Math.min(day, lastDayOfMonth));
+  return Date.now() <= deadline.valueOf();
+}
+
+async function restoreInvoiceStock(invoice, session) {
+  const changes = getInvoiceStockChanges(invoice, null);
+  for (const change of changes.values()) {
+    const product = await Product.findOne({ id: change.productId }).session(session);
+    if (!product) continue;
+    product.variants = (product.variants || []).map((variant) => (
+      variant.sku === change.sku
+        ? {
+            ...variant,
+            stockCartons: Math.max(0, (Number(variant.stockCartons) || 0) + change.cartons),
+            stock: Math.max(0, (Number(variant.stock) || 0) + change.pieces)
+          }
+        : variant
+    ));
+    await product.save({ session });
+  }
+}
+
 export default async function handler(req, res) {
-  if (!['GET', 'POST', 'PATCH'].includes(req.method)) {
+  if (!['GET', 'POST', 'PATCH', 'DELETE'].includes(req.method)) {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
@@ -121,14 +165,72 @@ export default async function handler(req, res) {
     if (!user) return;
 
     if (req.method === 'GET') {
+      const officerCodeMatch = String(user.officerCode || '').match(/\d+/);
+      const officerCodeDigits = officerCodeMatch ? String(Number(officerCodeMatch[0])) : '';
       const ownerConditions = [
         ...(user.officerId ? [{ officerId: user.officerId }] : []),
-        ...(user.officerCode ? [{ officerCode: user.officerCode }] : [])
+        ...(user.officerCode ? [{ officerCode: user.officerCode }] : []),
+        ...(officerCodeDigits ? [
+          { officerId: `OFF-${officerCodeDigits.padStart(2, '0')}` },
+          { officerCode: `SO-${officerCodeDigits.padStart(2, '0')}` },
+          { officerCode: officerCodeDigits }
+        ] : [])
       ];
       const filter = user.role === 'admin'
         ? {}
         : ownerConditions.length ? { $or: ownerConditions } : { id: '__no_records__' };
       return res.status(200).json(await Invoice.find(filter).sort({ date: -1, createdAt: -1 }).lean());
+    }
+
+    if (req.method === 'DELETE') {
+      const invoiceId = String(req.body?.id || '').trim();
+      const password = String(req.body?.password || '');
+      if (!invoiceId || !password) {
+        return res.status(400).json({ error: 'ইনভয়েস নির্বাচন ও অ্যাডমিন পাসওয়ার্ড দিন।' });
+      }
+      const credential = await User.findById(user._id).select('+passwordHash').lean();
+      if (!credential || !await verifyPassword(password, credential.passwordHash)) {
+        return res.status(401).json({ error: 'সঠিক অ্যাডমিন পাসওয়ার্ড দিন।' });
+      }
+
+      const session = await mongoose.startSession();
+      try {
+        let deletedInvoice;
+        await session.withTransaction(async () => {
+          const invoice = await Invoice.findOne({ id: invoiceId }).session(session);
+          if (!invoice) {
+            const error = new Error('ইনভয়েস পাওয়া যায়নি।');
+            error.statusCode = 404;
+            throw error;
+          }
+          if (!isWithinDeleteWindow(invoice)) {
+            const error = new Error('ইনভয়েস তৈরির এক মাস পার হলে সেটি মুছতে পারবেন না।');
+            error.statusCode = 403;
+            throw error;
+          }
+
+          await restoreInvoiceStock(invoice, session);
+          await BusinessRecord.deleteMany({
+            type: 'damageLogs',
+            'data.invoiceRef': invoiceId
+          }, { session });
+          await BusinessRecord.deleteMany({
+            type: 'payments',
+            $or: [
+              { 'data.sourceInvoiceId': invoiceId },
+              {
+                'data.reference': `চালান #${invoiceId}`,
+                'data.note': `ইনভয়েস #${invoiceId} এর বিপরীতে পরিশোধ`
+              }
+            ]
+          }, { session });
+          await Invoice.deleteOne({ id: invoiceId }, { session });
+          deletedInvoice = invoiceId;
+        });
+        return res.status(200).json({ deleted: deletedInvoice });
+      } finally {
+        await session.endSession();
+      }
     }
 
     const input = req.method === 'PATCH' ? req.body?.invoice : req.body;
@@ -141,6 +243,11 @@ export default async function handler(req, res) {
       return res.status(201).json(invoice.toObject());
     }
 
+    const existingInvoice = await Invoice.findOne({ id: values.id }).lean();
+    if (!existingInvoice) return res.status(404).json({ error: 'ইনভয়েস পাওয়া যায়নি।' });
+    if (!isWithinEditWindow(existingInvoice)) {
+      return res.status(403).json({ error: 'ইনভয়েস তৈরির ১৫ দিনের মধ্যে সম্পাদনা করা যাবে।' });
+    }
     const invoice = await Invoice.findOneAndUpdate(
       { id: values.id },
       { $set: values },
@@ -150,6 +257,7 @@ export default async function handler(req, res) {
     return res.status(200).json(invoice);
   } catch (error) {
     if (error?.code === 11000) return res.status(409).json({ error: 'এই ইনভয়েস নম্বরটি আগে থেকেই আছে।' });
+    if (error?.statusCode) return res.status(error.statusCode).json({ error: error.message });
     console.error('Invoice operation failed:', error);
     return res.status(500).json({ error: 'ইনভয়েস সংরক্ষণ করা যায়নি।' });
   }

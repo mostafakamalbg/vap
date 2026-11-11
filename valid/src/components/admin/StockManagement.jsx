@@ -21,15 +21,21 @@ export default function StockManagement() {
   const [selectedCategory, setSelectedCategory] = useState('ALL');
   const [activeTab, setActiveTab] = useState('inventory'); // 'inventory', 'stock-in', 'new-product'
 
+  const [stockInItems, setStockInItems] = useState(() => {
+    const firstProduct = products[0];
+    return [{
+      productId: firstProduct?.id || '',
+      sku: firstProduct?.variants?.[0]?.sku || '',
+      cartons: 10,
+      loosePieces: 0,
+      unitType: 'box'
+    }];
+  });
+
   // Stock In Form State
   const [stockInForm, setStockInForm] = useState({
     date: new Date().toISOString().slice(0, 10),
     source: 'কারখানা হতে প্রাপ্ত (বগুড়া কেন্দ্রীয় প্ল্যান্ট)',
-    productId: products[0]?.id || '',
-    sku: products[0]?.variants[0]?.sku || '',
-    cartons: 10,
-    loosePieces: 0,
-    unitType: 'box', // 'box' or 'piece'
     batchNo: `BAT-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`,
     mfgDate: new Date().toISOString().slice(0, 10),
     expDate: '',
@@ -52,6 +58,7 @@ export default function StockManagement() {
   });
 
   const [statusMsg, setStatusMsg] = useState('');
+  const [formError, setFormError] = useState('');
 
   // Categories list
   const categories = ['ALL', 'কীটনাশক', 'ছত্রাকনাশক', 'সার ও অনুখাদ্য', 'গ্রোথ প্রমোটার'];
@@ -80,46 +87,62 @@ export default function StockManagement() {
   });
 
   // Handle Product change in Stock-In form
-  const handleStockInProductChange = (prodId) => {
+  const handleStockInProductChange = (rowIndex, prodId) => {
     const p = products.find((prod) => prod.id === prodId);
-    setStockInForm({
-      ...stockInForm,
-      productId: prodId,
-      sku: p?.variants[0]?.sku || ''
-    });
+    setStockInItems((previous) => previous.map((item, index) => (
+      index === rowIndex ? { ...item, productId: prodId, sku: p?.variants[0]?.sku || '' } : item
+    )));
   };
 
   // Submit Stock In
   const handleStockInSubmit = (e) => {
     e.preventDefault();
-    const prod = products.find((p) => p.id === stockInForm.productId);
-    const variant = prod?.variants.find((v) => v.sku === stockInForm.sku);
+    setFormError('');
+    const entries = stockInItems.map((item) => {
+      const product = products.find((entry) => entry.id === item.productId);
+      const variant = product?.variants.find((entry) => entry.sku === item.sku);
+      const packPerBox = Number(variant?.packPerBox) || 1;
+      const count = item.unitType === 'box'
+        ? Number(item.cartons || 0)
+        : Number(item.loosePieces || 0);
+      const quantity = item.unitType === 'box' ? count * packPerBox : count;
+      return { item, product, variant, quantity, count };
+    });
+    if (entries.some(({ product, variant, quantity, count }) => (
+      !product || !variant || !Number.isSafeInteger(count) || !Number.isSafeInteger(quantity) || quantity <= 0
+    ))) {
+      setFormError('প্রতিটি পণ্যের প্যাক সাইজ ও সঠিক পরিমাণ দিন।');
+      return;
+    }
 
-    const packPerBox = variant ? variant.packPerBox : 1;
-    const totalPcs =
-      stockInForm.unitType === 'box'
-        ? Number(stockInForm.cartons || 0) * packPerBox
-        : Number(stockInForm.loosePieces || 0);
+    entries.forEach(({ item, product, variant, quantity }) => {
+      addStockIn({
+        date: stockInForm.date,
+        source: stockInForm.source,
+        productId: item.productId,
+        productName: product.name,
+        sku: item.sku,
+        size: variant.size || '',
+        cartons: item.unitType === 'box' ? Number(item.cartons) : 0,
+        quantityPieces: quantity,
+        batchNo: stockInForm.batchNo,
+        mfgDate: stockInForm.mfgDate,
+        expDate: stockInForm.expDate,
+        receivedBy: stockInForm.receivedBy,
+        note: stockInForm.note || 'ডিস্ট্রিবিউশন অফিসে স্টক ইন করা হলো।'
+      });
+    });
 
-    const stockEntry = {
-      date: stockInForm.date,
-      source: stockInForm.source,
-      productId: stockInForm.productId,
-      productName: prod?.name || '',
-      sku: stockInForm.sku,
-      size: variant?.size || '',
-      cartons: stockInForm.unitType === 'box' ? Number(stockInForm.cartons) : 0,
-      quantityPieces: totalPcs,
-      batchNo: stockInForm.batchNo,
-      mfgDate: stockInForm.mfgDate,
-      expDate: stockInForm.expDate,
-      receivedBy: stockInForm.receivedBy,
-      note: stockInForm.note || 'ডিস্ট্রিবিউশন অফিসে স্টক ইন করা হলো।'
-    };
-
-    addStockIn(stockEntry);
-    setStatusMsg(`সফলভাবে ${totalPcs} টি ${prod?.name} (${variant?.size}) স্টক ইন করা হয়েছে!`);
+    const totalPieces = entries.reduce((sum, entry) => sum + entry.quantity, 0);
+    setStatusMsg(`${entries.length}টি পণ্যের স্টক ইন সংরক্ষণ হয়েছে; মোট ${totalPieces.toLocaleString('bn-BD')} পিস যোগ হয়েছে।`);
     setTimeout(() => setStatusMsg(''), 4000);
+    setStockInItems([{
+      productId: products[0]?.id || '',
+      sku: products[0]?.variants?.[0]?.sku || '',
+      cartons: 10,
+      loosePieces: 0,
+      unitType: 'box'
+    }]);
     setActiveTab('inventory');
   };
 
@@ -467,76 +490,103 @@ export default function StockManagement() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 p-4 bg-emerald-50/50 border border-emerald-100 rounded-xl">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">পণ্য নির্বাচন করুন</label>
-                <select
-                  value={stockInForm.productId}
-                  onChange={(e) => handleStockInProductChange(e.target.value)}
-                  className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm font-semibold"
+            <section className="space-y-3 rounded-xl border border-emerald-100 bg-emerald-50/50 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="text-sm font-bold text-slate-800">একটি চালানে একাধিক পণ্য</h3>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const product = products[0];
+                    setStockInItems((previous) => [...previous, {
+                      productId: product?.id || '',
+                      sku: product?.variants?.[0]?.sku || '',
+                      cartons: 1,
+                      loosePieces: 0,
+                      unitType: 'box'
+                    }]);
+                  }}
+                  className="rounded-lg bg-white px-3 py-1.5 text-xs font-bold text-emerald-800 ring-1 ring-emerald-200"
                 >
-                  {products.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name} ({p.category})
-                    </option>
-                  ))}
-                </select>
+                  + পণ্য যোগ করুন
+                </button>
               </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">প্যাক সাইজ নির্বাচন</label>
-                <select
-                  value={stockInForm.sku}
-                  onChange={(e) => setStockInForm({ ...stockInForm, sku: e.target.value })}
-                  className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm font-semibold"
-                >
-                  {products
-                    .find((p) => p.id === stockInForm.productId)
-                    ?.variants.map((v) => (
-                      <option key={v.sku} value={v.sku}>
-                        {v.size} (বক্সে {v.packPerBox} টি)
-                      </option>
-                    ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">গণনার ধরন</label>
-                <select
-                  value={stockInForm.unitType}
-                  onChange={(e) => setStockInForm({ ...stockInForm, unitType: e.target.value })}
-                  className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm font-semibold"
-                >
-                  <option value="box">কার্টুন / মাস্টার বক্স হিসেবে</option>
-                  <option value="piece">খুচরা পিস হিসেবে</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  পরিমাণ ({stockInForm.unitType === 'box' ? 'কার্টুন' : 'পিস'})
-                </label>
-                {stockInForm.unitType === 'box' ? (
-                  <input
-                    type="number"
-                    min="1"
-                    value={stockInForm.cartons}
-                    onChange={(e) => setStockInForm({ ...stockInForm, cartons: e.target.value })}
-                    className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm font-bold text-center text-emerald-800"
-                    required
-                  />
-                ) : (
-                  <input
-                    type="number"
-                    min="1"
-                    value={stockInForm.loosePieces}
-                    onChange={(e) => setStockInForm({ ...stockInForm, loosePieces: e.target.value })}
-                    className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm font-bold text-center text-emerald-800"
-                    required
-                  />
-                )}
-              </div>
-            </div>
+              {stockInItems.map((item, index) => {
+                const product = products.find((entry) => entry.id === item.productId);
+                return (
+                  <div key={index} className="grid grid-cols-1 items-end gap-3 rounded-lg border border-emerald-100 bg-white p-3 md:grid-cols-[1.25fr_1fr_0.85fr_0.7fr_auto]">
+                    <label className="text-xs font-semibold text-slate-700">
+                      পণ্য
+                      <select
+                        value={item.productId}
+                        onChange={(event) => handleStockInProductChange(index, event.target.value)}
+                        className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                        required
+                      >
+                        {products.map((entry) => (
+                          <option key={entry.id} value={entry.id}>{entry.name} ({entry.category})</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="text-xs font-semibold text-slate-700">
+                      প্যাক সাইজ
+                      <select
+                        value={item.sku}
+                        onChange={(event) => setStockInItems((previous) => previous.map((row, rowIndex) => (
+                          rowIndex === index ? { ...row, sku: event.target.value } : row
+                        )))}
+                        className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                        required
+                      >
+                        {(product?.variants || []).map((variant) => (
+                          <option key={variant.sku} value={variant.sku}>{variant.size} (বক্সে {variant.packPerBox} টি)</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="text-xs font-semibold text-slate-700">
+                      হিসাবের ধরন
+                      <select
+                        value={item.unitType}
+                        onChange={(event) => setStockInItems((previous) => previous.map((row, rowIndex) => (
+                          rowIndex === index ? { ...row, unitType: event.target.value } : row
+                        )))}
+                        className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                      >
+                        <option value="box">কার্টুন</option>
+                        <option value="piece">পিস</option>
+                      </select>
+                    </label>
+                    <label className="text-xs font-semibold text-slate-700">
+                      পরিমাণ ({item.unitType === 'box' ? 'কার্টুন' : 'পিস'})
+                      <input
+                        type="number"
+                        min="1"
+                        step="1"
+                        value={item.unitType === 'box' ? item.cartons : item.loosePieces}
+                        onChange={(event) => setStockInItems((previous) => previous.map((row, rowIndex) => (
+                          rowIndex === index
+                            ? item.unitType === 'box'
+                              ? { ...row, cartons: event.target.value }
+                              : { ...row, loosePieces: event.target.value }
+                            : row
+                        )))}
+                        className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-center text-sm font-bold text-emerald-800"
+                        required
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      disabled={stockInItems.length === 1}
+                      onClick={() => setStockInItems((previous) => previous.filter((_, rowIndex) => rowIndex !== index))}
+                      className="rounded p-2 text-rose-700 disabled:opacity-30"
+                      aria-label="এই পণ্যটি সরান"
+                    >
+                      ×
+                    </button>
+                  </div>
+                );
+              })}
+            </section>
+            {formError && <p role="alert" className="rounded-lg bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">{formError}</p>}
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>

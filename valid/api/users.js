@@ -2,6 +2,7 @@ import dbConnect from '../lib/mongodb.js';
 import mongoose from 'mongoose';
 import { BusinessRecord, User } from '../lib/models.js';
 import { authorize, hashPassword } from '../lib/auth.js';
+import { normalizeOfficerCode } from '../shared/codes.js';
 
 export default async function handler(req, res) {
   if (!['GET', 'PATCH'].includes(req.method)) {
@@ -63,9 +64,16 @@ export default async function handler(req, res) {
         updatedUser = await pendingUser.save({ session });
 
         if (status === 'active') {
+          const normalizedCode = normalizeOfficerCode(pendingUser.officerCode);
           const record = await BusinessRecord.findOne({
             type: 'officers',
-            recordId: pendingUser.officerId
+            $or: [
+              { recordId: pendingUser.officerId },
+              { 'data.id': pendingUser.officerId },
+              { 'data.officerId': pendingUser.officerId },
+              { 'data.code': pendingUser.officerCode },
+              { 'data.code': normalizedCode }
+            ]
           }).session(session);
           const officer = {
             ...(record?.data || {}),
@@ -78,7 +86,7 @@ export default async function handler(req, res) {
             joinDate: record?.data?.joinDate || new Date().toISOString().slice(0, 10)
           };
           await BusinessRecord.findOneAndUpdate(
-            { type: 'officers', recordId: officer.id },
+            { type: 'officers', recordId: record?.recordId || officer.id },
             { $set: { data: officer } },
             { upsert: true, new: true, session }
           );

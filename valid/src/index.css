@@ -242,7 +242,11 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
   .invoice-print-sheet,
   .invoice-print-sheet *,
   .sales-agreement-print,
-  .sales-agreement-print * {
+  .sales-agreement-print *,
+  .dealer-ledger-print,
+  .dealer-ledger-print *,
+  .monthly-report-sheet,
+  .monthly-report-sheet * {
     visibility: visible !important;
   }
   .sales-agreement-print {
@@ -328,8 +332,8 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
     font-size: 9pt;
   }
   .invoice-print-sheet {
-    position: static !important;
-    inset: auto !important;
+    position: fixed !important;
+    inset: 0 auto auto 0 !important;
     width: 100% !important;
     max-width: none !important;
     margin: 0 !important;
@@ -338,6 +342,36 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
     color: #000 !important;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
+  }
+  .invoice-print-sheet.p-4,
+  .invoice-print-sheet.sm\:p-8 {
+    padding: 0 !important;
+  }
+  .dealer-ledger-print {
+    position: fixed !important;
+    inset: 0 auto auto 0 !important;
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    color: #000 !important;
+    background: #fff !important;
+  }
+  .monthly-report-sheet {
+    position: fixed !important;
+    inset: 0 auto auto 0 !important;
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    color: #000 !important;
+    background: #fff !important;
   }
   .invoice-print-company-row {
     min-height: 15mm;
@@ -1016,8 +1050,8 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
   .invoice-print-sheet {
     width: 196mm !important;
     max-width: none !important;
-    position: static !important;
-    inset: auto !important;
+    position: fixed !important;
+    inset: 0 auto auto 0 !important;
     margin: 0 !important;
     padding: 0 !important;
     font-size: 8pt !important;
