@@ -243,6 +243,8 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
   .invoice-print-sheet *,
   .sales-agreement-print,
   .sales-agreement-print *,
+  .corporate-document,
+  .corporate-document *,
   .dealer-ledger-print,
   .dealer-ledger-print *,
   .monthly-report-sheet,
@@ -361,8 +363,7 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
     background: #fff !important;
   }
   .monthly-report-sheet {
-    position: fixed !important;
-    inset: 0 auto auto 0 !important;
+    position: static !important;
     width: 100% !important;
     max-width: none !important;
     margin: 0 !important;
@@ -372,6 +373,220 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
     box-shadow: none !important;
     color: #000 !important;
     background: #fff !important;
+    overflow: visible !important;
+    break-inside: auto !important;
+    page-break-inside: auto !important;
+  }
+  .monthly-report-sheet table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+  }
+  .monthly-report-sheet thead {
+    display: table-header-group;
+  }
+  .monthly-report-sheet tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .monthly-report-sheet th,
+  .monthly-report-sheet td {
+    border: 0.2mm solid #64748b !important;
+    color: #000 !important;
+  }
+  .monthly-report-sheet > section {
+    break-inside: auto;
+  }
+  .monthly-report-sheet h2,
+  .monthly-report-sheet h3,
+  .monthly-report-sheet h4,
+  .monthly-report-sheet h5 {
+    break-after: avoid;
+  }
+  .corporate-document {
+    position: absolute !important;
+    inset: 0 auto auto 0 !important;
+    display: block !important;
+    width: 196mm !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    color: #000 !important;
+    background: #fff !important;
+    box-shadow: none !important;
+    font-size: 9pt !important;
+    line-height: 1.35 !important;
+  }
+  .corporate-page {
+    display: block !important;
+    width: 100% !important;
+    break-after: page !important;
+    page-break-after: always !important;
+    break-inside: auto !important;
+    page-break-inside: auto !important;
+  }
+  .corporate-page:last-child {
+    break-after: auto !important;
+    page-break-after: auto !important;
+  }
+  .corporate-header {
+    margin-bottom: 4mm;
+    border-bottom: 0.5mm solid #111;
+    padding-bottom: 2mm;
+    text-align: center;
+  }
+  .corporate-header h1 {
+    margin: 0;
+    font-size: 15pt;
+    font-weight: 900;
+  }
+  .corporate-header p {
+    margin: 0.5mm 0;
+    font-size: 8pt;
+  }
+  .corporate-tagline {
+    font-weight: 700;
+  }
+  .corporate-reference {
+    display: flex;
+    justify-content: space-between;
+    margin: 2mm 0;
+    text-align: left;
+  }
+  .corporate-title {
+    margin: 3mm 0;
+    border: 0.3mm solid #111;
+    padding: 1.5mm;
+    font-size: 13pt;
+    font-weight: 900;
+    text-align: center;
+  }
+  .corporate-document p {
+    margin: 2mm 0;
+  }
+  .document-justified {
+    text-align: justify;
+  }
+  .corporate-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+  }
+  .corporate-table th,
+  .corporate-table td {
+    border: 0.25mm solid #333;
+    padding: 1.2mm;
+    vertical-align: top;
+    overflow-wrap: anywhere;
+  }
+  .corporate-table th {
+    width: 37%;
+    text-align: left;
+  }
+  .appraisal-table tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .document-ticks {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 1.5mm 3mm;
+  }
+  .document-tick-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.7mm;
+    white-space: nowrap;
+  }
+  .document-checkbox {
+    display: inline-flex;
+    width: 3.5mm;
+    height: 3.5mm;
+    margin-right: 1mm;
+    border: 0.25mm solid #111;
+    align-items: center;
+    justify-content: center;
+    vertical-align: middle;
+    font-size: 8pt;
+    line-height: 1;
+  }
+  .corporate-signature-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 12mm;
+    margin-top: 16mm;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .corporate-signature {
+    width: 42%;
+    min-height: 12mm;
+    border-top: 0.25mm solid #111;
+    padding-top: 1.5mm;
+    text-align: center;
+    font-weight: 700;
+  }
+  .single-signature {
+    justify-content: flex-end;
+  }
+  .single-signature .corporate-signature {
+    width: 45%;
+  }
+  .declaration-heading {
+    margin-top: 10mm !important;
+    font-weight: 900;
+  }
+  .applicant-signature {
+    margin-top: 15mm;
+  }
+  .corporate-document-parties {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 6mm;
+  }
+  .logistics-checklist {
+    display: grid;
+    gap: 5mm;
+    margin: 7mm 0;
+    padding-left: 9mm;
+    list-style: decimal-leading-zero;
+  }
+  .logistics-checklist li {
+    padding-left: 1mm;
+    text-align: justify;
+  }
+  .approval-statement {
+    margin-top: 14mm;
+    border: 0.4mm solid #111;
+    padding: 3mm;
+    font-size: 12pt;
+    font-weight: 900;
+    text-align: center;
+  }
+  .approval-signatures {
+    margin-top: 20mm;
+  }
+  .cheque-document .corporate-page {
+    min-height: 260mm;
+  }
+  .cheque-party {
+    margin: 12mm 0 8mm;
+    font-weight: 700;
+  }
+  .cheque-fields {
+    display: grid;
+    gap: 3mm;
+    margin: 9mm 0;
+  }
+  .cheque-fields p,
+  .cheque-document .corporate-page > p {
+    line-height: 2;
+  }
+  .cheque-declaration {
+    margin: 10mm 0 !important;
+    text-align: justify;
+  }
+  .cheque-signatures {
+    margin-top: 25mm;
   }
   .invoice-print-company-row {
     min-height: 15mm;

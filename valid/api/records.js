@@ -1,6 +1,7 @@
 import dbConnect from '../lib/mongodb.js';
 import { BusinessRecord, Dealer, Invoice, Product } from '../lib/models.js';
 import { authorize } from '../lib/auth.js';
+import { normalizeOfficerCode } from '../shared/codes.js';
 
 const recordTypes = new Set([
   'products',
@@ -136,6 +137,6 @@ export default async function handler(req, res) {
     return res.status(200).json({ saved: records.length });
   } catch (error) {
     console.error(`Record sync failed for ${type}:`, error);
-    return res.status(500).json({ error: 'ডেটা সংরক্ষণ করা যায়নি।' });
+    return res.status(500).json({ error: 'রেকর্ড পড়া বা সংরক্ষণ করা যায়নি।' });
   }
 }

@@ -2,7 +2,7 @@ import mongoose from 'mongoose';
 import dbConnect from '../lib/mongodb.js';
 import { authorize, hasSuperAdminAccess, verifyPassword } from '../lib/auth.js';
 import { User } from '../lib/models.js';
-import { BusinessRecord, Dealer, Invoice, Product } from '../lib/models.js';
+import { BusinessRecord, Dealer, Invoice, Order, Product } from '../lib/models.js';
 import {
   INITIAL_DAMAGES,
   INITIAL_DEALERS,
@@ -92,12 +92,57 @@ export default async function handler(req, res) {
   }
 
   if (req.method === 'POST') {
-    if (req.body?.action !== 'factory-reset') {
+    if (!['factory-reset', 'clear-sales-stock'].includes(req.body?.action)) {
       return res.status(400).json({ error: 'Invalid reset request.' });
     }
     try {
       if (!await hasSuperAdminAccess(user)) {
         return res.status(403).json({ error: 'এই রিসেট ব্যবহারের অনুমতি নেই।' });
+      }
+      if (req.body.action === 'clear-sales-stock') {
+        const session = await mongoose.startSession();
+        let deletedCounts;
+        try {
+          await session.withTransaction(async () => {
+            const [invoiceCount, orderCount] = await Promise.all([
+              Invoice.countDocuments({}).session(session),
+              Order.countDocuments({}).session(session)
+            ]);
+            const damageCount = await BusinessRecord.countDocuments({ type: 'damageLogs' }).session(session);
+            const stockInCount = await BusinessRecord.countDocuments({ type: 'stockInLogs' }).session(session);
+            const paymentCount = await BusinessRecord.countDocuments({ type: 'payments' }).session(session);
+
+            await Invoice.deleteMany({}, { session });
+            await Order.deleteMany({}, { session });
+            await BusinessRecord.deleteMany({
+              type: { $in: ['invoices', 'damageLogs', 'stockInLogs', 'payments'] }
+            }, { session });
+
+            const products = await Product.find({}).session(session);
+            for (const product of products) {
+              product.variants = (product.variants || []).map((variant) => ({
+                ...variant,
+                stock: 0,
+                stockCartons: 0
+              }));
+              await product.save({ session });
+            }
+
+            deletedCounts = {
+              invoices: invoiceCount,
+              orders: orderCount,
+              damages: damageCount,
+              stockInLogs: stockInCount,
+              payments: paymentCount
+            };
+          });
+        } finally {
+          await session.endSession();
+        }
+        return res.status(200).json({
+          message: 'ইনভয়েস, ড্যামেজ, স্টক-ইন ও পেমেন্ট ইতিহাস মুছে সব পণ্যের স্টক শূন্য করা হয়েছে।',
+          deleted: deletedCounts
+        });
       }
       await replaceWithTransaction(getFactoryData());
       return res.status(200).json({ message: 'ফ্যাক্টরি ডেটা পুনরুদ্ধার হয়েছে।' });

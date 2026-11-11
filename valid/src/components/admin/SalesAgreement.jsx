@@ -5,6 +5,7 @@ import { toBn, toBnDate } from '../../utils/bengali';
 import { useAgro } from '../../context/AgroContext';
 import SearchableRecordSelect from './SearchableRecordSelect';
 import { formatDealerCode } from '../../../shared/codes';
+import DistributorForms from './DistributorForms';
 
 const DEFAULT_AGREEMENT_START_SESSION = 'জানুয়ারি - জুন ২০২৭';
 const DEFAULT_AGREEMENT_END_SESSION = 'জুলাই - ডিসেম্বর ২০২৭';
@@ -153,8 +154,7 @@ function getAgreementMetrics(agreement, invoices, payments) {
 export default function SalesAgreement() {
   const {
     dealers,
-    invoices,
-    payments,
+    getDealerSummary,
     salesAgreements,
     saveSalesAgreement,
     deleteSalesAgreement
@@ -162,13 +162,15 @@ export default function SalesAgreement() {
   const [form, setForm] = useState(emptyAgreement);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  const [activeDocument, setActiveDocument] = useState('agreement');
+  const agreements = salesAgreements.filter((agreement) => !agreement.documentType);
 
   const metrics = useMemo(
-    () => new Map(salesAgreements.map((agreement) => [
+    () => new Map(agreements.map((agreement) => [
       agreement.id,
       getAgreementMetrics(agreement, invoices, payments)
     ])),
-    [salesAgreements, invoices, payments]
+    [agreements, invoices, payments]
   );
 
   const updateField = (field, value) => {
@@ -256,8 +258,46 @@ export default function SalesAgreement() {
   const benefitAmountWords = amountInBengaliWords(form.benefitAmount);
   const minimumCollectionWords = amountInBengaliWords(form.minimumCollection);
 
+  const documentTabs = (
+    <nav className="no-print flex flex-wrap gap-2" aria-label="সেলস ও কালেকশন ফরম">
+      {[
+        ['agreement', 'সেলস ও কালেকশন চুক্তি'],
+        ['appraisal', 'এ্যাপ্রাইজাল ফরম'],
+        ['cheque', 'চেক প্রদান ও গ্রহণ']
+      ].map(([value, label]) => (
+        <button
+          key={value}
+          type="button"
+          onClick={() => setActiveDocument(value)}
+          aria-current={activeDocument === value ? 'page' : undefined}
+          className={`rounded-lg px-4 py-2 text-sm font-bold ${activeDocument === value ? 'bg-emerald-700 text-white' : 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-50'}`}
+        >
+          {label}
+        </button>
+      ))}
+    </nav>
+  );
+
+  if (activeDocument !== 'agreement') {
+    return (
+      <main className="mx-auto max-w-7xl space-y-5 px-4 py-6">
+        {documentTabs}
+        <DistributorForms
+          key={activeDocument}
+          type={activeDocument}
+          dealers={dealers}
+          getDealerSummary={getDealerSummary}
+          documents={salesAgreements}
+          saveDocument={saveSalesAgreement}
+          deleteDocument={deleteSalesAgreement}
+        />
+      </main>
+    );
+  }
+
   return (
     <div className="sales-agreement-page mx-auto max-w-7xl space-y-6 px-4 py-6">
+      {documentTabs}
       <header className="no-print flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
         <div>
           <h1 className="text-2xl font-black text-slate-900">সেলস ও কালেকশনের বিপরীতে অতিরিক্ত সুবিধা প্রদান ও গ্রহণের চুক্তি</h1>
@@ -436,7 +476,7 @@ export default function SalesAgreement() {
               </tr>
             </thead>
             <tbody>
-              {salesAgreements.map((agreement) => {
+              {agreements.map((agreement) => {
                 const summary = metrics.get(agreement.id);
                 return (
                   <tr key={agreement.id} className="border-t border-slate-100">
@@ -455,7 +495,7 @@ export default function SalesAgreement() {
                   </tr>
                 );
               })}
-              {salesAgreements.length === 0 && <tr><td colSpan="7" className="p-8 text-center text-slate-500">এখনও কোনো চুক্তি সংরক্ষণ করা হয়নি।</td></tr>}
+              {agreements.length === 0 && <tr><td colSpan="7" className="p-8 text-center text-slate-500">এখনও কোনো চুক্তি সংরক্ষণ করা হয়নি।</td></tr>}
             </tbody>
             {form.dealerId && (
               <tfoot className="border-t-2 border-slate-200 bg-emerald-50 font-bold">

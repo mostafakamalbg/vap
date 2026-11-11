@@ -809,6 +809,35 @@ export function AgroProvider({ children }) {
     return true;
   };
 
+  const clearSalesStockData = async (password) => {
+    if (currentUser?.role !== 'admin' || !currentUser.isSuperAdmin) {
+      throw new Error('এই রিসেট ব্যবহারের অনুমতি নেই।');
+    }
+    if (typeof password !== 'string' || !password) {
+      throw new Error('রিসেট করতে অ্যাডমিন পাসওয়ার্ড দিন।');
+    }
+    const response = await fetch('/api/backup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'clear-sales-stock', password })
+    });
+    const result = await readJsonResponse(response);
+    setInvoices([]);
+    setStockInLogs([]);
+    setDamageLogs([]);
+    setPayments([]);
+    setProducts((previous) => previous.map((product) => ({
+      ...product,
+      variants: (product.variants || []).map((variant) => ({
+        ...variant,
+        stock: 0,
+        stockCartons: 0
+      }))
+    })));
+    setCloudError('');
+    return result;
+  };
+
   const exportBackup = (format = 'excel') => {
     const exportedAt = new Date().toISOString();
     const dateSuffix = exportedAt.slice(0, 10);
@@ -981,6 +1010,7 @@ export function AgroProvider({ children }) {
         getDealerSummary,
         getOfficerSummary,
         resetToFactoryData,
+        clearSalesStockData,
         exportBackupExcel,
         exportBackup,
         importBackup,
