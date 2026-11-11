@@ -363,7 +363,8 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
     background: #fff !important;
   }
   .monthly-report-sheet {
-    position: static !important;
+    position: absolute !important;
+    inset: 0 auto auto 0 !important;
     width: 100% !important;
     max-width: none !important;
     margin: 0 !important;
@@ -376,6 +377,10 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
     overflow: visible !important;
     break-inside: auto !important;
     page-break-inside: auto !important;
+  }
+  .monthly-report-sheet {
+    font-size: 9pt !important;
+    line-height: 1.35 !important;
   }
   .monthly-report-sheet table {
     width: 100% !important;

@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useMemo, useRef } from 'react';
+﻿import { createContext, useContext, useState, useEffect, useMemo, useRef } from 'react';
 import {
   INITIAL_PRODUCTS,
   INITIAL_OFFICERS,
@@ -769,7 +769,7 @@ export function AgroProvider({ children }) {
 
   // Reset to factory data
   const resetToFactoryData = async () => {
-    if (currentUser?.role !== 'admin' || !currentUser.isSuperAdmin) {
+    if (currentUser?.role !== 'admin') {
       throw new Error('এই রিসেট ব্যবহারের অনুমতি নেই।');
     }
     const confirmed = window.confirm(
@@ -810,7 +810,7 @@ export function AgroProvider({ children }) {
   };
 
   const clearSalesStockData = async (password) => {
-    if (currentUser?.role !== 'admin' || !currentUser.isSuperAdmin) {
+    if (currentUser?.role !== 'admin') {
       throw new Error('এই রিসেট ব্যবহারের অনুমতি নেই।');
     }
     if (typeof password !== 'string' || !password) {
@@ -1037,3 +1037,4 @@ export function useAgro() {
   }
   return context;
 }
+

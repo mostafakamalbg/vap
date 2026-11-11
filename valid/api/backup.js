@@ -1,4 +1,4 @@
-import mongoose from 'mongoose';
+﻿import mongoose from 'mongoose';
 import dbConnect from '../lib/mongodb.js';
 import { authorize, hasSuperAdminAccess, verifyPassword } from '../lib/auth.js';
 import { User } from '../lib/models.js';
@@ -96,7 +96,7 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Invalid reset request.' });
     }
     try {
-      if (!await hasSuperAdminAccess(user)) {
+      if (req.body.action === 'factory-reset' && !await hasSuperAdminAccess(user)) {
         return res.status(403).json({ error: 'এই রিসেট ব্যবহারের অনুমতি নেই।' });
       }
       if (req.body.action === 'clear-sales-stock') {

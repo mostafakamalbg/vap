@@ -126,7 +126,7 @@ export default function AdminDataManagement() {
         </article>
       </section>
 
-      {currentUser?.role === 'admin' && currentUser.isSuperAdmin && (
+      {currentUser?.role === 'admin' && (
         <section className="rounded-xl border border-rose-300 bg-rose-50 p-5">
           <div className="flex items-start gap-3">
             <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-rose-700" />

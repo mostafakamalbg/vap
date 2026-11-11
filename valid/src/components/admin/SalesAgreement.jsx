@@ -154,6 +154,8 @@ function getAgreementMetrics(agreement, invoices, payments) {
 export default function SalesAgreement() {
   const {
     dealers,
+    invoices,
+    payments,
     getDealerSummary,
     salesAgreements,
     saveSalesAgreement,
