@@ -71,15 +71,11 @@ async function replaceRecords(data, session = null) {
 }
 
 async function replaceWithTransaction(data, { clearOrders = false } = {}) {
-  const session = await mongoose.startSession();
-  try {
-    await session.withTransaction(async () => {
-      if (clearOrders) await Order.deleteMany({}, { session });
-      await replaceRecords(data, session);
-    });
-  } finally {
-    await session.endSession();
-  }
+  await withTransactionFallback(async (session) => {
+    const options = session ? { session } : {};
+    if (clearOrders) await Order.deleteMany({}, options);
+    await replaceRecords(data, session);
+  });
 }
 
 function doesNotSupportTransactions(error) {
@@ -89,15 +85,42 @@ function doesNotSupportTransactions(error) {
     || message.includes('transactions are not supported');
 }
 
-async function restoreFactoryData() {
-  const data = getFactoryData();
+async function withTransactionFallback(operation) {
+  const session = await mongoose.startSession();
   try {
-    await replaceWithTransaction(data, { clearOrders: true });
+    await session.withTransaction(() => operation(session));
   } catch (error) {
     if (!doesNotSupportTransactions(error)) throw error;
-    await Order.deleteMany({});
-    await replaceRecords(data);
+    await operation(null);
+  } finally {
+    await session.endSession();
   }
+}
+
+async function restoreFactoryData() {
+  const data = getFactoryData();
+  await replaceWithTransaction(data, { clearOrders: true });
+}
+
+async function clearSalesAndStock(setStage) {
+  await withTransactionFallback(async (session) => {
+    const options = session ? { session } : {};
+    setStage('ইনভয়েস, অর্ডার ও হিসাবের রেকর্ড মুছে ফেলা');
+    await Invoice.deleteMany({}, options);
+    await Order.deleteMany({}, options);
+    await BusinessRecord.deleteMany({
+      type: { $in: ['invoices', 'damageLogs', 'stockInLogs', 'payments', 'salesAgreements'] }
+    }, options);
+    setStage('ডিলারের বকেয়া শূন্য করা');
+    await Dealer.updateMany({}, { $set: { openingDue: 0 } }, options);
+    setStage('পণ্যের স্টক শূন্য করা');
+    await Product.updateMany({ variants: { $type: 'array' } }, {
+      $set: {
+        'variants.$[].stock': 0,
+        'variants.$[].stockCartons': 0
+      }
+    }, options);
+  });
 }
 
 export default async function handler(req, res) {
@@ -117,6 +140,7 @@ export default async function handler(req, res) {
     if (!['factory-reset', 'clear-sales-stock'].includes(req.body?.action)) {
       return res.status(400).json({ error: 'Invalid reset request.' });
     }
+    let stage = 'ডেটাবেসের রেকর্ড';
     try {
       if (req.body.action === 'factory-reset' && !await hasSuperAdminAccess(user)) {
         return res.status(403).json({ error: 'এই রিসেট ব্যবহারের অনুমতি নেই।' });
@@ -131,22 +155,9 @@ export default async function handler(req, res) {
           BusinessRecord.countDocuments({ type: 'salesAgreements' })
         ]);
 
-        await Invoice.deleteMany({});
-        await Order.deleteMany({});
-        await BusinessRecord.deleteMany({
-          type: { $in: ['invoices', 'damageLogs', 'stockInLogs', 'payments', 'salesAgreements'] }
+        await clearSalesAndStock((nextStage) => {
+          stage = nextStage;
         });
-        await Dealer.updateMany({}, { $set: { openingDue: 0 } });
-
-        const products = await Product.find({});
-        for (const product of products) {
-          product.variants = (product.variants || []).map((variant) => ({
-            ...variant,
-            stock: 0,
-            stockCartons: 0
-          }));
-          await product.save();
-        }
 
         const deletedCounts = {
           invoices: invoiceCount,
@@ -161,11 +172,15 @@ export default async function handler(req, res) {
           deleted: deletedCounts
         });
       }
+      stage = 'ফ্যাক্টরি ডেটা পুনরুদ্ধার';
       await restoreFactoryData();
       return res.status(200).json({ message: 'ফ্যাক্টরি ডেটা পুনরুদ্ধার হয়েছে।' });
     } catch (error) {
-      console.error('Factory reset failed:', error);
-      return res.status(500).json({ error: 'ফ্যাক্টরি ডেটা পুনরুদ্ধার করা যায়নি।' });
+      console.error('Data reset failed:', { action: req.body.action, stage, error });
+      const errorMessage = req.body.action === 'clear-sales-stock'
+        ? `ডেটা মুছতে ব্যর্থ হয়েছে (${stage} ধাপ)। অনুগ্রহ করে আবার চেষ্টা করুন।`
+        : 'ফ্যাক্টরি ডেটা পুনরুদ্ধার করা যায়নি।';
+      return res.status(500).json({ error: errorMessage });
     }
   }
 
