@@ -117,6 +117,15 @@ function CompanyHeader({ reference, date }) {
   );
 }
 
+function CompanyFooter() {
+  return (
+    <footer className="corporate-document-footer">
+      <p>Office/Factory: Matidali, Bogra Sadar, Bogra.</p>
+      <p>Mob: 01713-736920, 01773-523723 • E-mail: mohananda.agro@gmail.com</p>
+    </footer>
+  );
+}
+
 function SignatureLine({ children }) {
   return <div className="corporate-signature"><span>{children}</span></div>;
 }
@@ -216,6 +225,7 @@ function ChequeDocument({ form }) {
           <SignatureLine>কোম্পানির পক্ষে স্থানীয় প্রতিনিধি</SignatureLine>
           <SignatureLine>দ্বিতীয় পক্ষের স্বাক্ষর ও সিল</SignatureLine>
         </div>
+        <CompanyFooter />
       </section>
     </article>
   );

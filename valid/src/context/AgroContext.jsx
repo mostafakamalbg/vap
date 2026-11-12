@@ -180,6 +180,15 @@ export function AgroProvider({ children }) {
     salesAgreements
   });
   const syncQueueRef = useRef({});
+  const syncErrorsRef = useRef(new Map());
+  const updateCloudError = (key, message) => {
+    if (message) {
+      syncErrorsRef.current.set(key, message);
+    } else {
+      syncErrorsRef.current.delete(key);
+    }
+    setCloudError([...syncErrorsRef.current.values()][0] || '');
+  };
 
   // Save to LocalStorage
   useEffect(() => {
@@ -286,6 +295,7 @@ export function AgroProvider({ children }) {
   useEffect(() => {
     let cancelled = false;
     setCloudReady(false);
+    syncErrorsRef.current.clear();
     setCloudError('');
     if (!currentUser) return () => { cancelled = true; };
 
@@ -336,10 +346,11 @@ export function AgroProvider({ children }) {
           }
         }
         if (!cancelled) {
+          updateCloudError('load', '');
           setCloudReady(true);
         }
       } catch (error) {
-        if (!cancelled) setCloudError(error.message);
+        if (!cancelled) updateCloudError('load', error.message);
       }
     }
 
@@ -358,8 +369,9 @@ export function AgroProvider({ children }) {
           body: JSON.stringify(records)
         });
         await readJsonResponse(response);
+        updateCloudError(type, '');
       }).catch((error) => {
-        setCloudError(error.message);
+        updateCloudError(type, error.message);
       });
       syncQueueRef.current[type] = sync;
     };

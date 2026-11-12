@@ -363,8 +363,7 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
     background: #fff !important;
   }
   .monthly-report-sheet {
-    position: absolute !important;
-    inset: 0 auto auto 0 !important;
+    position: static !important;
     width: 100% !important;
     max-width: none !important;
     margin: 0 !important;
@@ -377,6 +376,23 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
     overflow: visible !important;
     break-inside: auto !important;
     page-break-inside: auto !important;
+  }
+  body.monthly-report-printing #root > div > :not(main),
+  body.monthly-report-printing #root > div > main > :not(.monthly-report-page),
+  body.monthly-report-printing .monthly-report-page > :not(.monthly-report-sheet) {
+    display: none !important;
+  }
+  body.monthly-report-printing .monthly-report-page {
+    width: auto !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  .monthly-report-sheet [class*="overflow-"] {
+    overflow: visible !important;
+  }
+  .monthly-report-sheet [class*="min-w-"] {
+    min-width: 0 !important;
   }
   .monthly-report-sheet {
     font-size: 9pt !important;
@@ -571,7 +587,24 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
     margin-top: 20mm;
   }
   .cheque-document .corporate-page {
-    min-height: 260mm;
+    position: relative;
+    min-height: 270mm;
+    padding-bottom: 12mm;
+  }
+  .corporate-document-footer {
+    border-top: 0.25mm solid #111;
+    padding-top: 2mm;
+    text-align: center;
+    font-size: 8pt;
+  }
+  .corporate-document-footer p {
+    margin: 0.5mm 0;
+  }
+  .cheque-document .corporate-document-footer {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    left: 0;
   }
   .cheque-party {
     margin: 12mm 0 8mm;

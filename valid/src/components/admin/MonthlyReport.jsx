@@ -354,8 +354,16 @@ export default function MonthlyReport() {
     row.remainingPieces || row.stockIn || row.soldCartons || row.returnedPieces || row.damagedPieces
   ));
 
+  const printReport = () => {
+    const printClass = 'monthly-report-printing';
+    const cleanup = () => document.body.classList.remove(printClass);
+    document.body.classList.add(printClass);
+    window.addEventListener('afterprint', cleanup, { once: true });
+    window.print();
+  };
+
   return (
-    <div className="py-6 px-4 max-w-7xl mx-auto space-y-6">
+    <div className="monthly-report-page py-6 px-4 max-w-7xl mx-auto space-y-6">
       {/* Header Bar */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-5 rounded-xl border border-slate-200 shadow-sm no-print">
         <div>
@@ -371,7 +379,7 @@ export default function MonthlyReport() {
         </div>
 
         <button
-          onClick={() => window.print()}
+          onClick={printReport}
           className="flex items-center gap-1.5 bg-emerald-700 hover:bg-emerald-800 text-white px-4 py-2 rounded-lg text-xs font-bold shadow transition"
         >
           <Printer className="w-4 h-4" />
