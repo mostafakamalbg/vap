@@ -5,8 +5,8 @@ import { formatDealerCode } from '../../../shared/codes';
 import { toBn, toBnDate } from '../../utils/bengali';
 
 const today = () => new Date().toISOString().slice(0, 10);
-const socialOptions = ['প্রকৃত ব্যবসায়ী', 'ইউপি সদস্য', 'পৌর কমিশনার', 'রাজনীতির সাথে সংশ্লিষ্ট', 'অন্য কোন পেশা'];
-const showroomOptions = ['খুচরা', 'পাইকারী', 'কাঁচা', 'আধাপাকা', 'পাকা', 'নিজস্ব', 'ভাড়া', 'সজ্জিত', 'অসজ্জিত'];
+const socialOptions = ['প্রকৃত ব্যবসায়ী', 'ইউপি সদস্য', 'পৌর কাউন্সিলর', 'রাজনীতির সঙ্গে সংশ্লিষ্ট', 'অন্যান্য পেশা'];
+const showroomOptions = ['খুচরা', 'পাইকারি', 'কাঁচা', 'আধাপাকা', 'পাকা', 'নিজস্ব', 'ভাড়া', 'সজ্জিত', 'অসজ্জিত'];
 const transportOptions = ['সাইকেল', 'মোটর সাইকেল'];
 const saleOptions = ['নগদ', 'বাকী'];
 const checklistItems = [
@@ -94,13 +94,15 @@ function Blank({ children }) {
 }
 
 function TickList({ values = [], options }) {
+  const selectedOptions = options.filter((option) => values.includes(option));
   return (
     <span className="document-ticks">
-      {options.map((option) => (
+      {selectedOptions.map((option) => (
         <span key={option} className="document-tick-item">
-          <span className="document-checkbox">{values.includes(option) ? '✓' : ''}</span>{option}
+          <span className="document-checkbox">✓</span>{option}
         </span>
       ))}
+      {!selectedOptions.length && <span>—</span>}
     </span>
   );
 }
@@ -108,8 +110,17 @@ function TickList({ values = [], options }) {
 function CompanyHeader({ reference, date }) {
   return (
     <header className="corporate-header">
-      <h1>MOHANANDA AGRO INDUSTRIES (মহানন্দা এগ্রো ইন্ডাস্ট্রিজ)</h1>
-      <p className="corporate-tagline">Agricultural Commodities Importer, Repacker &amp; Supplier</p>
+      <div className="agreement-brand-row corporate-brand-row">
+        <div className="agreement-brand">
+          <img src="/logos/valid-logo.png" alt="ভ্যালিড এগ্রো প্রোডাক্ট লিমিটেড লোগো" />
+          <h1>ভ্যালিড এগ্রো প্রোডাক্ট লিমিটেড</h1>
+        </div>
+        <div className="agreement-brand">
+          <img src="/logos/mahananda-logo-transparent.png" alt="মহানন্দা এগ্রো ইন্ডাস্ট্রিজ লোগো" />
+          <h1>মহানন্দা এগ্রো ইন্ডাস্ট্রিজ</h1>
+        </div>
+      </div>
+      <p className="corporate-tagline">(Agricultural Commodities Importer, Repacker &amp; Supplier)</p>
       <div className="corporate-reference"><span><strong>Ref:</strong> {reference || '____________'}</span><span><strong>Date:</strong> {toBnDate(date) || '____________'}</span></div>
       <p>Office/Factory: Matidali, Bogra Sadar, Bogra.</p>
       <p>Mob: 01713-736920, 01773-523723 • E-mail: mohananda.agro@gmail.com</p>
@@ -136,10 +147,14 @@ function AppraisalDocument({ form }) {
       <section className="corporate-page">
         <CompanyHeader reference={form.reference} date={form.date} />
         <h2 className="corporate-title">এ্যাপ্রাইজাল ফরম</h2>
+        <div className="corporate-first-party">
+          <strong>প্রথম পক্ষ (কোম্পানি): ভ্যালিড এগ্রো প্রোডাক্ট লিমিটেড ও মহানন্দা এগ্রো ইন্ডাস্ট্রিজ।</strong>
+          <p>মাটিডালি, বগুড়া সদর, বগুড়া।</p>
+        </div>
         <p>প্রতি,<br />মহানন্দা এগ্রো ইন্ডাস্ট্রিজ,<br />নিশিন্দারা, বগুড়া সদর, বগুড়া।</p>
-        <p><strong>বিষয়ঃ- পরিবেশক নিয়োগ প্রাপ্তির জন্য আবেদন।</strong></p>
+        <p><strong>বিষয়: পরিবেশক নিয়োগের জন্য আবেদন।</strong></p>
         <p>জনাব, আসসালামু আলাইকুম ওয়া রাহমাতুল্লাহ।</p>
-        <p className="document-justified">নিম্ন লিখিত তথ্য সম্বলিত ব্যক্তি একজন সার ও কীটনাশক ব্যবসায়ী। তিনি মহানন্দা এগ্রো ইন্ডাস্ট্রিজ এর সাথে ব্যবসা করার জন্য খুবই আগ্রহী এবং সে জন্য তিনি আপনার বরাবর দরখাস্ত পেশ করেছেন। আমি তার বিস্তারিত তথ্য সংগ্রহ করে নিম্নে বিনীত ছকে পূরণ করে আপনার বরাবর পেশ করিলাম।</p>
+        <p className="document-justified">আবেদনকারী একজন সার ও কীটনাশক ব্যবসায়ী এবং মহানন্দা এগ্রো ইন্ডাস্ট্রিজের সঙ্গে ব্যবসা করতে আগ্রহী। তাঁর আবেদনের পরিপ্রেক্ষিতে প্রয়োজনীয় তথ্য সংগ্রহ করে মূল্যায়নের জন্য নিচে উপস্থাপন করা হলো।</p>
         <table className="corporate-table appraisal-table">
           <tbody>
             <tr><th>১. ব্যবসা প্রতিষ্ঠানের নাম</th><td><Blank>{form.establishment}</Blank></td></tr>
@@ -153,7 +168,7 @@ function AppraisalDocument({ form }) {
             <tr><th>৯. নিজস্ব বিনিয়োগযুক্ত পুঁজি</th><td>টাকা: <Blank>{form.investmentCapital && toBn(form.investmentCapital)}</Blank></td></tr>
             <tr><th>১০. জনবল / ট্রান্সপোর্ট</th><td>সেলস্ ম্যান: <Blank>{form.salesmanCount && toBn(form.salesmanCount)}</Blank> জন • <TickList values={form.transportOptions} options={transportOptions} /></td></tr>
             <tr><th>১১. বাৎসরিক ব্যবসা</th><td>সার: <Blank>{form.fertilizerAnnualSales && toBn(form.fertilizerAnnualSales)}</Blank> টাকা • কীটনাশক: <Blank>{form.pesticideAnnualSales && toBn(form.pesticideAnnualSales)}</Blank> টাকা</td></tr>
-            <tr><th>১২. ডিস্ট্রিবিউটরশীপ</th><td>কোম্পানির নাম: <Blank>{form.distributorshipCompany}</Blank> • ব্যবসা: <Blank>{form.distributorshipAmount && toBn(form.distributorshipAmount)}</Blank> টাকা • সময়: <Blank>{form.distributorshipYears && toBn(form.distributorshipYears)}</Blank> বছর • বাকি: <Blank>{form.distributorshipDue && toBn(form.distributorshipDue)}</Blank> টাকা</td></tr>
+            <tr><th>১২. ডিস্ট্রিবিউটরশিপ</th><td>কোম্পানির নাম: <Blank>{form.distributorshipCompany}</Blank> • ব্যবসার পরিমাণ: <Blank>{form.distributorshipAmount && toBn(form.distributorshipAmount)}</Blank> টাকা • মেয়াদ: <Blank>{form.distributorshipYears && toBn(form.distributorshipYears)}</Blank> বছর • বকেয়া: <Blank>{form.distributorshipDue && toBn(form.distributorshipDue)}</Blank> টাকা</td></tr>
             <tr><th>১৩. সারের ব্যবসা আছে কিনা</th><td><TickList values={form.fertilizerBusiness ? [form.fertilizerBusiness] : []} options={['আছে', 'নাই']} /></td></tr>
             <tr><th>১৪. কত জন রিটেইলার আছে</th><td><Blank>{form.retailerCount && toBn(form.retailerCount)}</Blank> জন / নাই</td></tr>
             <tr><th>১৫. সার-কীটনাশক ব্যবসার বয়স</th><td><Blank>{form.businessAge && toBn(form.businessAge)}</Blank> বছর</td></tr>
@@ -173,25 +188,26 @@ function AppraisalDocument({ form }) {
         <CompanyHeader reference={form.reference} date={form.date} />
         <h2 className="corporate-title">অফিসার ও আবেদনকারীর ঘোষণা</h2>
         <h3>অফিসারের সুপারিশঃ</h3>
-        <p className="document-justified">আবেদনকারী একজন রাজনীতিমুক্ত প্রকৃত সার-কীটনাশক ব্যবসায়ী। লিখিত বিবরণ অনুযায়ী সম্পূর্ণ সত্য তথ্য প্রদান করিয়াছি। সে কোম্পানির সকল নিয়ম নীতি মেনে ব্যবসা করতে আগ্রহী, বিধায় পরিবেশক হিসাবে তাকে নির্বাচিত করিবার সদয় অনুমতি প্রার্থনা করিতেছি।</p>
+        <p className="document-justified">আবেদনকারী একজন রাজনীতিমুক্ত ও প্রকৃত সার-কীটনাশক ব্যবসায়ী। আবেদনকারীর দেওয়া তথ্য যাচাই করে সঠিক বলে পেয়েছি। তিনি কোম্পানির সব নিয়মনীতি মেনে ব্যবসা করতে আগ্রহী। তাই তাঁকে পরিবেশক হিসেবে নিয়োগের সদয় অনুমতি প্রার্থনা করছি।</p>
         {form.recommendation && <p><strong>অতিরিক্ত মন্তব্য:</strong> {form.recommendation}</p>}
         <div className="corporate-signature-row single-signature"><SignatureLine>অফিসারের স্বাক্ষর ও সিল</SignatureLine></div>
         <h3 className="declaration-heading">আবেদনকারীর ঘোষণাঃ</h3>
-        <p className="document-justified">আমি উপরোক্ত তথ্যাবলী সম্পূর্ণ সত্যভাবে উপস্থাপন করেছি। কোন সত্য গোপন বা মিথ্যা তথ্য প্রদান করি নাই এবং মহানন্দা এগ্রো ইন্ডাস্ট্রিজ এর সাথে ব্যবসা করার জন্য কোম্পানী কতৃক যে সমস্ত শর্ত আরোপ করা হবে আমি তা সর্বান্তভাবে মেনে চলার অঙ্গীকার করছি এবং কোম্পানীর নিয়ম অনুযায়ী প্রতি বছরের ২৮শে ডিসেম্বর ও ৩০শে জুন এর মধ্যে সমূদয় বকেয়া টাকা ডি ডি আকারে পরিশোধ করতে বাধ্য থাকিব অন্যথায় জামানত হিসাবে জমাকৃত চেকটি নগদায়ন করে কোম্পানী তার পাওনা টাকা আদায়ের ব্যবস্থা গ্রহণ করতে পারবেন এবং বাৎসরিক বোনাস কর্তন করার এখতিয়ার কোম্পানীর থাকিবে। উক্ত বিষয়ে আমি ওজর আপত্তি করিব না।</p>
+        <p className="document-justified">আমি ঘোষণা করছি যে, উপরোক্ত তথ্যাবলি সম্পূর্ণ সত্য। কোনো তথ্য গোপন বা মিথ্যা তথ্য প্রদান করিনি। মহানন্দা এগ্রো ইন্ডাস্ট্রিজের সঙ্গে ব্যবসার ক্ষেত্রে কোম্পানির আরোপিত সব শর্ত ও নিয়মনীতি মেনে চলতে অঙ্গীকারবদ্ধ। কোম্পানির নিয়ম অনুযায়ী প্রতি বছরের ২৮ ডিসেম্বর ও ৩০ জুনের মধ্যে সমুদয় বকেয়া টাকা ডিমান্ড ড্রাফটের (ডিডি) মাধ্যমে পরিশোধ করব। অন্যথায়, জামানত হিসেবে জমা দেওয়া চেক নগদায়ন করে কোম্পানি পাওনা আদায় করতে পারবে এবং বার্ষিক বোনাস থেকে পাওনা কর্তন করতে পারবে। এ বিষয়ে আমার কোনো আপত্তি থাকবে না।</p>
         <div className="corporate-signature-row single-signature applicant-signature"><SignatureLine>আবেদনকারীর স্বাক্ষর ও সিল</SignatureLine></div>
         <div className="corporate-document-parties"><span>আবেদনকারী: {form.establishment || '________________'}</span><span>স্বত্বাধিকারী: {form.proprietor || '________________'}</span></div>
       </section>
 
       <section className="corporate-page">
         <CompanyHeader reference={form.reference} date={form.date} />
-        <h2 className="corporate-title">লজিস্টিক অফিসারের মতামতঃ</h2>
-        <p className="document-justified">আবেদন কারি দ্বারা প্রদত্ত নিম্ন লিখিত যাবতীয় প্রয়োজনীয় কাগজ পত্র সেলস্ অফিসার মারফত বুঝিয়া পেয়েছি।</p>
+        <h2 className="corporate-title">লজিস্টিকস অফিসারের মতামত</h2>
+        <p className="document-justified">আবেদনকারীর কাছ থেকে নিচে উল্লিখিত প্রয়োজনীয় কাগজপত্র সেলস অফিসারের মাধ্যমে বুঝে পেয়েছি:</p>
         <ol className="logistics-checklist">
-          {checklistItems.map((item, index) => (
-            <li key={item}><span className="document-checkbox">{form.logisticsChecklist.includes(String(index)) ? '✓' : ''}</span>{item}</li>
-          ))}
+          {checklistItems
+            .filter((_, index) => form.logisticsChecklist.includes(String(index)))
+            .map((item) => <li key={item}><span className="document-checkbox">✓</span>{item}</li>)}
+          {!form.logisticsChecklist.length && <li>প্রাপ্ত কাগজপত্র নির্বাচন করা হয়নি।</li>}
         </ol>
-        <div className="approval-statement">পরিবেশক নিয়োগ অনুমতি দেওয়া হইল।</div>
+        <div className="approval-statement">পরিবেশক হিসেবে নিয়োগের অনুমোদন দেওয়া হলো।</div>
         <div className="corporate-signature-row approval-signatures">
           <SignatureLine>লজিস্টিক অফিসারের স্বাক্ষর ও সিল</SignatureLine>
           <SignatureLine>হেড অব কোম্পানী</SignatureLine>
@@ -207,9 +223,12 @@ function ChequeDocument({ form }) {
       <section className="corporate-page">
         <CompanyHeader reference={form.reference} date={form.date} />
         <h2 className="corporate-title">চেক প্রদান ও গ্রহণ সম্পর্কিত বিবরণ</h2>
-        <div className="cheque-party">
-          <p>প্রথম পক্ষ, কোম্পানীঃ মেসার্স মহানন্দা এগ্রো ইন্ডাস্ট্রিজ।</p>
+        <div className="corporate-first-party">
+          <p><strong>প্রথম পক্ষ (কোম্পানি): ভ্যালিড এগ্রো প্রোডাক্ট লিমিটেড ও মহানন্দা এগ্রো ইন্ডাস্ট্রিজ।</strong></p>
           <p>মাটিডালি, বগুড়া সদর, বগুড়া।</p>
+        </div>
+        <div className="cheque-party">
+          <p>প্রথম পক্ষের সঙ্গে দ্বিতীয় পক্ষের চেক প্রদান ও গ্রহণের বিবরণ:</p>
         </div>
         <div className="cheque-fields">
           <p>দ্বিতীয় পক্ষ, ফার্মের নাম: <Blank>{form.farmName}</Blank> প্রোপাইটার: <Blank>{form.proprietor}</Blank></p>
@@ -217,10 +236,10 @@ function ChequeDocument({ form }) {
           <p>জেলা: <Blank>{form.district}</Blank> টোটার আইডি নং: <Blank>{form.dealerCode}</Blank></p>
           <p>মোবাইল নং: <Blank>{form.phone}</Blank></p>
         </div>
-        <p className="cheque-declaration">প্রকাশ থাকে যে, আমি দ্বিতীয় পক্ষ গত <Blank>{toBnDate(form.creditStartDate)}</Blank> তারিখ থেকে প্রথম পক্ষের সাথে বাকীতে ব্যবসা পরিচালনা আসিতেছি। বাকী ব্যবসার বিপরীতে আমার নিকট পাওনা কৃত টাকা নগদায়ন এর জন্য প্রথম পক্ষকে এক খানা চেক প্রদান করিলাম।</p>
-        <p>যার বিবরণঃ চেক নং: <Blank>{form.chequeNumber}</Blank> ব্যাংক এর নাম: <Blank>{form.bankName}</Blank></p>
+        <p className="cheque-declaration">আমি, দ্বিতীয় পক্ষ, <Blank>{toBnDate(form.creditStartDate)}</Blank> তারিখ থেকে প্রথম পক্ষের সঙ্গে বাকিতে ব্যবসা পরিচালনা করে আসছি। বাকির বিপরীতে আমার কাছে পাওনা টাকা আদায়ের জন্য প্রথম পক্ষকে একটি চেক প্রদান করলাম।</p>
+        <p>চেকের বিবরণ: চেক নম্বর: <Blank>{form.chequeNumber}</Blank> ব্যাংকের নাম: <Blank>{form.bankName}</Blank></p>
         <p>শাখা: <Blank>{form.branch}</Blank> ধরন: <Blank>{form.chequeType}</Blank></p>
-        <p className="cheque-declaration">উপরোক্ত বিষয়াদি আমি দ্বিতীয় পক্ষ জেনে, বুঝে, স্ব-জ্ঞানে, স্ব-ইচ্ছায় নিম্নে স্বাক্ষর করিলাম।</p>
+        <p className="cheque-declaration">উপরের সব বিষয় জেনে ও বুঝে, স্বেচ্ছায় এবং সুস্থ মস্তিষ্কে নিচে স্বাক্ষর করলাম।</p>
         <div className="corporate-signature-row cheque-signatures">
           <SignatureLine>কোম্পানির পক্ষে স্থানীয় প্রতিনিধি</SignatureLine>
           <SignatureLine>দ্বিতীয় পক্ষের স্বাক্ষর ও সিল</SignatureLine>

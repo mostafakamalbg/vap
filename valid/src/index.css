@@ -251,6 +251,87 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
   .monthly-report-sheet * {
     visibility: visible !important;
   }
+  .corporate-document {
+    width: 100%;
+    max-width: 210mm;
+    margin: 0 auto;
+    border: 1px solid #d1d5db;
+    background: #fff;
+    padding: 1rem;
+    color: #1e293b;
+    font-size: 0.94rem;
+    line-height: 1.5;
+  }
+
+  .corporate-page {
+    padding: 0.5rem 0;
+  }
+
+  .corporate-page + .corporate-page {
+    margin-top: 1.5rem;
+    border-top: 1px dashed #94a3b8;
+    padding-top: 1.5rem;
+  }
+
+  .corporate-header {
+    border-bottom: 2px solid #14532d;
+    padding-bottom: 0.7rem;
+    text-align: center;
+  }
+
+  .corporate-brand-row {
+    align-items: center;
+  }
+
+  .corporate-tagline {
+    margin: 0.3rem 0 !important;
+    color: #475569;
+    font-size: 0.9rem;
+    font-weight: 700;
+  }
+
+  .corporate-reference {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    margin: 0.6rem 0;
+    text-align: left;
+  }
+
+  .corporate-header > p {
+    margin: 0.15rem 0;
+    font-size: 0.8rem;
+  }
+
+  .corporate-title {
+    margin: 0.8rem 0;
+    border: 1px solid #334155;
+    padding: 0.4rem;
+    font-size: 1.1rem;
+    font-weight: 900;
+    text-align: center;
+  }
+
+  .corporate-first-party {
+    margin: 0.6rem 0;
+  }
+
+  .corporate-first-party p {
+    margin: 0.2rem 0;
+  }
+
+  .corporate-document-footer {
+    margin-top: 1rem;
+    border-top: 1px solid #334155;
+    padding-top: 0.4rem;
+    text-align: center;
+    font-size: 0.8rem;
+  }
+
+  .corporate-document-footer p {
+    margin: 0.15rem 0;
+  }
+
   .sales-agreement-print {
     position: static !important;
     width: 100% !important;
@@ -430,6 +511,7 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
     width: 196mm !important;
     max-width: none !important;
     margin: 0 !important;
+    border: 0 !important;
     padding: 0 !important;
     color: #000 !important;
     background: #fff !important;
@@ -444,6 +526,11 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
     page-break-after: always !important;
     break-inside: auto !important;
     page-break-inside: auto !important;
+  }
+  .corporate-page + .corporate-page {
+    margin: 0 !important;
+    border: 0 !important;
+    padding-top: 0 !important;
   }
   .corporate-page:last-child {
     break-after: auto !important;
@@ -1204,6 +1291,20 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
 }
 
 @media (max-width: 640px) {
+  .corporate-document {
+    padding: 0.75rem;
+    font-size: 0.86rem;
+  }
+
+  .corporate-brand-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .corporate-reference {
+    gap: 0.4rem;
+    font-size: 0.8rem;
+  }
+
   .agreement-brand {
     gap: 0.35rem;
   }

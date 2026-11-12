@@ -143,7 +143,10 @@ export function publicUser(user, isSuperAdmin = false) {
 
 export function normalizePhone(value) {
   const banglaDigits = '০১২৩৪৫৬৭৮৯';
-  return String(value || '')
+  const digits = String(value || '')
     .replace(/[০-৯]/g, (digit) => String(banglaDigits.indexOf(digit)))
     .replace(/\D/g, '');
+  return digits.length === 13 && digits.startsWith('880')
+    ? digits.slice(2)
+    : digits;
 }

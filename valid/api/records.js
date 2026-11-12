@@ -1,7 +1,7 @@
 import dbConnect from '../lib/mongodb.js';
 import { BusinessRecord, Dealer, Invoice, Product } from '../lib/models.js';
 import { authorize } from '../lib/auth.js';
-import { normalizeOfficerCode } from '../shared/codes.js';
+import { isDealerAssignedToOfficer, normalizeOfficerCode } from '../shared/codes.js';
 
 const recordTypes = new Set([
   'products',
@@ -40,8 +40,6 @@ export default async function handler(req, res) {
       if (Model) {
         let filter = {};
         if (user.role !== 'admin' && type === 'dealers') {
-          const officerCodeMatch = String(user.officerCode || '').match(/\d+/);
-          const officerCodeDigits = officerCodeMatch ? String(Number(officerCodeMatch[0])) : '';
           const officerRecords = await BusinessRecord.find({ type: 'officers' }).select('data').lean();
           const normalizedUserCode = normalizeOfficerCode(user.officerCode);
           const relatedOfficerIds = officerRecords
@@ -52,26 +50,17 @@ export default async function handler(req, res) {
             ))
             .flatMap((record) => [record.data?.id, record.data?.officerId])
             .filter(Boolean);
-          const officerIds = [...new Set([
+          const officerIds = new Set([
             user.officerId,
             ...relatedOfficerIds,
-            ...(officerCodeDigits ? [`OFF-${officerCodeDigits.padStart(2, '0')}`] : [])
-          ])];
-          const conditions = [
-            ...(officerIds.length ? [{ assignedOfficerId: { $in: officerIds } }] : []),
-            ...(user.officerCode ? [
-              { assignedOfficerCode: user.officerCode },
-              ...(normalizedUserCode ? [{ assignedOfficerCode: normalizedUserCode }] : []),
-              { officerCode: user.officerCode },
-              ...(officerCodeDigits ? [
-                { assignedOfficerCode: officerCodeDigits },
-                { assignedOfficerCode: `OFF-${officerCodeDigits}` },
-                { officerCode: officerCodeDigits },
-                { assignedOfficerCode: `OFF-${officerCodeDigits.padStart(2, '0')}` }
-              ] : [])
-            ] : [])
-          ];
-          filter = conditions.length ? { $or: conditions } : { id: '__no_records__' };
+            ...(normalizedUserCode.match(/\d+/)
+              ? [`OFF-${normalizedUserCode.match(/\d+/)[0]}`]
+              : [])
+          ]);
+          const assignedDealers = await Dealer.find({}).sort({ code: 1 }).lean();
+          return res.status(200).json(assignedDealers.filter((dealer) => (
+            isDealerAssignedToOfficer(dealer, officerIds, user.officerCode)
+          )));
         } else if (user.role !== 'admin' && type === 'invoices') {
           const officerCodeMatch = String(user.officerCode || '').match(/\d+/);
           const officerCodeDigits = officerCodeMatch ? String(Number(officerCodeMatch[0])) : '';

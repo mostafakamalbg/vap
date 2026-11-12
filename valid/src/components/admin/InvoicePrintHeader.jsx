@@ -3,6 +3,7 @@ import { toBn, toBnDate } from '../../utils/bengali';
 import { formatDealerCode, formatInvoiceNumber, formatOfficerCode } from '../../../shared/codes';
 import { normalizePaymentMethod, PAYMENT_METHODS } from '../../../shared/paymentMethods';
 import { LEGACY_INVOICE_SESSION } from '../../../shared/sessions';
+import { useAgro } from '../../context/AgroContext';
 
 const money = (value) => {
   const amount = Number(value) || 0;
@@ -49,8 +50,12 @@ function getProductDescription(item) {
 }
 
 export default function InvoicePrintHeader({ invoice }) {
+  const { dealers } = useAgro();
   if (!invoice) return null;
 
+  const dealer = dealers.find((entry) => (
+    entry.id === invoice.dealerId || entry.code === invoice.dealerCode
+  ));
   const items = invoice.items || [];
   const returns = invoice.returnAdjustments || [];
   const itemTotals = items.reduce((totals, item) => {
@@ -108,9 +113,9 @@ export default function InvoicePrintHeader({ invoice }) {
           <h2>ডিলার তথ্য</h2>
           <p><strong>ডিলার কোড:</strong> {toBn(formatDealerCode(invoice.dealerCode || invoice.dealerId || '—'))}</p>
           <p><strong>প্রতিষ্ঠান:</strong> {invoice.dealerName || '—'}</p>
-          <p><strong>প্রোপাইটর:</strong> {invoice.dealerProprietor || '—'}</p>
-          <p><strong>ঠিকানা:</strong> {invoice.dealerAddress || '—'}</p>
-          <p><strong>মোবাইল:</strong> {toBn(invoice.dealerPhone || '—')}</p>
+          <p><strong>প্রোপাইটর:</strong> {invoice.dealerProprietor || dealer?.proprietor || '—'}</p>
+          <p><strong>ঠিকানা:</strong> {invoice.dealerAddress || dealer?.address || '—'}</p>
+          <p><strong>মোবাইল:</strong> {toBn(invoice.dealerPhone || dealer?.phone || '—')}</p>
         </div>
         <div className="invoice-party invoice-party-invoice">
           <h2>চালান তথ্য</h2>

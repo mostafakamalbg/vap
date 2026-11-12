@@ -2,7 +2,12 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { ClipboardList, PackageCheck, Plus, Send, ShoppingCart, TrendingUp } from 'lucide-react';
 import { useAgro } from '../context/AgroContext';
 import { useUiPreferences } from '../context/UiPreferencesContext';
-import { formatDealerCode, formatOfficerCode, normalizeOfficerCode } from '../../shared/codes';
+import {
+  formatDealerCode,
+  formatOfficerCode,
+  isDealerAssignedToOfficer,
+  normalizeOfficerCode
+} from '../../shared/codes';
 
 async function requestJson(url, options) {
   const response = await fetch(url, options);
@@ -56,12 +61,12 @@ export default function OfficerDashboard() {
       currentOfficer?.officerId,
       ...(codeNumber ? [`OFF-${codeNumber.padStart(2, '0')}`] : [])
     ].filter(Boolean));
-    return dealers.filter((dealer) => {
-      const dealerCodes = [dealer.assignedOfficerCode, dealer.officerCode]
-        .map((code) => normalizeOfficerCode(code, currentOfficer?.designation))
-        .filter(Boolean);
-      return officerIds.has(dealer.assignedOfficerId) || dealerCodes.includes(officerCode);
-    });
+    return dealers.filter((dealer) => isDealerAssignedToOfficer(
+      dealer,
+      officerIds,
+      officerCode,
+      currentOfficer?.designation
+    ));
   }, [currentOfficer, currentUser?.officerId, dealers, officerCode]);
   useEffect(() => {
     if (!availableDealers.some((dealer) => dealer.id === dealerId)) {

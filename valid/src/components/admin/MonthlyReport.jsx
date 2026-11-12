@@ -299,60 +299,77 @@ export default function MonthlyReport() {
   const monthEndDate = monthEnd.toISOString().slice(0, 10);
   const stockReportRows = products.flatMap((product) => (product.variants || []).map((variant) => {
     const productKey = `${product.id}::${variant.sku}`;
+    const packPerBox = Number(variant.packPerBox) || 1;
+    const itemPieces = (item) => Number(item.totalPieces)
+      || (Number(item.cartons ?? item.quantity) || 0) * (Number(item.packPerBox) || packPerBox);
+    const invoiceMovementPieces = (invoice) => {
+      const direction = invoice.invoiceType === 'dealer_return' ? 1 : -1;
+      const itemMovement = (invoice.items || [])
+        .filter((item) => item.productId === product.id && item.sku === variant.sku)
+        .reduce((sum, item) => sum + itemPieces(item) * direction, 0);
+      const adjustedReturn = (invoice.returnAdjustments || [])
+        .filter((item) => item.productId === product.id && item.sku === variant.sku)
+        .reduce((sum, item) => sum + (Number(item.quantity ?? item.quantityPieces) || 0), 0);
+      return itemMovement - adjustedReturn;
+    };
+    const periodInvoices = invoices.filter((invoice) => invoice.date?.startsWith(selectedMonth));
     const stockInsInRange = stockInLogs.filter((entry) => (
       entry.productId === product.id && entry.sku === variant.sku
       && entry.date >= `${selectedMonth}-01` && entry.date <= monthEndDate
     ));
-    const stockInvoicesInRange = invoices.filter((invoice) => invoice.date?.startsWith(selectedMonth));
-    const salesInRange = stockInvoicesInRange
+    const stockInPieces = stockInsInRange.reduce(
+      (sum, entry) => sum + (Number(entry.quantityPieces) || 0),
+      0
+    );
+    const salesPieces = periodInvoices
       .filter((invoice) => !['dealer_return', 'factory_damage'].includes(invoice.invoiceType))
       .flatMap((invoice) => invoice.items || [])
-      .filter((item) => item.productId === product.id && item.sku === variant.sku);
-    const returnsInRange = stockInvoicesInRange
+      .filter((item) => item.productId === product.id && item.sku === variant.sku)
+      .reduce((sum, item) => sum + itemPieces(item), 0);
+    const dealerReturnPieces = periodInvoices
       .filter((invoice) => invoice.invoiceType === 'dealer_return')
       .flatMap((invoice) => invoice.items || [])
-      .filter((item) => item.productId === product.id && item.sku === variant.sku);
-    const adjustedReturnsInRange = stockInvoicesInRange
-      .flatMap((invoice) => invoice.returnAdjustments || [])
-      .filter((item) => item.productId === product.id && item.sku === variant.sku);
-    const damageInRange = filteredDamages.filter((entry) => (
-      entry.productId === product.id && entry.sku === variant.sku
-    ));
-    let futureMovementPieces = stockInLogs
+      .filter((item) => item.productId === product.id && item.sku === variant.sku)
+      .reduce((sum, item) => sum + itemPieces(item), 0);
+    const factoryReturnPieces = periodInvoices.reduce((sum, invoice) => {
+      const damagedItems = invoice.invoiceType === 'factory_damage'
+        ? (invoice.items || [])
+          .filter((item) => item.productId === product.id && item.sku === variant.sku)
+          .reduce((itemSum, item) => itemSum + itemPieces(item), 0)
+        : 0;
+      const adjustedReturns = (invoice.returnAdjustments || [])
+        .filter((item) => item.productId === product.id && item.sku === variant.sku)
+        .reduce((itemSum, item) => itemSum + (Number(item.quantity ?? item.quantityPieces) || 0), 0);
+      return sum + damagedItems + adjustedReturns;
+    }, 0);
+    const futureStockInPieces = stockInLogs
       .filter((entry) => entry.productId === product.id && entry.sku === variant.sku && entry.date > monthEndDate)
       .reduce((sum, entry) => sum + (Number(entry.quantityPieces) || 0), 0);
-    invoices.filter((invoice) => invoice.date > monthEndDate).forEach((invoice) => {
-      const direction = invoice.invoiceType === 'dealer_return' ? 1 : -1;
-      (invoice.items || []).filter((item) => item.productId === product.id && item.sku === variant.sku)
-        .forEach((item) => {
-          futureMovementPieces += direction * (Number(item.totalPieces)
-            || (Number(item.cartons ?? item.quantity) || 0) * (Number(item.packPerBox) || 1));
-        });
-      (invoice.returnAdjustments || []).filter((item) => item.productId === product.id && item.sku === variant.sku)
-        .forEach((item) => {
-          futureMovementPieces -= Number(item.quantity ?? item.quantityPieces) || 0;
-        });
-    });
-    const packPerBox = Number(variant.packPerBox) || 1;
-    const piecesRemaining = Math.max(0, (Number(variant.stock) || 0) - futureMovementPieces);
+    const futureInvoiceMovement = invoices
+      .filter((invoice) => invoice.date > monthEndDate)
+      .reduce((sum, invoice) => sum + invoiceMovementPieces(invoice), 0);
+    const closingPieces = Math.max(
+      0,
+      (Number(variant.stock) || 0) - futureStockInPieces - futureInvoiceMovement
+    );
+    const openingPieces = Math.max(
+      0,
+      closingPieces - stockInPieces + salesPieces - dealerReturnPieces + factoryReturnPieces
+    );
     return {
       key: productKey,
       productName: product.name,
       size: variant.size || '',
       packPerBox,
-      remainingPieces: piecesRemaining,
-      remainingCartons: Math.floor(piecesRemaining / packPerBox),
-      stockIn: stockInsInRange.reduce((sum, entry) => sum + (Number(entry.quantityPieces) || 0), 0),
-      soldCartons: salesInRange.reduce((sum, item) => sum + (Number(item.cartons ?? item.quantity) || 0), 0),
-      returnedPieces: returnsInRange.reduce((sum, item) => sum + (Number(item.totalPieces)
-        || (Number(item.cartons ?? item.quantity) || 0) * (Number(item.packPerBox) || packPerBox)), 0)
-        + adjustedReturnsInRange.reduce((sum, item) => sum + (Number(item.quantity ?? item.quantityPieces) || 0), 0),
-      damagedPieces: damageInRange.reduce((sum, entry) => sum + (Number(entry.quantityPieces) || 0), 0)
+      openingCartons: openingPieces / packPerBox,
+      stockInCartons: stockInPieces / packPerBox,
+      soldCartons: salesPieces / packPerBox,
+      dealerReturnCartons: dealerReturnPieces / packPerBox,
+      factoryReturnCartons: factoryReturnPieces / packPerBox,
+      closingCartons: closingPieces / packPerBox
     };
   }));
-  const visibleStockReportRows = stockReportRows.filter((row) => (
-    row.remainingPieces || row.stockIn || row.soldCartons || row.returnedPieces || row.damagedPieces
-  ));
+  const formatStockCartons = (cartons) => toBn(Number(cartons.toFixed(2)));
 
   const printReport = () => {
     const printClass = 'monthly-report-printing';
@@ -820,31 +837,32 @@ export default function MonthlyReport() {
         {filterMode === 'stock' && (
           <section className="space-y-3">
             <div className="rounded-lg bg-emerald-50 p-3 text-xs font-semibold text-emerald-900">
-              রিপোর্টের শেষ তারিখ: {toBnDate(monthEndDate)} • অবশিষ্ট স্টক বর্তমান মজুদ থেকে পরবর্তী তারিখের নথিভুক্ত স্টক ইন, বিক্রয় ও ফেরত সমন্বয় করে হিসাব করা।
+              রিপোর্টের সময়কাল: {toBnDate(`${selectedMonth}-01`)} থেকে {toBnDate(monthEndDate)} • প্যাকের অংশবিশেষ থাকলে দশমিক কার্টুনে দেখানো হবে।
             </div>
             <div className="overflow-x-auto rounded-lg border border-slate-200">
-              <table className="w-full min-w-[850px] text-left text-xs">
+              <table className="w-full min-w-[900px] text-left text-xs">
                 <thead className="bg-slate-100 text-slate-700">
                   <tr>
                     <th className="p-2">পণ্য</th><th className="p-2">প্যাক</th>
-                    <th className="p-2 text-right">মাসশেষ অবশিষ্ট</th><th className="p-2 text-right">স্টক ইন (পিস)</th>
-                    <th className="p-2 text-right">বিক্রয় (কার্টুন)</th><th className="p-2 text-right">ফেরত (পিস)</th>
-                    <th className="p-2 text-right">ড্যামেজ (পিস)</th>
+                    <th className="p-2 text-right">মাসের শুরু</th><th className="p-2 text-right">স্টক ইন</th>
+                    <th className="p-2 text-right">বিক্রি</th><th className="p-2 text-right">ডিলার ফেরত</th>
+                    <th className="p-2 text-right">ফ্যাক্টরি ফেরত</th><th className="p-2 text-right">মাসের শেষে</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {visibleStockReportRows.map((row) => (
+                  {stockReportRows.map((row) => (
                     <tr key={row.key}>
                       <td className="p-2 font-semibold">{row.productName}</td>
                       <td className="p-2">{row.size}</td>
-                      <td className="p-2 text-right font-bold text-emerald-800">{toBn(row.remainingCartons)} কার্টুন + {toBn(row.remainingPieces % row.packPerBox)} পিস</td>
-                      <td className="p-2 text-right">{toBn(row.stockIn)}</td>
-                      <td className="p-2 text-right">{toBn(row.soldCartons)}</td>
-                      <td className="p-2 text-right">{toBn(row.returnedPieces)}</td>
-                      <td className="p-2 text-right text-rose-700">{toBn(row.damagedPieces)}</td>
+                      <td className="p-2 text-right">{formatStockCartons(row.openingCartons)}</td>
+                      <td className="p-2 text-right">{formatStockCartons(row.stockInCartons)}</td>
+                      <td className="p-2 text-right">{formatStockCartons(row.soldCartons)}</td>
+                      <td className="p-2 text-right">{formatStockCartons(row.dealerReturnCartons)}</td>
+                      <td className="p-2 text-right text-rose-700">{formatStockCartons(row.factoryReturnCartons)}</td>
+                      <td className="p-2 text-right font-bold text-emerald-800">{formatStockCartons(row.closingCartons)}</td>
                     </tr>
                   ))}
-                  {!visibleStockReportRows.length && <tr><td colSpan={7} className="p-5 text-center text-slate-500">এই মাসে স্টক বা পণ্য চলাচলের কোনো রেকর্ড নেই।</td></tr>}
+                  {!stockReportRows.length && <tr><td colSpan={8} className="p-5 text-center text-slate-500">পণ্যের কোনো তথ্য পাওয়া যায়নি।</td></tr>}
                 </tbody>
               </table>
             </div>

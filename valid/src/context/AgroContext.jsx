@@ -834,18 +834,38 @@ export function AgroProvider({ children }) {
       body: JSON.stringify({ action: 'clear-sales-stock', password })
     });
     const result = await readJsonResponse(response);
-    setInvoices([]);
-    setStockInLogs([]);
-    setDamageLogs([]);
-    setPayments([]);
-    setProducts((previous) => previous.map((product) => ({
+    const clearedProducts = products.map((product) => ({
       ...product,
       variants: (product.variants || []).map((variant) => ({
         ...variant,
         stock: 0,
         stockCartons: 0
       }))
-    })));
+    }));
+    const clearedDealers = dealers.map((dealer) => ({ ...dealer, openingDue: 0 }));
+    localStorage.removeItem('vap_invoices_v5');
+    localStorage.removeItem('vap_stock_in_v5');
+    localStorage.removeItem('vap_damages_v5');
+    localStorage.removeItem('vap_payments_v5');
+    localStorage.removeItem('vap_sales_agreements_v1');
+    localRecordsRef.current = {
+      ...localRecordsRef.current,
+      products: clearedProducts,
+      dealers: clearedDealers,
+      invoices: [],
+      stockInLogs: [],
+      damageLogs: [],
+      payments: [],
+      salesAgreements: []
+    };
+    setInvoices([]);
+    setStockInLogs([]);
+    setDamageLogs([]);
+    setPayments([]);
+    setSalesAgreements([]);
+    setProducts(clearedProducts);
+    setDealers(clearedDealers);
+    syncErrorsRef.current.clear();
     setCloudError('');
     return result;
   };

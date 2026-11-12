@@ -5,14 +5,17 @@ import { Dealer, Invoice, Order, Product } from '../lib/models.js';
 import { authorize } from '../lib/auth.js';
 import { INVOICE_SESSIONS } from '../shared/sessions.js';
 import { BusinessRecord } from '../lib/models.js';
-import { normalizeOfficerCode } from '../shared/codes.js';
+import {
+  isDealerAssignedToOfficer,
+  normalizeOfficerCode
+} from '../shared/codes.js';
 
 const invoiceIdPattern = /^VAP-(\d{4})-(\d+)$/;
 
-async function getNextInvoiceNumber(session) {
+async function getNextInvoiceNumber() {
   const [invoices, orders] = await Promise.all([
-    Invoice.find({}).select('id').session(session).lean(),
-    Order.find({ invoiceNo: { $exists: true, $ne: '' } }).select('invoiceNo').session(session).lean()
+    Invoice.find({}).select('id').lean(),
+    Order.find({ invoiceNo: { $exists: true, $ne: '' } }).select('invoiceNo').lean()
   ]);
   const year = new Date().getFullYear();
   const maxSequence = [...invoices.map((invoice) => invoice.id), ...orders.map((order) => order.invoiceNo)]
@@ -33,7 +36,7 @@ function getInvoiceSession(date) {
   return INVOICE_SESSIONS.find((session) => session === `${half} ${year}`) || '';
 }
 
-async function loadOrderItems(requestedItems, session) {
+async function loadOrderItems(requestedItems, session = null) {
   if (!Array.isArray(requestedItems) || requestedItems.length < 1 || requestedItems.length > 50) {
     const error = new Error('অর্ডারে ১ থেকে ৫০টি পণ্য থাকতে হবে।');
     error.statusCode = 400;
@@ -48,7 +51,9 @@ async function loadOrderItems(requestedItems, session) {
       error.statusCode = 400;
       throw error;
     }
-    const product = await Product.findOne({ id: requested.productId }).session(session).lean();
+    const productQuery = Product.findOne({ id: requested.productId });
+    if (session) productQuery.session(session);
+    const product = await productQuery.lean();
     const variant = product?.variants?.find((entry) => entry.sku === requested.sku);
     if (!variant) {
       const error = new Error('নির্বাচিত পণ্য বা প্যাক সাইজ পাওয়া যায়নি।');
@@ -69,12 +74,10 @@ async function loadOrderItems(requestedItems, session) {
   return items;
 }
 
-async function getDealerScope(user) {
-  const officerCodeMatch = String(user.officerCode || '').match(/\d+/);
-  const officerCodeDigits = officerCodeMatch ? String(Number(officerCodeMatch[0])) : '';
+async function getAssignedDealer(user, dealerId) {
   const normalizedCode = normalizeOfficerCode(user.officerCode);
   const officerRecords = await BusinessRecord.find({ type: 'officers' }).select('data').lean();
-  const officerIds = officerRecords
+  const relatedOfficerIds = officerRecords
     .filter((record) => (
       normalizeOfficerCode(record.data?.code, record.data?.designation) === normalizedCode
       || record.data?.id === user.officerId
@@ -82,22 +85,14 @@ async function getDealerScope(user) {
     ))
     .flatMap((record) => [record.data?.id, record.data?.officerId])
     .filter(Boolean);
-  return [
-    ...(user.officerId ? [{ assignedOfficerId: user.officerId }] : []),
-    ...officerIds.map((id) => ({ assignedOfficerId: id })),
-    ...(officerCodeDigits ? [
-      { assignedOfficerId: `OFF-${officerCodeDigits.padStart(2, '0')}` }
-    ] : []),
-    ...(user.officerCode ? [
-      { assignedOfficerCode: user.officerCode },
-      ...(normalizedCode ? [{ assignedOfficerCode: normalizedCode }] : []),
-      { officerCode: user.officerCode },
-      ...(officerCodeDigits ? [
-        { assignedOfficerCode: officerCodeDigits },
-        { officerCode: officerCodeDigits }
-      ] : [])
-    ] : [])
-  ];
+  const officerCodeNumber = normalizedCode.match(/\d+/)?.[0];
+  const officerIds = new Set([
+    user.officerId,
+    ...relatedOfficerIds,
+    ...(officerCodeNumber ? [`OFF-${officerCodeNumber}`] : [])
+  ].filter(Boolean));
+  const dealer = await Dealer.findOne({ id: String(dealerId || '') }).lean();
+  return isDealerAssignedToOfficer(dealer, officerIds, user.officerCode) ? dealer : null;
 }
 
 export default async function handler(req, res) {
@@ -120,23 +115,18 @@ export default async function handler(req, res) {
 
     if (req.method === 'POST') {
       if (user.role !== 'officer') return res.status(403).json({ error: 'অর্ডার কেবল অফিসার জমা দিতে পারবেন।' });
-      const dealerScope = await getDealerScope(user);
-      const dealer = await Dealer.findOne({
-        id: String(req.body?.dealerId || ''),
-        ...(dealerScope.length ? { $or: dealerScope } : { id: '__no_records__' })
-      }).lean();
+      const dealer = await getAssignedDealer(user, req.body?.dealerId);
       if (!dealer) return res.status(400).json({ error: 'আপনার কোডের সঙ্গে যুক্ত ডিলার নির্বাচন করুন।' });
       const date = new Date().toISOString().slice(0, 10);
       const invoiceSession = getInvoiceSession(date);
       if (!invoiceSession) return res.status(400).json({ error: 'এই তারিখের জন্য ইনভয়েস সেশন নির্ধারিত নেই।' });
 
-      const mongoSession = await mongoose.startSession();
+      const items = await loadOrderItems(req.body?.items);
       let order;
-      try {
-        await mongoSession.withTransaction(async () => {
-          const items = await loadOrderItems(req.body?.items, mongoSession);
-          const number = await getNextInvoiceNumber(mongoSession);
-          [order] = await Order.create([{
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        const number = await getNextInvoiceNumber();
+        try {
+          order = await Order.create({
             id: `ORD-${new Date().getFullYear()}-${randomUUID().slice(0, 8).toUpperCase()}`,
             invoiceNo: number.invoiceNo,
             seqNumber: number.seqNumber,
@@ -154,11 +144,13 @@ export default async function handler(req, res) {
             items,
             note: String(req.body?.note || '').slice(0, 500),
             status: 'pending'
-          }], { session: mongoSession });
-        });
-      } finally {
-        await mongoSession.endSession();
+          });
+          break;
+        } catch (error) {
+          if (error?.code !== 11000 || !error.keyPattern?.invoiceNo) throw error;
+        }
       }
+      if (!order) return res.status(409).json({ error: 'ইনভয়েস নম্বর তৈরি করা যায়নি; আবার চেষ্টা করুন।' });
       return res.status(201).json(order);
     }
 

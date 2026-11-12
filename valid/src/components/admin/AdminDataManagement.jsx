@@ -49,7 +49,7 @@ export default function AdminDataManagement() {
         return;
       }
       const result = await clearSalesStockData(resetPassword);
-      setMessage(`${result.message} (ইনভয়েস ${result.deleted.invoices}, ড্যামেজ ${result.deleted.damages}, স্টক-ইন ${result.deleted.stockInLogs}, পেমেন্ট ${result.deleted.payments})`);
+      setMessage(`${result.message} (ইনভয়েস ${result.deleted.invoices}, অর্ডার ${result.deleted.orders}, ড্যামেজ ${result.deleted.damages}, স্টক-ইন ${result.deleted.stockInLogs}, পেমেন্ট ${result.deleted.payments}, চুক্তি ${result.deleted.salesAgreements})`);
       setResetPassword('');
       setResetConfirmation('');
     } catch (requestError) {
@@ -133,7 +133,7 @@ export default function AdminDataManagement() {
             <div className="w-full space-y-3">
               <div>
                 <h2 className="font-black text-rose-900">নতুন স্টক শুরুর জন্য পুরনো হিসাব পরিষ্কার</h2>
-                <p className="mt-1 text-sm text-rose-800">সব ইনভয়েস/অর্ডার, ড্যামেজ ও ফেরত, স্টক-ইন এবং পেমেন্ট/কালেকশন ইতিহাস স্থায়ীভাবে মুছে যাবে। পণ্যের তালিকা ও ডিলার থাকবে; সব পণ্যের স্টক শূন্য হবে। চালানোর আগে JSON ব্যাকআপ ডাউনলোড করুন।</p>
+                <p className="mt-1 text-sm text-rose-800">সব ইনভয়েস/অর্ডার, ড্যামেজ ও ফেরত, স্টক-ইন, পেমেন্ট/কালেকশন এবং সেলস ও কালেকশন চুক্তি স্থায়ীভাবে মুছে যাবে। ডিলারের প্রারম্ভিক বকেয়া এবং পণ্যের স্টক শূন্য হবে; পণ্য ও ডিলারের তালিকা থাকবে। এই কাজ ফেরানো যাবে না।</p>
               </div>
               <form onSubmit={handleSalesStockReset} className="grid gap-3 sm:grid-cols-3">
                 <label className="text-xs font-bold text-rose-900">

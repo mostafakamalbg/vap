@@ -25,15 +25,15 @@ export default async function handler(req, res) {
     if (!officerCode || !phone) {
       return res.status(400).json({ error: 'অফিসার কোড ও ফোন নম্বর দিন।' });
     }
-    const rosterOfficer = INITIAL_OFFICERS.find((entry) => (
-      normalizeOfficerCode(entry.code) === officerCode
-      || normalizeOfficerCode(entry.code, entry.designation) === officerCode
-    ));
     const savedOfficerRecords = await BusinessRecord.find({ type: 'officers' }).lean();
     const savedOfficerRecord = savedOfficerRecords.find((record) => (
       normalizeOfficerCode(record.data?.code, record.data?.designation) === officerCode
     ));
-    const listedOfficer = rosterOfficer || savedOfficerRecord?.data;
+    const rosterOfficer = INITIAL_OFFICERS.find((entry) => (
+      normalizeOfficerCode(entry.code) === officerCode
+      || normalizeOfficerCode(entry.code, entry.designation) === officerCode
+    ));
+    const listedOfficer = savedOfficerRecord?.data || rosterOfficer;
     if (listedOfficer && normalizePhone(listedOfficer.phone) !== phone) {
       return res.status(400).json({ error: 'এই অফিসার কোডের নিবন্ধিত ফোন নম্বরের সঙ্গে মিলছে না।' });
     }

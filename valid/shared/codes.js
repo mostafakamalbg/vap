@@ -22,6 +22,18 @@ export function normalizeOfficerCode(code, designation = '') {
   return `${getOfficerCodePrefix(designation)}-${value.padStart(2, '0')}`;
 }
 
+export function isDealerAssignedToOfficer(dealer, officerIds, officerCode, designation = '') {
+  const ids = officerIds instanceof Set ? officerIds : new Set(officerIds || []);
+  const normalizedCode = normalizeOfficerCode(officerCode, designation);
+  const assignedIds = [dealer?.assignedOfficerId, dealer?.officerId].filter(Boolean);
+  const assignedCodes = [dealer?.assignedOfficerCode, dealer?.officerCode]
+    .map((code) => normalizeOfficerCode(code, designation))
+    .filter(Boolean);
+
+  return assignedIds.some((id) => ids.has(id))
+    || Boolean(normalizedCode && assignedCodes.includes(normalizedCode));
+}
+
 export function createOfficerCode(serial, designation) {
   const value = String(serial || '').trim().toUpperCase();
   const match = value.match(/^(?:FSO|SO|TSO|ASM|RSM)-?(\d+)$/);

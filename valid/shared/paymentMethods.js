@@ -13,6 +13,10 @@ export const PAYMENT_TYPES = [
   { value: 'lc_commission', label: 'লেস কমিশন (LC)' }
 ];
 
+export const LEDGER_PAYMENT_TYPES = PAYMENT_TYPES.filter((entry) => (
+  entry.value !== 'dealer_collection'
+));
+
 export function normalizePaymentType(type) {
   const value = String(type || '').trim().toLowerCase();
   return PAYMENT_TYPES.some((entry) => entry.value === value)
@@ -22,7 +26,7 @@ export function normalizePaymentType(type) {
 
 export function isDealerCollection(payment) {
   const type = String(payment?.paymentType || '');
-  return !type || type === 'dealer_collection' || type === 'company_transfer';
+  return !type || type === 'dealer_collection';
 }
 
 export function normalizePaymentMethod(method) {

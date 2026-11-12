@@ -48,33 +48,55 @@ function isValidBackup(value) {
     ));
 }
 
-async function replaceRecords(data, session) {
+async function replaceRecords(data, session = null) {
+  const options = session ? { session } : {};
   for (const type of recordTypes) {
     const records = data[type];
     const Model = databaseModels[type];
     if (Model) {
-      await Model.deleteMany({}, { session });
-      if (records.length) await Model.insertMany(records, { session });
+      await Model.deleteMany({}, options);
+      if (records.length) await Model.insertMany(records, options);
       continue;
     }
 
-    await BusinessRecord.deleteMany({ type }, { session });
+    await BusinessRecord.deleteMany({ type }, options);
     if (records.length) {
       await BusinessRecord.insertMany(records.map((record, index) => ({
         type,
         recordId: String(record.id || record.officerId || record._id || `${type}-${index}`),
         data: record
-      })), { session });
+      })), options);
     }
   }
 }
 
-async function replaceWithTransaction(data) {
+async function replaceWithTransaction(data, { clearOrders = false } = {}) {
   const session = await mongoose.startSession();
   try {
-    await session.withTransaction(() => replaceRecords(data, session));
+    await session.withTransaction(async () => {
+      if (clearOrders) await Order.deleteMany({}, { session });
+      await replaceRecords(data, session);
+    });
   } finally {
     await session.endSession();
+  }
+}
+
+function doesNotSupportTransactions(error) {
+  const message = String(error?.message || '').toLowerCase();
+  return error?.code === 20
+    || message.includes('transaction numbers are only allowed')
+    || message.includes('transactions are not supported');
+}
+
+async function restoreFactoryData() {
+  const data = getFactoryData();
+  try {
+    await replaceWithTransaction(data, { clearOrders: true });
+  } catch (error) {
+    if (!doesNotSupportTransactions(error)) throw error;
+    await Order.deleteMany({});
+    await replaceRecords(data);
   }
 }
 
@@ -100,51 +122,46 @@ export default async function handler(req, res) {
         return res.status(403).json({ error: 'এই রিসেট ব্যবহারের অনুমতি নেই।' });
       }
       if (req.body.action === 'clear-sales-stock') {
-        const session = await mongoose.startSession();
-        let deletedCounts;
-        try {
-          await session.withTransaction(async () => {
-            const [invoiceCount, orderCount] = await Promise.all([
-              Invoice.countDocuments({}).session(session),
-              Order.countDocuments({}).session(session)
-            ]);
-            const damageCount = await BusinessRecord.countDocuments({ type: 'damageLogs' }).session(session);
-            const stockInCount = await BusinessRecord.countDocuments({ type: 'stockInLogs' }).session(session);
-            const paymentCount = await BusinessRecord.countDocuments({ type: 'payments' }).session(session);
+        const [invoiceCount, orderCount, damageCount, stockInCount, paymentCount, agreementCount] = await Promise.all([
+          Invoice.countDocuments({}),
+          Order.countDocuments({}),
+          BusinessRecord.countDocuments({ type: 'damageLogs' }),
+          BusinessRecord.countDocuments({ type: 'stockInLogs' }),
+          BusinessRecord.countDocuments({ type: 'payments' }),
+          BusinessRecord.countDocuments({ type: 'salesAgreements' })
+        ]);
 
-            await Invoice.deleteMany({}, { session });
-            await Order.deleteMany({}, { session });
-            await BusinessRecord.deleteMany({
-              type: { $in: ['invoices', 'damageLogs', 'stockInLogs', 'payments'] }
-            }, { session });
+        await Invoice.deleteMany({});
+        await Order.deleteMany({});
+        await BusinessRecord.deleteMany({
+          type: { $in: ['invoices', 'damageLogs', 'stockInLogs', 'payments', 'salesAgreements'] }
+        });
+        await Dealer.updateMany({}, { $set: { openingDue: 0 } });
 
-            const products = await Product.find({}).session(session);
-            for (const product of products) {
-              product.variants = (product.variants || []).map((variant) => ({
-                ...variant,
-                stock: 0,
-                stockCartons: 0
-              }));
-              await product.save({ session });
-            }
-
-            deletedCounts = {
-              invoices: invoiceCount,
-              orders: orderCount,
-              damages: damageCount,
-              stockInLogs: stockInCount,
-              payments: paymentCount
-            };
-          });
-        } finally {
-          await session.endSession();
+        const products = await Product.find({});
+        for (const product of products) {
+          product.variants = (product.variants || []).map((variant) => ({
+            ...variant,
+            stock: 0,
+            stockCartons: 0
+          }));
+          await product.save();
         }
+
+        const deletedCounts = {
+          invoices: invoiceCount,
+          orders: orderCount,
+          damages: damageCount,
+          stockInLogs: stockInCount,
+          payments: paymentCount,
+          salesAgreements: agreementCount
+        };
         return res.status(200).json({
-          message: 'ইনভয়েস, ড্যামেজ, স্টক-ইন ও পেমেন্ট ইতিহাস মুছে সব পণ্যের স্টক শূন্য করা হয়েছে।',
+          message: 'ইনভয়েস, অর্ডার, ড্যামেজ, স্টক-ইন, পেমেন্ট ও সেলস চুক্তি মুছে বকেয়া এবং পণ্যের স্টক শূন্য করা হয়েছে।',
           deleted: deletedCounts
         });
       }
-      await replaceWithTransaction(getFactoryData());
+      await restoreFactoryData();
       return res.status(200).json({ message: 'ফ্যাক্টরি ডেটা পুনরুদ্ধার হয়েছে।' });
     } catch (error) {
       console.error('Factory reset failed:', error);
