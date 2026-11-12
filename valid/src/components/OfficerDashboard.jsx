@@ -8,6 +8,7 @@ import {
   isDealerAssignedToOfficer,
   normalizeOfficerCode
 } from '../../shared/codes';
+import { getPackageQuantityUnit } from '../../shared/quantityUnits';
 
 async function requestJson(url, options) {
   const response = await fetch(url, options);
@@ -88,12 +89,19 @@ export default function OfficerDashboard() {
           key,
           productName: item.productName || 'পণ্য',
           size: item.size || '',
+          unit: item.unit || 'পিস/বোতল',
+          quantityUnit: getPackageQuantityUnit(item),
           cartons: 0,
+          pieces: 0,
           amount: 0
         };
         const cartons = Number(item.cartons ?? item.quantity) || 0;
+        const pieces = item.totalPieces != null
+          ? Number(item.totalPieces) || 0
+          : cartons * (Number(item.packPerBox) || 1);
         const tradePrice = Number(item.total) || cartons * (Number(item.cartonPrice) || 0);
         sale.cartons += cartons;
+        sale.pieces += pieces;
         sale.amount += tradePrice * (1 - (Number(item.commission) || 0) / 100);
         sales.set(key, sale);
       });
@@ -151,7 +159,7 @@ export default function OfficerDashboard() {
           { label: t('officer.invoiceCount'), value: filteredSalesInvoices.length.toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US'), Icon: ClipboardList },
           { label: t('officer.salesAmount'), value: `৳${totalSales.toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}`, Icon: TrendingUp },
           { label: 'মোট বকেয়া', value: `৳${totalDue.toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}`, Icon: TrendingUp },
-          { label: t('officer.cartonsSold'), value: totalCartonsSold.toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US'), Icon: PackageCheck }
+          { label: 'মোট বিক্রিত প্যাক / কার্টুন', value: totalCartonsSold.toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US'), Icon: PackageCheck }
         ].map(({ label, value, Icon }) => (
           <div key={label} className="flex items-center gap-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
             <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700"><Icon className="h-5 w-5" /></span>
@@ -194,7 +202,7 @@ export default function OfficerDashboard() {
                       <td className="px-4 py-3 font-bold text-emerald-800">{invoice.id}</td>
                       <td className="px-4 py-3">{invoice.date}<p className="text-[10px] text-slate-500">{invoice.session}</p></td>
                       <td className="px-4 py-3">{invoice.dealerName || '—'}</td>
-                      <td className="px-4 py-3 text-right">{(invoice.items || []).reduce((sum, item) => sum + (Number(item.cartons ?? item.quantity) || 0), 0).toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}</td>
+                      <td className="px-4 py-3 text-right">{(invoice.items || []).reduce((sum, item) => sum + (Number(item.cartons ?? item.quantity) || 0), 0).toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')} প্যাক</td>
                       <td className="px-4 py-3 text-right font-bold">৳{(Number(invoice.totalAmount ?? invoice.grandTotal) || 0).toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}</td>
                       <td className="px-4 py-3 text-right font-semibold text-rose-700">৳{(Number(invoice.dueAmount ?? invoice.currentDue) || 0).toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}</td>
                     </tr>
@@ -213,18 +221,19 @@ export default function OfficerDashboard() {
             <div className="max-h-[28rem] overflow-auto">
               <table className="w-full min-w-[520px] text-left text-xs">
                 <thead className="sticky top-0 bg-slate-50 text-slate-600"><tr>
-                  <th className="px-4 py-3">{t('officer.product')}</th><th className="px-4 py-3">{t('officer.packSize')}</th><th className="px-4 py-3 text-right">{t('officer.cartonsSoldLabel')}</th><th className="px-4 py-3 text-right">বিক্রয় মূল্য</th>
+                  <th className="px-4 py-3">{t('officer.product')}</th><th className="px-4 py-3">{t('officer.packSize')}</th><th className="px-4 py-3 text-right">প্যাক / কার্টুন</th><th className="px-4 py-3 text-right">মোট একক</th><th className="px-4 py-3 text-right">বিক্রয় মূল্য</th>
                 </tr></thead>
                 <tbody className="divide-y divide-slate-100">
                   {officerProductSales.map((item) => (
                     <tr key={item.key}>
                       <td className="px-4 py-2.5 font-semibold">{item.productName}</td>
                       <td className="px-4 py-2.5">{item.size}</td>
-                      <td className="px-4 py-2.5 text-right font-bold">{item.cartons.toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}</td>
+                      <td className="px-4 py-2.5 text-right font-bold">{item.cartons.toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')} {item.quantityUnit}</td>
+                      <td className="px-4 py-2.5 text-right">{item.pieces.toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')} {item.unit}</td>
                       <td className="px-4 py-2.5 text-right font-semibold">৳{item.amount.toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}</td>
                     </tr>
                   ))}
-                  {!officerProductSales.length && <tr><td colSpan="4" className="px-4 py-8 text-center text-slate-500">{t('officer.noProductSales')}</td></tr>}
+                  {!officerProductSales.length && <tr><td colSpan="5" className="px-4 py-8 text-center text-slate-500">{t('officer.noProductSales')}</td></tr>}
                 </tbody>
               </table>
             </div>
@@ -264,13 +273,13 @@ export default function OfficerDashboard() {
                   <option value="">{t('officer.selectProduct')}</option>
                   {allProductVariants.map((variant) => (
                     <option key={variant.key} value={variant.key}>
-                      {variant.productName} — {variant.size} ({t('officer.stock')} {Number(variant.stockCartons || 0).toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')} {t('officer.cartons')}{getVariantShortage(variant) > 0 ? ` • ঘাটতি ${getVariantShortage(variant)}` : ''})
+                      {variant.productName} — {variant.size} ({t('officer.stock')} {Number(variant.stockCartons || 0).toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')} {getPackageQuantityUnit(variant)}{getVariantShortage(variant) > 0 ? ` • ঘাটতি ${getVariantShortage(variant)} ${getPackageQuantityUnit(variant)}` : ''})
                     </option>
                   ))}
                 </select>
                 <div className="flex items-center gap-2">
                   <label className="flex-1 text-[11px] font-semibold text-slate-600">
-                    {t('officer.cartonQuantity')}
+                    পরিমাণ ({getPackageQuantityUnit(allProductVariants.find((variant) => variant.productId === item.productId && variant.sku === item.sku)) || 'কার্টুন'})
                     <input required min="1" step="1" type="number" value={item.cartons} onChange={(event) => updateItem(index, 'cartons', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" />
                   </label>
                   {(() => {
@@ -279,7 +288,7 @@ export default function OfficerDashboard() {
                     const shortage = getVariantShortage(selectedVariant);
                     return (
                       <p className={`mt-4 text-[11px] font-bold ${shortage ? 'text-rose-700' : 'text-emerald-700'}`}>
-                        ডিপোতে {Number(selectedVariant.stockCartons) || 0} কার্টুন • {shortage ? `ঘাটতি ${shortage} কার্টুন` : 'অর্ডারের জন্য যথেষ্ট'}
+                        ডিপোতে {Number(selectedVariant.stockCartons) || 0} {getPackageQuantityUnit(selectedVariant)} • {shortage ? `ঘাটতি ${shortage} ${getPackageQuantityUnit(selectedVariant)}` : 'অর্ডারের জন্য যথেষ্ট'}
                       </p>
                     );
                   })()}

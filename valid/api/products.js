@@ -9,14 +9,13 @@ export default async function handler(req, res) {
   if (!await dbConnect()) return res.status(503).json({ error: 'MongoDB is not configured.' });
   if (req.method === 'POST') {
     if (!await authorize(req, res, ['admin'])) return;
+  } else if (!await authorize(req, res, ['admin', 'officer'])) {
+    return;
   }
   if (req.method === 'GET') {
     try {
       const products = await Product.find({}).sort({ id: 1 });
-      return res.status(200).json(products.map((product) => ({
-        ...product.toObject(),
-        variants: (product.variants || []).map(({ stock, stockCartons, ...variant }) => variant)
-      })));
+      return res.status(200).json(products.map((product) => product.toObject()));
     } catch (error) {
       console.error('Product lookup failed:', error);
       return res.status(500).json({ error: 'পণ্য লোড করা যায়নি।' });

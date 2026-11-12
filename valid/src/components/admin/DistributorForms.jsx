@@ -109,22 +109,26 @@ function TickList({ values = [], options }) {
 
 function CompanyHeader({ reference, date }) {
   return (
-    <header className="corporate-header">
-      <div className="agreement-brand-row corporate-brand-row">
-        <div className="agreement-brand">
-          <img src="/logos/valid-logo.png" alt="ভ্যালিড এগ্রো প্রোডাক্ট লিমিটেড লোগো" />
-          <h1>ভ্যালিড এগ্রো প্রোডাক্ট লিমিটেড</h1>
+    <>
+      <header className="agreement-header">
+        <div className="agreement-brand-row">
+          <div className="agreement-brand">
+            <img src="/logos/valid-logo.png" alt="ভ্যালিড এগ্রো প্রোডাক্ট লিমিটেড লোগো" />
+            <h1>ভ্যালিড এগ্রো প্রোডাক্ট লিমিটেড</h1>
+          </div>
+          <div className="agreement-brand">
+            <img src="/logos/mahananda-logo-transparent.png" alt="মহানন্দা এগ্রো ইন্ডাস্ট্রিজ লোগো" />
+            <h1>মহানন্দা এগ্রো ইন্ডাস্ট্রিজ</h1>
+          </div>
         </div>
-        <div className="agreement-brand">
-          <img src="/logos/mahananda-logo-transparent.png" alt="মহানন্দা এগ্রো ইন্ডাস্ট্রিজ লোগো" />
-          <h1>মহানন্দা এগ্রো ইন্ডাস্ট্রিজ</h1>
-        </div>
+        <p className="agreement-subtitle">(Agricultural Commodities Importer, Repacker &amp; Supplier)</p>
+        <p>Office/Factory: Matidali, Bogra Sadar, Bogra</p>
+      </header>
+      <div className="agreement-ref-row">
+        <span><strong>Ref:</strong> {reference || '________________'}</span>
+        <span><strong>Date:</strong> {toBnDate(date) || '________________'}</span>
       </div>
-      <p className="corporate-tagline">(Agricultural Commodities Importer, Repacker &amp; Supplier)</p>
-      <div className="corporate-reference"><span><strong>Ref:</strong> {reference || '____________'}</span><span><strong>Date:</strong> {toBnDate(date) || '____________'}</span></div>
-      <p>Office/Factory: Matidali, Bogra Sadar, Bogra.</p>
-      <p>Mob: 01713-736920, 01773-523723 • E-mail: mohananda.agro@gmail.com</p>
-    </header>
+    </>
   );
 }
 

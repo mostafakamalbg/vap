@@ -3,18 +3,17 @@ import mongoose from 'mongoose';
 import dbConnect from '../lib/mongodb.js';
 import { Invoice, Order, Product } from '../lib/models.js';
 import { authorize } from '../lib/auth.js';
-import { INVOICE_SESSIONS } from '../shared/sessions.js';
+import { getBangladeshBusinessDate, getInvoiceSessionForDate } from '../shared/sessions.js';
 import { isDealerAssignedToOfficer, normalizeOfficerCode } from '../shared/codes.js';
 import { getDealersWithOfficerCodes } from '../lib/dealerAssignments.js';
 
 const invoiceIdPattern = /^VAP-(\d{4})-(\d+)$/;
 
-async function getNextInvoiceNumber() {
+async function getNextInvoiceNumber(year) {
   const [invoices, orders] = await Promise.all([
     Invoice.find({}).select('id').lean(),
     Order.find({ invoiceNo: { $exists: true, $ne: '' } }).select('invoiceNo').lean()
   ]);
-  const year = new Date().getFullYear();
   const maxSequence = [...invoices.map((invoice) => invoice.id), ...orders.map((order) => order.invoiceNo)]
     .reduce((max, id) => {
       const match = String(id || '').match(invoiceIdPattern);
@@ -25,12 +24,6 @@ async function getNextInvoiceNumber() {
     invoiceNo: `VAP-${year}-${String(seqNumber).padStart(4, '0')}`,
     seqNumber
   };
-}
-
-function getInvoiceSession(date) {
-  const [year, month] = date.split('-').map(Number);
-  const half = month <= 6 ? 'জানুয়ারি - জুন' : 'জুলাই - ডিসেম্বর';
-  return INVOICE_SESSIONS.find((session) => session === `${half} ${year}`) || '';
 }
 
 async function loadOrderItems(requestedItems, session = null) {
@@ -109,17 +102,18 @@ export default async function handler(req, res) {
       if (user.role !== 'officer') return res.status(403).json({ error: 'অর্ডার কেবল অফিসার জমা দিতে পারবেন।' });
       const dealer = await getAssignedDealer(user, req.body?.dealerId);
       if (!dealer) return res.status(400).json({ error: 'আপনার কোডের সঙ্গে যুক্ত ডিলার নির্বাচন করুন।' });
-      const date = new Date().toISOString().slice(0, 10);
-      const invoiceSession = getInvoiceSession(date);
+      const date = getBangladeshBusinessDate();
+      const invoiceSession = getInvoiceSessionForDate(date);
       if (!invoiceSession) return res.status(400).json({ error: 'এই তারিখের জন্য ইনভয়েস সেশন নির্ধারিত নেই।' });
 
       const items = await loadOrderItems(req.body?.items);
       let order;
       for (let attempt = 0; attempt < 3; attempt += 1) {
-        const number = await getNextInvoiceNumber();
+        const year = Number(date.slice(0, 4));
+        const number = await getNextInvoiceNumber(year);
         try {
           order = await Order.create({
-            id: `ORD-${new Date().getFullYear()}-${randomUUID().slice(0, 8).toUpperCase()}`,
+            id: `ORD-${year}-${randomUUID().slice(0, 8).toUpperCase()}`,
             invoiceNo: number.invoiceNo,
             seqNumber: number.seqNumber,
             date,

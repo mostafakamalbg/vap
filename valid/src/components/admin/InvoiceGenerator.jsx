@@ -4,6 +4,7 @@ import { getNextInvoiceNumber, useAgro } from '../../context/AgroContext';
 import { INVOICE_SESSIONS } from '../../../shared/sessions';
 import { formatDealerCode, formatInvoiceNumber, formatOfficerCode } from '../../../shared/codes';
 import { normalizePaymentMethod, PAYMENT_METHODS } from '../../../shared/paymentMethods';
+import { getPackageQuantityUnit } from '../../../shared/quantityUnits';
 import { toBnCurrency } from '../../utils/bengali';
 import InvoicePrintHeader from './InvoicePrintHeader';
 import SearchableRecordSelect from './SearchableRecordSelect';
@@ -19,6 +20,7 @@ const emptyItem = () => ({
   size: '',
   cartons: 1,
   packPerBox: 1,
+  unit: 'পিস/বোতল',
   cartonPrice: 0,
   unitPrice: 0,
   commission: 0
@@ -155,6 +157,7 @@ export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCa
               sku: variant?.sku || '',
               size: variant?.size || '',
               packPerBox: variant?.packPerBox || 1,
+              unit: variant?.unit || 'পিস/বোতল',
               cartonPrice: variant?.cartonPrice || 0,
               unitPrice: variant?.tp || 0,
               commission: variant?.commission || 0
@@ -282,6 +285,7 @@ export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCa
         productName: item.productName,
         sku: item.sku,
         size: item.size,
+        unit: item.unit,
         packPerBox: Number(item.packPerBox) || 1,
         cartons: item.cartons,
         quantity: item.cartons,
@@ -414,7 +418,7 @@ export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCa
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 p-5">
             <div>
               <h2 className="text-lg font-bold text-slate-800">পণ্যের তালিকা</h2>
-              <p className="text-xs text-slate-500">পরিমাণ কার্টনে; একক মূল্য কার্টনপ্রতি।</p>
+              <p className="text-xs text-slate-500">প্যাক সাইজ অনুযায়ী পরিমাণ ও মূল্য গণনা হবে।</p>
             </div>
             <button type="button" onClick={addItem} className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white">+ পণ্য যোগ করুন</button>
           </div>
@@ -429,11 +433,11 @@ export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCa
                   </select>
                 </label>
                 <label className="text-sm font-semibold text-slate-700">
-                  পরিমাণ (কার্টন) <span className="text-rose-600">*</span>
+                  পরিমাণ ({getPackageQuantityUnit(item)}) <span className="text-rose-600">*</span>
                   <input type="number" min="1" step="1" required value={item.cartons} onChange={(event) => updateItem(index, 'cartons', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" />
                 </label>
                 <label className="text-sm font-semibold text-slate-700">
-                  একক মূল্য (৳/কার্টন)
+                  একক মূল্য (৳/{getPackageQuantityUnit(item)})
                   <input type="number" min="0" step="0.01" required value={item.cartonPrice} onChange={(event) => updateItem(index, 'cartonPrice', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" />
                 </label>
                 <div className="text-sm font-semibold text-slate-700">

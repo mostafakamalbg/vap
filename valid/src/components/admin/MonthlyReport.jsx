@@ -15,6 +15,7 @@ import { useAgro } from '../../context/AgroContext';
 import { toBn, toBnDate } from '../../utils/bengali';
 import { formatDealerCode, formatOfficerCode, normalizeOfficerCode } from '../../../shared/codes';
 import { isDealerCollection, normalizePaymentType, PAYMENT_TYPES } from '../../../shared/paymentMethods';
+import { getPackageQuantityUnit } from '../../../shared/quantityUnits';
 import { INVOICE_SESSIONS, LEGACY_INVOICE_SESSION } from '../../../shared/sessions';
 import SearchableRecordSelect from './SearchableRecordSelect';
 
@@ -280,6 +281,8 @@ export default function MonthlyReport() {
           key,
           name: item.productName || 'পণ্য',
           size: item.size || '',
+          unit: item.unit || 'পিস/বোতল',
+          quantityUnit: getPackageQuantityUnit(item),
           cartons: 0,
           pieces: 0
         };
@@ -300,6 +303,7 @@ export default function MonthlyReport() {
   const stockReportRows = products.flatMap((product) => (product.variants || []).map((variant) => {
     const productKey = `${product.id}::${variant.sku}`;
     const packPerBox = Number(variant.packPerBox) || 1;
+    const quantityUnit = getPackageQuantityUnit(variant);
     const itemPieces = (item) => Number(item.totalPieces)
       || (Number(item.cartons ?? item.quantity) || 0) * (Number(item.packPerBox) || packPerBox);
     const invoiceMovementPieces = (invoice) => {
@@ -348,10 +352,10 @@ export default function MonthlyReport() {
     const futureInvoiceMovement = invoices
       .filter((invoice) => invoice.date > monthEndDate)
       .reduce((sum, invoice) => sum + invoiceMovementPieces(invoice), 0);
-    const closingPieces = Math.max(
-      0,
-      (Number(variant.stock) || 0) - futureStockInPieces - futureInvoiceMovement
-    );
+    const currentPieces = variant.stock == null
+      ? (Number(variant.stockCartons) || 0) * packPerBox
+      : Number(variant.stock) || 0;
+    const closingPieces = Math.max(0, currentPieces - futureStockInPieces - futureInvoiceMovement);
     const openingPieces = Math.max(
       0,
       closingPieces - stockInPieces + salesPieces - dealerReturnPieces + factoryReturnPieces
@@ -361,6 +365,7 @@ export default function MonthlyReport() {
       productName: product.name,
       size: variant.size || '',
       packPerBox,
+      quantityUnit,
       openingCartons: openingPieces / packPerBox,
       stockInCartons: stockInPieces / packPerBox,
       soldCartons: salesPieces / packPerBox,
@@ -776,15 +781,15 @@ export default function MonthlyReport() {
                   <h5 className="bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-900">{title}</h5>
                   <table className="w-full text-left text-xs">
                     <thead className="bg-slate-100 text-slate-700">
-                      <tr><th className="p-2">পণ্য</th><th className="p-2">প্যাক সাইজ</th><th className="p-2 text-right">কার্টুন</th><th className="p-2 text-right">পিস</th></tr>
+                      <tr><th className="p-2">পণ্য</th><th className="p-2">প্যাক সাইজ</th><th className="p-2 text-right">প্যাক / কার্টুন</th><th className="p-2 text-right">মোট একক</th></tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {rows.map((row) => (
                         <tr key={row.key}>
                           <td className="p-2 font-semibold">{row.name}</td>
                           <td className="p-2">{row.size || '—'}</td>
-                          <td className="p-2 text-right">{toBn(row.cartons)}</td>
-                          <td className="p-2 text-right">{toBn(row.pieces)}</td>
+                          <td className="p-2 text-right">{toBn(row.cartons)} {row.quantityUnit}</td>
+                          <td className="p-2 text-right">{toBn(row.pieces)} {row.unit}</td>
                         </tr>
                       ))}
                       {!rows.length && <tr><td colSpan={4} className="p-3 text-center text-slate-500">এই ফিল্টারে পণ্য সরবরাহ নেই।</td></tr>}
@@ -840,13 +845,13 @@ export default function MonthlyReport() {
               রিপোর্টের সময়কাল: {toBnDate(`${selectedMonth}-01`)} থেকে {toBnDate(monthEndDate)} • প্যাকের অংশবিশেষ থাকলে দশমিক কার্টুনে দেখানো হবে।
             </div>
             <div className="overflow-x-auto rounded-lg border border-slate-200">
-              <table className="w-full min-w-[900px] text-left text-xs">
+              <table className="w-full min-w-[1000px] text-left text-xs">
                 <thead className="bg-slate-100 text-slate-700">
                   <tr>
                     <th className="p-2">পণ্য</th><th className="p-2">প্যাক</th>
                     <th className="p-2 text-right">মাসের শুরু</th><th className="p-2 text-right">স্টক ইন</th>
                     <th className="p-2 text-right">বিক্রি</th><th className="p-2 text-right">ডিলার ফেরত</th>
-                    <th className="p-2 text-right">ফ্যাক্টরি ফেরত</th><th className="p-2 text-right">মাসের শেষে</th>
+                    <th className="p-2 text-right">ফ্যাক্টরি ফেরত</th><th className="p-2">একক</th><th className="p-2 text-right">মাসের শেষে</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -859,10 +864,11 @@ export default function MonthlyReport() {
                       <td className="p-2 text-right">{formatStockCartons(row.soldCartons)}</td>
                       <td className="p-2 text-right">{formatStockCartons(row.dealerReturnCartons)}</td>
                       <td className="p-2 text-right text-rose-700">{formatStockCartons(row.factoryReturnCartons)}</td>
+                      <td className="p-2">{row.quantityUnit}</td>
                       <td className="p-2 text-right font-bold text-emerald-800">{formatStockCartons(row.closingCartons)}</td>
                     </tr>
                   ))}
-                  {!stockReportRows.length && <tr><td colSpan={8} className="p-5 text-center text-slate-500">পণ্যের কোনো তথ্য পাওয়া যায়নি।</td></tr>}
+                  {!stockReportRows.length && <tr><td colSpan={9} className="p-5 text-center text-slate-500">পণ্যের কোনো তথ্য পাওয়া যায়নি।</td></tr>}
                 </tbody>
               </table>
             </div>

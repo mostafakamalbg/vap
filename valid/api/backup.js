@@ -1,9 +1,9 @@
-﻿import mongoose from 'mongoose';
 import dbConnect from '../lib/mongodb.js';
 import { authorize, hasSuperAdminAccess, verifyPassword } from '../lib/auth.js';
 import { User } from '../lib/models.js';
 import { BusinessRecord, Dealer, Invoice, Order, Product } from '../lib/models.js';
 import { normalizeDealerAssignment } from '../shared/codes.js';
+import { transactionOptions, withTransactionFallback } from '../lib/transactions.js';
 import {
   INITIAL_DAMAGES,
   INITIAL_DEALERS,
@@ -75,29 +75,10 @@ async function replaceRecords(data, session = null) {
 
 async function replaceWithTransaction(data, { clearOrders = false } = {}) {
   await withTransactionFallback(async (session) => {
-    const options = session ? { session } : {};
+    const options = transactionOptions(session);
     if (clearOrders) await Order.deleteMany({}, options);
     await replaceRecords(data, session);
   });
-}
-
-function doesNotSupportTransactions(error) {
-  const message = String(error?.message || '').toLowerCase();
-  return error?.code === 20
-    || message.includes('transaction numbers are only allowed')
-    || message.includes('transactions are not supported');
-}
-
-async function withTransactionFallback(operation) {
-  const session = await mongoose.startSession();
-  try {
-    await session.withTransaction(() => operation(session));
-  } catch (error) {
-    if (!doesNotSupportTransactions(error)) throw error;
-    await operation(null);
-  } finally {
-    await session.endSession();
-  }
 }
 
 async function restoreFactoryData() {
@@ -107,7 +88,7 @@ async function restoreFactoryData() {
 
 async function clearSalesAndStock(setStage) {
   await withTransactionFallback(async (session) => {
-    const options = session ? { session } : {};
+    const options = transactionOptions(session);
     setStage('ইনভয়েস, অর্ডার ও হিসাবের রেকর্ড মুছে ফেলা');
     await Invoice.deleteMany({}, options);
     await Order.deleteMany({}, options);

@@ -601,29 +601,33 @@ export function AgroProvider({ children }) {
   };
 
   // Stock In (ডিস্ট্রিবিউশন অফিসে মালামাল গ্রহণ)
-  const addStockIn = (stockEntry) => {
-    const entry = {
-      ...stockEntry,
-      id: `STK-IN-${globalThis.crypto.randomUUID()}`
-    };
-    setStockInLogs((prev) => [entry, ...prev]);
+  const addStockIn = async (stockEntries) => {
+    const response = await fetch('/api/stock-in', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ entries: stockEntries })
+    });
+    const { entries } = await readJsonResponse(response);
+    setStockInLogs((prev) => [...entries, ...prev]);
 
-    setProducts((prevProducts) =>
-      prevProducts.map((prod) => {
-        if (prod.id !== entry.productId) return prod;
-        return {
-          ...prod,
-          variants: (prod.variants || []).map((v) => {
-            if (v.sku !== entry.sku) return v;
-            return {
-              ...v,
-              stockCartons: (Number(v.stockCartons) || 0) + Number(entry.cartons || 0),
-              stock: (Number(v.stock) || 0) + Number(entry.quantityPieces || 0)
-            };
-          })
-        };
-      })
-    );
+    setProducts((prevProducts) => prevProducts.map((product) => {
+      const productEntries = entries.filter((entry) => entry.productId === product.id);
+      if (!productEntries.length) return product;
+      return {
+        ...product,
+        variants: (product.variants || []).map((variant) => {
+          const variantEntries = productEntries.filter((entry) => entry.sku === variant.sku);
+          if (!variantEntries.length) return variant;
+          return {
+            ...variant,
+            stockCartons: (Number(variant.stockCartons) || 0)
+              + variantEntries.reduce((sum, entry) => sum + (Number(entry.cartons) || 0), 0),
+            stock: (Number(variant.stock) || 0)
+              + variantEntries.reduce((sum, entry) => sum + (Number(entry.quantityPieces) || 0), 0)
+          };
+        })
+      };
+    }));
   };
 
   // Record Damage / Return Log

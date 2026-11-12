@@ -1,9 +1,9 @@
-import mongoose from 'mongoose';
 import dbConnect from '../lib/mongodb.js';
 import { BusinessRecord, Invoice, Product, User } from '../lib/models.js';
 import { authorize, verifyPassword } from '../lib/auth.js';
 import { normalizePaymentMethod } from '../shared/paymentMethods.js';
 import { getInvoiceStockChanges } from '../shared/invoiceStock.js';
+import { transactionOptions, withTransactionFallback } from '../lib/transactions.js';
 
 const isValidDate = (value) => {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -86,6 +86,9 @@ function invoiceValues(body) {
     dealerId: String(body.dealerId),
     dealerCode: String(body.dealerCode || ''),
     dealerName: String(body.dealerName || ''),
+    dealerProprietor: String(body.dealerProprietor || ''),
+    dealerAddress: String(body.dealerAddress || ''),
+    dealerPhone: String(body.dealerPhone || ''),
     items,
     subtotal: Number(body.subtotal ?? totalAmount),
     grandTotal: Number(body.grandTotal ?? totalAmount),
@@ -132,21 +135,42 @@ function isWithinDeleteWindow(invoice) {
   return Date.now() <= deadline.valueOf();
 }
 
-async function restoreInvoiceStock(invoice, session) {
-  const changes = getInvoiceStockChanges(invoice, null);
+async function applyInvoiceStockChanges(previousInvoice, nextInvoice, session) {
+  const changes = getInvoiceStockChanges(previousInvoice, nextInvoice);
   for (const change of changes.values()) {
-    const product = await Product.findOne({ id: change.productId }).session(session);
-    if (!product) continue;
-    product.variants = (product.variants || []).map((variant) => (
-      variant.sku === change.sku
-        ? {
-            ...variant,
-            stockCartons: Math.max(0, (Number(variant.stockCartons) || 0) + change.cartons),
-            stock: Math.max(0, (Number(variant.stock) || 0) + change.pieces)
-          }
-        : variant
-    ));
-    await product.save({ session });
+    let productQuery = Product.findOne({ id: change.productId });
+    if (session) productQuery = productQuery.session(session);
+    const product = await productQuery;
+    if (!product) {
+      const error = new Error(`পণ্য ${change.productId} পাওয়া যায়নি।`);
+      error.statusCode = 400;
+      throw error;
+    }
+    let foundVariant = false;
+    product.variants = (product.variants || []).map((variant) => {
+      if (variant.sku !== change.sku) return variant;
+      foundVariant = true;
+      const currentPieces = variant.stock == null
+        ? (Number(variant.stockCartons) || 0) * (Number(variant.packPerBox) || 1)
+        : Number(variant.stock) || 0;
+      const currentCartons = variant.stockCartons == null
+        ? Math.floor(currentPieces / (Number(variant.packPerBox) || 1))
+        : Number(variant.stockCartons) || 0;
+      const stockCartons = currentCartons + change.cartons;
+      const stock = currentPieces + change.pieces;
+      if (stockCartons < 0 || stock < 0) {
+        const error = new Error(`${variant.size || variant.sku} পণ্যের পর্যাপ্ত মজুত নেই।`);
+        error.statusCode = 400;
+        throw error;
+      }
+      return { ...variant, stockCartons, stock };
+    });
+    if (!foundVariant) {
+      const error = new Error(`প্যাক সাইজ ${change.sku} পাওয়া যায়নি।`);
+      error.statusCode = 400;
+      throw error;
+    }
+    await product.save(transactionOptions(session));
   }
 }
 
@@ -193,11 +217,12 @@ export default async function handler(req, res) {
         return res.status(401).json({ error: 'সঠিক অ্যাডমিন পাসওয়ার্ড দিন।' });
       }
 
-      const session = await mongoose.startSession();
       try {
-        let deletedInvoice;
-        await session.withTransaction(async () => {
-          const invoice = await Invoice.findOne({ id: invoiceId }).session(session);
+        await withTransactionFallback(async (session) => {
+          const options = transactionOptions(session);
+          let invoiceQuery = Invoice.findOne({ id: invoiceId });
+          if (session) invoiceQuery = invoiceQuery.session(session);
+          const invoice = await invoiceQuery;
           if (!invoice) {
             const error = new Error('ইনভয়েস পাওয়া যায়নি।');
             error.statusCode = 404;
@@ -209,11 +234,11 @@ export default async function handler(req, res) {
             throw error;
           }
 
-          await restoreInvoiceStock(invoice, session);
+          await applyInvoiceStockChanges(invoice, null, session);
           await BusinessRecord.deleteMany({
             type: 'damageLogs',
             'data.invoiceRef': invoiceId
-          }, { session });
+          }, options);
           await BusinessRecord.deleteMany({
             type: 'payments',
             $or: [
@@ -223,13 +248,13 @@ export default async function handler(req, res) {
                 'data.note': `ইনভয়েস #${invoiceId} এর বিপরীতে পরিশোধ`
               }
             ]
-          }, { session });
-          await Invoice.deleteOne({ id: invoiceId }, { session });
-          deletedInvoice = invoiceId;
+          }, options);
+          await Invoice.deleteOne({ id: invoiceId }, options);
         });
-        return res.status(200).json({ deleted: deletedInvoice });
-      } finally {
-        await session.endSession();
+        return res.status(200).json({ deleted: invoiceId });
+      } catch (error) {
+        if (error?.statusCode) return res.status(error.statusCode).json({ error: error.message });
+        throw error;
       }
     }
 
@@ -239,20 +264,43 @@ export default async function handler(req, res) {
 
     const values = invoiceValues(input);
     if (req.method === 'POST') {
-      const invoice = await Invoice.create(values);
+      let invoice;
+      await withTransactionFallback(async (session) => {
+        let duplicateQuery = Invoice.findOne({ id: values.id }).select('id');
+        if (session) duplicateQuery = duplicateQuery.session(session);
+        if (await duplicateQuery.lean()) {
+          const error = new Error('এই ইনভয়েস নম্বরটি আগে থেকেই আছে।');
+          error.statusCode = 409;
+          throw error;
+        }
+        await applyInvoiceStockChanges(null, values, session);
+        [invoice] = await Invoice.create([values], transactionOptions(session));
+      });
       return res.status(201).json(invoice.toObject());
     }
 
-    const existingInvoice = await Invoice.findOne({ id: values.id }).lean();
-    if (!existingInvoice) return res.status(404).json({ error: 'ইনভয়েস পাওয়া যায়নি।' });
-    if (!isWithinEditWindow(existingInvoice)) {
-      return res.status(403).json({ error: 'ইনভয়েস তৈরির ১৫ দিনের মধ্যে সম্পাদনা করা যাবে।' });
-    }
-    const invoice = await Invoice.findOneAndUpdate(
-      { id: values.id },
-      { $set: values },
-      { new: true, runValidators: true }
-    ).lean();
+    let invoice;
+    await withTransactionFallback(async (session) => {
+      let existingQuery = Invoice.findOne({ id: values.id });
+      if (session) existingQuery = existingQuery.session(session);
+      const existingInvoice = await existingQuery.lean();
+      if (!existingInvoice) {
+        const error = new Error('ইনভয়েস পাওয়া যায়নি।');
+        error.statusCode = 404;
+        throw error;
+      }
+      if (!isWithinEditWindow(existingInvoice)) {
+        const error = new Error('ইনভয়েস তৈরির ১৫ দিনের মধ্যে সম্পাদনা করা যাবে।');
+        error.statusCode = 403;
+        throw error;
+      }
+      await applyInvoiceStockChanges(existingInvoice, values, session);
+      invoice = await Invoice.findOneAndUpdate(
+        { id: values.id },
+        { $set: values },
+        { ...transactionOptions(session), new: true, runValidators: true }
+      ).lean();
+    });
     if (!invoice) return res.status(404).json({ error: 'ইনভয়েস পাওয়া যায়নি।' });
     return res.status(200).json(invoice);
   } catch (error) {

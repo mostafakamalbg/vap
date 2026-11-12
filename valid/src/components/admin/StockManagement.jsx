@@ -95,7 +95,7 @@ export default function StockManagement() {
   };
 
   // Submit Stock In
-  const handleStockInSubmit = (e) => {
+  const handleStockInSubmit = async (e) => {
     e.preventDefault();
     setFormError('');
     const entries = stockInItems.map((item) => {
@@ -115,8 +115,8 @@ export default function StockManagement() {
       return;
     }
 
-    entries.forEach(({ item, product, variant, quantity }) => {
-      addStockIn({
+    try {
+      await addStockIn(entries.map(({ item, product, variant, quantity }) => ({
         date: stockInForm.date,
         source: stockInForm.source,
         productId: item.productId,
@@ -130,8 +130,11 @@ export default function StockManagement() {
         expDate: stockInForm.expDate,
         receivedBy: stockInForm.receivedBy,
         note: stockInForm.note || 'ডিস্ট্রিবিউশন অফিসে স্টক ইন করা হলো।'
-      });
-    });
+      })));
+    } catch (error) {
+      setFormError(error.message || 'স্টক-ইন সংরক্ষণ করা যায়নি।');
+      return;
+    }
 
     const totalPieces = entries.reduce((sum, entry) => sum + entry.quantity, 0);
     setStatusMsg(`${entries.length}টি পণ্যের স্টক ইন সংরক্ষণ হয়েছে; মোট ${totalPieces.toLocaleString('bn-BD')} পিস যোগ হয়েছে।`);

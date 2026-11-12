@@ -3,6 +3,7 @@ import { toBn, toBnDate } from '../../utils/bengali';
 import { formatDealerCode, formatInvoiceNumber, formatOfficerCode } from '../../../shared/codes';
 import { normalizePaymentMethod, PAYMENT_METHODS } from '../../../shared/paymentMethods';
 import { LEGACY_INVOICE_SESSION } from '../../../shared/sessions';
+import { getPackageQuantityUnit } from '../../../shared/quantityUnits';
 import { useAgro } from '../../context/AgroContext';
 
 const money = (value) => {
@@ -19,6 +20,7 @@ function getItemValues(item) {
   const commission = tradePrice * (Number(item.commission) || 0) / 100;
   return {
     cartons,
+    quantityUnit: getPackageQuantityUnit(item),
     unitTradePrice: Number(item.cartonPrice) || Number(item.unitPrice) * (Number(item.packPerBox) || 1),
     tradePrice,
     commissionPercent: Number(item.commission) || 0,
@@ -53,8 +55,10 @@ export default function InvoicePrintHeader({ invoice }) {
   const { dealers } = useAgro();
   if (!invoice) return null;
 
+  const invoiceDealerCode = formatDealerCode(invoice.dealerCode || invoice.dealerId);
   const dealer = dealers.find((entry) => (
-    entry.id === invoice.dealerId || entry.code === invoice.dealerCode
+    entry.id === invoice.dealerId
+    || formatDealerCode(entry.code || entry.id) === invoiceDealerCode
   ));
   const items = invoice.items || [];
   const returns = invoice.returnAdjustments || [];
@@ -145,8 +149,8 @@ export default function InvoicePrintHeader({ invoice }) {
               <tr>
                 <th>নং</th>
                 <th>পণ্যের নাম ও প্যাক সাইজ</th>
-                <th>কার্টুন</th>
-                <th>ট্রেড প্রাইজ</th>
+                <th>পরিমাণ</th>
+                <th>একক মূল্য</th>
                 <th>মোট ট্রেড প্রাইজ</th>
                 <th>কমিশন (%)</th>
                 <th>কমিশন এ্যামাউন্ট</th>
@@ -162,7 +166,7 @@ export default function InvoicePrintHeader({ invoice }) {
                     <td className="invoice-product-name">
                       {getProductDescription(item)}
                     </td>
-                    <td>{toBn(values.cartons)}</td>
+                    <td>{toBn(values.cartons)} {values.quantityUnit}</td>
                     <td>{money(values.unitTradePrice)}</td>
                     <td>{money(values.tradePrice)}</td>
                     <td>{toBn(values.commissionPercent)}%</td>
@@ -175,7 +179,7 @@ export default function InvoicePrintHeader({ invoice }) {
                 <tr><td colSpan="8" className="invoice-empty-row">কোনো পণ্য নেই</td></tr>
               )}
               <tr className="invoice-table-total">
-                <th colSpan="2">মোট</th>
+                <th colSpan="2">মোট প্যাক / কার্টুন</th>
                 <th>{toBn(itemTotals.cartons)}</th>
                 <th>—</th>
                 <th>{money(itemTotals.tradePrice)}</th>
@@ -213,7 +217,7 @@ export default function InvoicePrintHeader({ invoice }) {
                   return (
                     <tr key={`${item.sku || item.productId}-return-${index}`}>
                       <td className="invoice-product-name">{getProductDescription({ ...item, productName: item.productName || 'ফেরত পণ্য' })}</td>
-                      <td>{toBn(values.cartons)} কার্টুন {toBn(values.loosePieces)} {item.unit || 'পিস/বোতল'}</td>
+                      <td>{toBn(values.cartons)} {getPackageQuantityUnit(item)} {toBn(values.loosePieces)} {item.unit || 'পিস/বোতল'}</td>
                       <td>{money(values.price)}</td>
                       <td className="invoice-return-deduction">− {money(values.total)}</td>
                     </tr>
@@ -237,7 +241,7 @@ export default function InvoicePrintHeader({ invoice }) {
           <p><strong>নোট:</strong> {invoice.note || defaultNote}</p>
         </div>
         <div className="invoice-totals">
-          <div><span>মোট কার্টুন</span><strong>{toBn(itemTotals.cartons)} কার্টুন</strong></div>
+          <div><span>মোট প্যাক / কার্টুন</span><strong>{toBn(itemTotals.cartons)}</strong></div>
           <div><span>মোট ট্রেড প্রাইজ</span><strong>{money(itemTotals.tradePrice)}</strong></div>
           <div><span>ট্রেড কমিশন</span><strong>− {money(itemTotals.commission)}</strong></div>
           {transportCost > 0 && <div><span>পরিবহন খরচ</span><strong>+ {money(transportCost)}</strong></div>}
