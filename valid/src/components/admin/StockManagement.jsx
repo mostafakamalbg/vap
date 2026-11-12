@@ -420,23 +420,34 @@ export default function StockManagement() {
                         <td className="py-2.5 px-3 text-center">
                           <span
                             className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-extrabold font-mono ${
-                              isLowStock
-                                ? 'bg-rose-100 text-rose-800'
-                                : 'bg-emerald-100 text-emerald-800'
+                              stockPcs < 0
+                                ? 'bg-rose-200 text-rose-900'
+                                : isLowStock
+                                  ? 'bg-amber-100 text-amber-800'
+                                  : 'bg-emerald-100 text-emerald-800'
                             }`}
                           >
-                            {stockPcs} {v.unit}
+                            {stockPcs < 0 ? `${stockPcs} (ঘাটতি)` : stockPcs} {v.unit}
                           </span>
                         </td>
 
                         <td className="py-2.5 px-2 text-center text-xs text-slate-600 whitespace-nowrap">
-                          <span className="font-semibold text-slate-800">{Number(v.stockCartons ?? cartonEquivalent) || 0}</span> কার্টুন
+                          <span className={`font-semibold ${Number(v.stockCartons ?? cartonEquivalent) < 0 ? 'text-rose-800' : 'text-slate-800'}`}>
+                            {Number(v.stockCartons ?? cartonEquivalent) || 0}
+                          </span> কার্টুন
                           {remainderPcs > 0 && <span className="text-slate-400 text-[11px]"> + {remainderPcs} পিস</span>}
                         </td>
                       </tr>
                     );
                   });
                 })}
+                {!filteredProducts.length && (
+                  <tr>
+                    <td colSpan="9" className="px-4 py-8 text-center text-sm text-slate-500">
+                      নির্বাচিত ফিল্টারে কোনো পণ্য পাওয়া যায়নি।
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>

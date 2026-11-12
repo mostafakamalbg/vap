@@ -91,6 +91,9 @@ export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCa
 
   const selectedOfficer = officers.find((officer) => officer.id === form.officerId);
   const selectedDealer = dealers.find((dealer) => dealer.id === form.dealerId);
+  const selectedDealerName = selectedDealer?.shopName || selectedDealer?.name || '';
+  const selectedDealerAddress = selectedDealer?.address || selectedDealer?.businessAddress || '';
+  const selectedDealerPhone = selectedDealer?.phone || selectedDealer?.mobile || selectedDealer?.phoneNumber || '';
   const dealerSummary = selectedDealer ? getDealerSummary(selectedDealer.id) : null;
   const items = useMemo(() => form.items.map((item) => {
     const quantity = Math.max(0, Number(item.cartons) || 0);
@@ -276,10 +279,10 @@ export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCa
       officerDesignation: selectedOfficer.designation || '',
       dealerId: selectedDealer.id,
       dealerCode: formatDealerCode(selectedDealer.code),
-      dealerName: selectedDealer.shopName,
+      dealerName: selectedDealerName,
       dealerProprietor: selectedDealer.proprietor || '',
-      dealerAddress: selectedDealer.address || '',
-      dealerPhone: selectedDealer.phone || '',
+      dealerAddress: selectedDealerAddress,
+      dealerPhone: selectedDealerPhone,
       items: items.map((item) => ({
         productId: item.productId,
         productName: item.productName,
@@ -405,6 +408,15 @@ export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCa
             optionLabel={(dealer) => `${formatDealerCode(dealer.code)} • ${dealer.shopName}`}
             searchText={(dealer) => `${formatDealerCode(dealer.code)} ${dealer.shopName || ''} ${dealer.proprietor || ''}`}
           />
+          {selectedDealer && (
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-950 sm:col-span-2 lg:col-span-4">
+              <p className="font-bold">{selectedDealerName || 'ডিলার'}</p>
+              <div className="mt-1 grid gap-1 text-xs sm:grid-cols-2">
+                <p><strong>ঠিকানা:</strong> {selectedDealerAddress || '—'}</p>
+                <p><strong>মোবাইল:</strong> {selectedDealerPhone || '—'}</p>
+              </div>
+            </div>
+          )}
           <label className="text-sm font-semibold text-slate-700 sm:col-span-2 lg:col-span-4">
             সেশন <span className="text-rose-600">*</span>
             <select required value={form.session} onChange={(event) => updateForm('session', event.target.value)} className="mt-1 w-full rounded-lg border-2 border-emerald-600 bg-emerald-50 px-3 py-3 text-base font-bold text-emerald-900">
@@ -510,12 +522,34 @@ export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCa
               পরিশোধিত (৳)
               <input type="number" min="0" step="0.01" value={paymentMethod === 'credit' ? '0' : form.paidAmount} onChange={(event) => updateForm('paidAmount', event.target.value)} disabled={paymentMethod === 'credit'} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 disabled:bg-slate-100 disabled:text-slate-500" />
             </label>
-            <label className="text-sm font-semibold text-slate-700">
-              পেমেন্ট পদ্ধতি
-              <select value={form.paymentMethod} onChange={(event) => updateForm('paymentMethod', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2">
-                {PAYMENT_METHODS.map((method) => <option key={method.value} value={method.value}>{method.label}</option>)}
-              </select>
-            </label>
+            <fieldset className="sm:col-span-2">
+              <legend className="text-sm font-semibold text-slate-700">পেমেন্ট পদ্ধতি</legend>
+              <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                {PAYMENT_METHODS.map((method) => {
+                  const isSelected = paymentMethod === method.value;
+                  return (
+                    <label
+                      key={method.value}
+                      className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition ${
+                        isSelected
+                          ? 'border-emerald-600 bg-emerald-50 text-emerald-900 ring-1 ring-emerald-600'
+                          : 'border-slate-300 bg-white text-slate-700 hover:border-emerald-400'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="paymentMethod"
+                        value={method.value}
+                        checked={isSelected}
+                        onChange={(event) => updateForm('paymentMethod', event.target.value)}
+                        className="accent-emerald-700"
+                      />
+                      {method.label}
+                    </label>
+                  );
+                })}
+              </div>
+            </fieldset>
             {paymentMethod === 'credit' && (
               <p className="text-xs font-medium text-amber-800 sm:col-span-2">
                 ক্রেডিট ইনভয়েসে কোনো তাৎক্ষণিক পরিশোধ হবে না; সম্পূর্ণ ইনভয়েস বকেয়ায় যুক্ত হবে। ডিলারের পরবর্তী পেমেন্ট আলাদা লেজার এন্ট্রি হিসেবে যোগ করুন।

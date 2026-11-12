@@ -181,16 +181,11 @@ export default async function handler(req, res) {
               const cartons = quantitiesBySku.get(variant.sku) || 0;
               if (!cartons) return variant;
               const available = Number(variant.stockCartons) || 0;
-              if (available < cartons) {
-                const error = new Error(`${product.name} (${variant.size})-এর পর্যাপ্ত স্টক নেই।`);
-                error.statusCode = 409;
-                throw error;
-              }
               const pieces = cartons * (Number(variant.packPerBox) || 1);
               return {
                 ...variant,
                 stockCartons: available - cartons,
-                stock: Math.max(0, (Number(variant.stock) || 0) - pieces)
+                stock: (Number(variant.stock) || 0) - pieces
               };
             });
             product.variants = variants;

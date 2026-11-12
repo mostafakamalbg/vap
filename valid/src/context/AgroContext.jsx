@@ -16,6 +16,7 @@ import {
 } from '../../shared/codes';
 import { isDealerCollection, normalizePaymentMethod } from '../../shared/paymentMethods';
 import { applyInvoiceStockChanges } from '../../shared/invoiceStock';
+import { getInvoiceCartons } from '../../shared/invoiceCartons';
 
 const AgroContext = createContext();
 
@@ -778,12 +779,9 @@ export function AgroProvider({ children }) {
       .filter(isSalesInvoice)
       .reduce((acc, curr) => acc + (Number(curr.grandTotal) || 0), 0);
 
-    let totalCartonsSold = 0;
-    officerInvoices
+    const totalCartonsSold = officerInvoices
       .filter(isSalesInvoice)
-      .forEach((inv) => {
-        totalCartonsSold += Number(inv.totalCartons) || 0;
-      });
+      .reduce((sum, invoice) => sum + getInvoiceCartons(invoice), 0);
 
     const officerPayments = payments.filter(
       (p) => p.officerId === officer.id
@@ -895,6 +893,32 @@ export function AgroProvider({ children }) {
     setDealers(clearedDealers);
     syncErrorsRef.current.clear();
     setCloudError('');
+    return result;
+  };
+
+  const clearStockOnly = async (password) => {
+    if (currentUser?.role !== 'admin') {
+      throw new Error('এই রিসেট ব্যবহারের অনুমতি নেই।');
+    }
+    if (typeof password !== 'string' || !password) {
+      throw new Error('স্টক শূন্য করতে অ্যাডমিন পাসওয়ার্ড দিন।');
+    }
+    const response = await fetch('/api/backup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'clear-stock-only', password })
+    });
+    const result = await readJsonResponse(response);
+    const clearedProducts = products.map((product) => ({
+      ...product,
+      variants: (product.variants || []).map((variant) => ({
+        ...variant,
+        stock: 0,
+        stockCartons: 0
+      }))
+    }));
+    localRecordsRef.current = { ...localRecordsRef.current, products: clearedProducts };
+    setProducts(clearedProducts);
     return result;
   };
 
@@ -1071,6 +1095,7 @@ export function AgroProvider({ children }) {
         getOfficerSummary,
         resetToFactoryData,
         clearSalesStockData,
+        clearStockOnly,
         exportBackupExcel,
         exportBackup,
         importBackup,

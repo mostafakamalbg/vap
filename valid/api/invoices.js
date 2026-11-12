@@ -1,5 +1,5 @@
 import dbConnect from '../lib/mongodb.js';
-import { BusinessRecord, Invoice, Product, User } from '../lib/models.js';
+import { BusinessRecord, Dealer, Invoice, Product, User } from '../lib/models.js';
 import { authorize, verifyPassword } from '../lib/auth.js';
 import { normalizePaymentMethod } from '../shared/paymentMethods.js';
 import { getInvoiceStockChanges } from '../shared/invoiceStock.js';
@@ -158,11 +158,6 @@ async function applyInvoiceStockChanges(previousInvoice, nextInvoice, session) {
         : Number(variant.stockCartons) || 0;
       const stockCartons = currentCartons + change.cartons;
       const stock = currentPieces + change.pieces;
-      if (stockCartons < 0 || stock < 0) {
-        const error = new Error(`${variant.size || variant.sku} পণ্যের পর্যাপ্ত মজুত নেই।`);
-        error.statusCode = 400;
-        throw error;
-      }
       return { ...variant, stockCartons, stock };
     });
     if (!foundVariant) {
@@ -262,7 +257,16 @@ export default async function handler(req, res) {
     const validationError = validateInvoice(input);
     if (validationError) return res.status(400).json({ error: validationError });
 
-    const values = invoiceValues(input);
+    const dealer = await Dealer.findOne({ id: String(input.dealerId) }).lean();
+    if (!dealer) return res.status(400).json({ error: 'নির্বাচিত ডিলার ডেটাবেজে পাওয়া যায়নি।' });
+    const values = invoiceValues({
+      ...input,
+      dealerCode: dealer.code || input.dealerCode,
+      dealerName: dealer.shopName || dealer.name || input.dealerName,
+      dealerProprietor: dealer.proprietor || '',
+      dealerAddress: dealer.address || dealer.businessAddress || '',
+      dealerPhone: dealer.phone || dealer.mobile || dealer.phoneNumber || ''
+    });
     if (req.method === 'POST') {
       let invoice;
       await withTransactionFallback(async (session) => {

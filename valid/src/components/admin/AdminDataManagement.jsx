@@ -3,13 +3,22 @@ import { AlertTriangle, Database, Download, FileUp, ShieldCheck } from 'lucide-r
 import { useAgro } from '../../context/AgroContext';
 
 export default function AdminDataManagement() {
-  const { currentUser, cloudReady, exportBackup, importBackup, clearSalesStockData } = useAgro();
+  const {
+    currentUser,
+    cloudReady,
+    exportBackup,
+    importBackup,
+    clearSalesStockData,
+    clearStockOnly
+  } = useAgro();
   const fileInputRef = useRef(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [resetPassword, setResetPassword] = useState('');
   const [resetConfirmation, setResetConfirmation] = useState('');
+  const [stockResetPassword, setStockResetPassword] = useState('');
+  const [stockResetConfirmation, setStockResetConfirmation] = useState('');
 
   const handleImport = async (event) => {
     const file = event.target.files?.[0];
@@ -52,6 +61,29 @@ export default function AdminDataManagement() {
       setMessage(`${result.message} (ইনভয়েস ${result.deleted.invoices}, অর্ডার ${result.deleted.orders}, ড্যামেজ ${result.deleted.damages}, স্টক-ইন ${result.deleted.stockInLogs}, পেমেন্ট ${result.deleted.payments}, চুক্তি ${result.deleted.salesAgreements})`);
       setResetPassword('');
       setResetConfirmation('');
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleStockOnlyReset = async (event) => {
+    event.preventDefault();
+    setBusy(true);
+    setError('');
+    setMessage('');
+    try {
+      if (stockResetConfirmation !== 'শূন্য') {
+        throw new Error('নিশ্চিত করতে “শূন্য” লিখুন।');
+      }
+      if (!window.confirm('সব পণ্যের পিস ও কার্টুন স্টক শূন্য হবে। ইনভয়েস, ডিলারের বকেয়া, অর্ডার ও হিসাবের কোনো তথ্য মুছবে না। এগোবেন?')) {
+        return;
+      }
+      const result = await clearStockOnly(stockResetPassword);
+      setMessage(`${result.message} (${result.products}টি পণ্য)`);
+      setStockResetPassword('');
+      setStockResetConfirmation('');
     } catch (requestError) {
       setError(requestError.message);
     } finally {
@@ -125,6 +157,49 @@ export default function AdminDataManagement() {
           </p>
         </article>
       </section>
+
+      {currentUser?.role === 'admin' && (
+        <section className="rounded-xl border border-amber-300 bg-amber-50 p-5">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
+            <div className="w-full space-y-3">
+              <div>
+                <h2 className="font-black text-amber-950">শুধু পণ্যের স্টক শূন্য করুন</h2>
+                <p className="mt-1 text-sm text-amber-900">সব পণ্যের বর্তমান পিস ও কার্টুন স্টক শূন্য হবে। ইনভয়েস, অর্ডার, ডিলারের বকেয়া, পেমেন্ট এবং অন্যান্য হিসাব অক্ষত থাকবে।</p>
+              </div>
+              <form onSubmit={handleStockOnlyReset} className="grid gap-3 sm:grid-cols-3">
+                <label className="text-xs font-bold text-amber-950">
+                  অ্যাডমিন পাসওয়ার্ড
+                  <input
+                    type="password"
+                    autoComplete="current-password"
+                    value={stockResetPassword}
+                    onChange={(event) => setStockResetPassword(event.target.value)}
+                    className="mt-1 w-full rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm text-slate-900"
+                    required
+                  />
+                </label>
+                <label className="text-xs font-bold text-amber-950">
+                  নিশ্চিত করতে “শূন্য” লিখুন
+                  <input
+                    value={stockResetConfirmation}
+                    onChange={(event) => setStockResetConfirmation(event.target.value)}
+                    className="mt-1 w-full rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm text-slate-900"
+                    required
+                  />
+                </label>
+                <button
+                  type="submit"
+                  disabled={busy || !cloudReady}
+                  className="self-end rounded-lg bg-amber-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-amber-800 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {busy ? 'প্রক্রিয়াধীন…' : 'শুধু স্টক শূন্য করুন'}
+                </button>
+              </form>
+            </div>
+          </div>
+        </section>
+      )}
 
       {currentUser?.role === 'admin' && (
         <section className="rounded-xl border border-rose-300 bg-rose-50 p-5">

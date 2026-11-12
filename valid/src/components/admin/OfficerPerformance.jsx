@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { useAgro } from '../../context/AgroContext';
 import { createOfficerCode, formatOfficerCode, getNextOfficerCode, OFFICER_DESIGNATIONS, normalizeOfficerCode } from '../../../shared/codes';
+import { getInvoiceCartons } from '../../../shared/invoiceCartons';
 
 export default function OfficerPerformance() {
   const { officers, addNewOfficer, getOfficerSummary } = useAgro();
@@ -336,7 +337,7 @@ export default function OfficerPerformance() {
                         <td className="p-2 font-mono font-bold text-emerald-800">{inv.id}</td>
                         <td className="p-2">{inv.date}</td>
                         <td className="p-2 font-medium">{inv.dealerName}</td>
-                        <td className="p-2 text-center font-bold text-emerald-800 font-mono">{inv.totalCartons || 0} কার্টুন</td>
+                        <td className="p-2 text-center font-bold text-emerald-800 font-mono">{getInvoiceCartons(inv)} কার্টুন</td>
                         <td className="p-2 text-right font-mono font-bold">৳{inv.grandTotal.toLocaleString()}</td>
                         <td className="p-2 text-right font-mono text-emerald-700">৳{inv.paidAmount.toLocaleString()}</td>
                       </tr>

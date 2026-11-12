@@ -116,10 +116,10 @@ export default function InvoicePrintHeader({ invoice }) {
         <div className="invoice-party">
           <h2>ডিলার তথ্য</h2>
           <p><strong>ডিলার কোড:</strong> {toBn(formatDealerCode(invoice.dealerCode || invoice.dealerId || '—'))}</p>
-          <p><strong>প্রতিষ্ঠান:</strong> {invoice.dealerName || '—'}</p>
+          <p><strong>প্রতিষ্ঠান:</strong> {invoice.dealerName || dealer?.shopName || '—'}</p>
           <p><strong>প্রোপাইটর:</strong> {invoice.dealerProprietor || dealer?.proprietor || '—'}</p>
-          <p><strong>ঠিকানা:</strong> {invoice.dealerAddress || dealer?.address || '—'}</p>
-          <p><strong>মোবাইল:</strong> {toBn(invoice.dealerPhone || dealer?.phone || '—')}</p>
+          <p><strong>ঠিকানা:</strong> {invoice.dealerAddress || dealer?.address || dealer?.businessAddress || '—'}</p>
+          <p><strong>মোবাইল:</strong> {toBn(invoice.dealerPhone || dealer?.phone || dealer?.mobile || dealer?.phoneNumber || '—')}</p>
         </div>
         <div className="invoice-party invoice-party-invoice">
           <h2>চালান তথ্য</h2>

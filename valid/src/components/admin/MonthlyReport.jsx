@@ -16,6 +16,7 @@ import { toBn, toBnDate } from '../../utils/bengali';
 import { formatDealerCode, formatOfficerCode, normalizeOfficerCode } from '../../../shared/codes';
 import { isDealerCollection, normalizePaymentType, PAYMENT_TYPES } from '../../../shared/paymentMethods';
 import { getPackageQuantityUnit } from '../../../shared/quantityUnits';
+import { getInvoiceCartons, getItemCartons } from '../../../shared/invoiceCartons';
 import { INVOICE_SESSIONS, LEGACY_INVOICE_SESSION } from '../../../shared/sessions';
 import SearchableRecordSelect from './SearchableRecordSelect';
 
@@ -166,7 +167,7 @@ export default function MonthlyReport() {
   const productCartonStockChange = {};
 
   filteredInvoices.forEach((inv) => {
-    const cartons = Number(inv.totalCartons) || 0;
+    const cartons = getInvoiceCartons(inv);
     const isDealerReturn = inv.invoiceType === 'dealer_return';
     const isFactoryReturn = inv.invoiceType === 'factory_damage';
 
@@ -186,7 +187,7 @@ export default function MonthlyReport() {
       const key = `${item.productName} (${item.size})`;
       const direction = isDealerReturn ? 1 : -1;
       productCartonStockChange[key] =
-        (productCartonStockChange[key] || 0) + direction * (Number(item.cartons) || 0);
+        (productCartonStockChange[key] || 0) + direction * getItemCartons(item);
     });
   });
 
@@ -286,9 +287,9 @@ export default function MonthlyReport() {
           cartons: 0,
           pieces: 0
         };
-        summary.cartons += Number(item.cartons ?? item.quantity) || 0;
+        summary.cartons += getItemCartons(item);
         summary.pieces += Number(item.totalPieces)
-          || (Number(item.cartons ?? item.quantity) || 0) * (Number(item.packPerBox) || 1);
+          || getItemCartons(item) * (Number(item.packPerBox) || 1);
         totals.set(key, summary);
       });
     });
@@ -305,7 +306,7 @@ export default function MonthlyReport() {
     const packPerBox = Number(variant.packPerBox) || 1;
     const quantityUnit = getPackageQuantityUnit(variant);
     const itemPieces = (item) => Number(item.totalPieces)
-      || (Number(item.cartons ?? item.quantity) || 0) * (Number(item.packPerBox) || packPerBox);
+      || getItemCartons(item) * (Number(item.packPerBox) || packPerBox);
     const invoiceMovementPieces = (invoice) => {
       const direction = invoice.invoiceType === 'dealer_return' ? 1 : -1;
       const itemMovement = (invoice.items || [])
@@ -945,7 +946,7 @@ export default function MonthlyReport() {
                         কোড: {formatOfficerCode(inv.officerCode)}
                       </span>
                     </td>
-                    <td className="p-2 text-center font-bold text-emerald-800 font-mono">{inv.totalCartons || 0}</td>
+                    <td className="p-2 text-center font-bold text-emerald-800 font-mono">{getInvoiceCartons(inv)}</td>
                     <td className="p-2 text-right font-mono font-bold">৳{inv.grandTotal.toLocaleString()}</td>
                     <td className="p-2 text-right font-mono text-emerald-700 font-bold">৳{inv.paidAmount.toLocaleString()}</td>
                     <td className="p-2 text-right font-mono text-rose-700 font-bold">৳{inv.currentDue.toLocaleString()}</td>
