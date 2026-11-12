@@ -1,6 +1,8 @@
 import dbConnect from '../lib/mongodb.js';
 import { Dealer } from '../lib/models.js';
 import { authorize } from '../lib/auth.js';
+import { getDealersWithOfficerCodes } from '../lib/dealerAssignments.js';
+import { normalizeDealerAssignment, normalizeOfficerCode, isDealerAssignedToOfficer } from '../shared/codes.js';
 
 export default async function handler(req, res) {
   if (!['GET', 'POST'].includes(req.method)) {
@@ -14,24 +16,21 @@ export default async function handler(req, res) {
   }
   if (req.method === 'GET') {
     try {
-      const officerCodeMatch = String(user.officerCode || '').match(/\d+/);
-      const officerCodeDigits = officerCodeMatch ? String(Number(officerCodeMatch[0])) : '';
-      const ownerConditions = [
-        ...(user.officerId ? [{ assignedOfficerId: user.officerId }] : []),
-        ...(user.officerCode ? [
-          { assignedOfficerCode: user.officerCode },
-          { officerCode: user.officerCode },
-          ...(officerCodeDigits ? [
-            { assignedOfficerCode: officerCodeDigits },
-            { officerCode: officerCodeDigits }
-          ] : [])
-        ] : [])
-      ];
-      const filter = user.role === 'admin'
-        ? {}
-        : ownerConditions.length ? { $or: ownerConditions } : { id: '__no_records__' };
-      const dealers = await Dealer.find(filter).sort({ code: 1 });
-      return res.status(200).json(dealers);
+      const { officers, dealers } = await getDealersWithOfficerCodes();
+      if (user.role === 'admin') return res.status(200).json(dealers);
+      const normalizedUserCode = normalizeOfficerCode(user.officerCode);
+      const officer = (user.officerId && officers.find((entry) => (
+        String(entry.id || entry.officerId || '') === String(user.officerId || '')
+      ))) || (normalizedUserCode && officers.find((entry) => (
+        normalizeOfficerCode(entry.code, entry.designation) === normalizedUserCode
+      )));
+      return res.status(200).json(dealers.filter((dealer) => (
+        isDealerAssignedToOfficer(
+          dealer,
+          user.officerCode || officer?.code,
+          officer?.designation
+        )
+      )));
     } catch (error) {
       console.error('Dealer lookup failed:', error);
       return res.status(500).json({ error: 'ডিলার লোড করা যায়নি।' });
@@ -40,9 +39,19 @@ export default async function handler(req, res) {
 
   if (req.method === 'POST') {
     try {
+      const { officers } = await getDealersWithOfficerCodes();
+      const dealer = normalizeDealerAssignment(req.body, officers);
+      delete dealer._id;
       const newDealer = await Dealer.findOneAndUpdate(
         { id: req.body.id },
-        req.body,
+        {
+          $set: dealer,
+          $unset: {
+            assignedOfficerId: 1,
+            assignedOfficerCode: 1,
+            officerId: 1
+          }
+        },
         { upsert: true, new: true }
       );
       return res.status(201).json(newDealer);

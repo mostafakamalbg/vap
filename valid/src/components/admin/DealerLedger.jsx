@@ -35,14 +35,10 @@ const createPaymentEntries = () => LEDGER_PAYMENT_TYPES.map(({ value }) => ({
 }));
 
 function findDealerOfficer(dealer, officers) {
-  const assignedCode = normalizeOfficerCode(
-    dealer?.assignedOfficerCode || dealer?.officerCode
-  );
   return officers.find((officer) => (
-    officer.id === dealer?.assignedOfficerId
-    || officer.officerId === dealer?.assignedOfficerId
-    || Boolean(assignedCode)
-      && normalizeOfficerCode(officer.code, officer.designation) === assignedCode
+    Boolean(dealer?.officerCode)
+    && normalizeOfficerCode(officer.code, officer.designation)
+      === normalizeOfficerCode(dealer.officerCode, officer.designation)
   ));
 }
 
@@ -83,7 +79,7 @@ export default function DealerLedger() {
     zone: 'পীরগঞ্জ',
     address: 'পীরগঞ্জ, ঠাকুরগাঁও',
     phone: '',
-    assignedOfficerId: officers[0]?.id || '',
+    officerCode: normalizeOfficerCode(officers[0]?.code, officers[0]?.designation),
     creditLimit: 500000,
     openingDue: 0
   });
@@ -187,7 +183,7 @@ export default function DealerLedger() {
       proprietor: '',
       address: 'বগুড়া সদর',
       phone: '',
-      assignedOfficerId: officers[0]?.id || '',
+      officerCode: normalizeOfficerCode(officers[0]?.code, officers[0]?.designation),
       creditLimit: 500000,
       openingDue: 0
     });
@@ -610,12 +606,12 @@ export default function DealerLedger() {
                 <div>
                   <label className="block font-semibold text-slate-600 mb-1">দায়িত্বপ্রাপ্ত অফিসার</label>
                   <select
-                    value={newDealerForm.assignedOfficerId}
-                    onChange={(e) => setNewDealerForm({ ...newDealerForm, assignedOfficerId: e.target.value })}
+                    value={newDealerForm.officerCode}
+                    onChange={(e) => setNewDealerForm({ ...newDealerForm, officerCode: e.target.value })}
                     className="w-full bg-slate-50 border border-slate-300 rounded p-2 text-xs"
                   >
                     {officers.map((o) => (
-                      <option key={o.id} value={o.id}>
+                      <option key={o.id} value={normalizeOfficerCode(o.code, o.designation)}>
                         {formatOfficerCode(o.code, o.designation)} • {o.name} • {o.designation}
                       </option>
                     ))}

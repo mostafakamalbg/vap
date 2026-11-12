@@ -3,7 +3,7 @@
 
 export const INITIAL_OFFICERS = [
   {
-    officerId: 'SO-05',
+    id: 'SO-05',
     code: '5',
     name: 'মো: মোন্তফা কামাল',
     designation: 'সেলস অফিসার (SO)',
@@ -365,7 +365,6 @@ export const INITIAL_DEALERS = [
     phone: '০১৭৬২-৯১৯২৯৮',
     zone: 'পীরগঞ্জ',
     officerCode: '5',
-    assignedOfficerId: 'OFF-05',
     transport: '',
     openingDue: 0
   },
@@ -840,7 +839,6 @@ export const INITIAL_DEALERS = [
     phone: '০১৭১৩ ৯৫৫৫৭৩',
     zone: 'রাণীশংকৈল',
     officerCode: '9',
-    assignedOfficerId: 'OFF-09',
     transport: '',
     openingDue: 0
   },
@@ -853,7 +851,6 @@ export const INITIAL_DEALERS = [
     phone: '০১৭২৩ ১৮৪১২৯',
     zone: 'রাণীশংকৈল',
     officerCode: '9',
-    assignedOfficerId: 'OFF-09',
     transport: '',
     openingDue: 0
   },
@@ -866,7 +863,6 @@ export const INITIAL_DEALERS = [
     phone: '০১৭২৮ ৭০৬০৯০',
     zone: 'রাণীশংকৈল',
     officerCode: '9',
-    assignedOfficerId: 'OFF-09',
     transport: '',
     openingDue: 0
   },
@@ -879,7 +875,6 @@ export const INITIAL_DEALERS = [
     phone: '০১৭১৮ ৮৩৫২৬৩',
     zone: 'রাণীশংকৈল',
     officerCode: '9',
-    assignedOfficerId: 'OFF-09',
     transport: '',
     openingDue: 0
   },
@@ -892,7 +887,6 @@ export const INITIAL_DEALERS = [
     phone: '০১৭২৩ ১৮৪১২৯',
     zone: 'রাণীশংকৈল',
     officerCode: '9',
-    assignedOfficerId: 'OFF-09',
     transport: '',
     openingDue: 0
   },
@@ -905,7 +899,6 @@ export const INITIAL_DEALERS = [
     phone: '০১৭৪০ ৫৫৮০৭৪',
     zone: 'রাণীশংকৈল',
     officerCode: '9',
-    assignedOfficerId: 'OFF-09',
     transport: '',
     openingDue: 0
   },
@@ -918,7 +911,6 @@ export const INITIAL_DEALERS = [
     phone: '০১৭৩৮ ৭১০৩৫৬',
     zone: 'রাণীশংকৈল',
     officerCode: '9',
-    assignedOfficerId: 'OFF-09',
     transport: '',
     openingDue: 0
   },
@@ -931,7 +923,6 @@ export const INITIAL_DEALERS = [
     phone: '০১৭২৯ ৫২০৮৮২',
     zone: 'রাণীশংকৈল',
     officerCode: '9',
-    assignedOfficerId: 'OFF-09',
     transport: '',
     openingDue: 0
   },
@@ -944,7 +935,6 @@ export const INITIAL_DEALERS = [
     phone: '০১৭১০ ৬০৫৭০১',
     zone: 'রাণীশংকৈল',
     officerCode: '9',
-    assignedOfficerId: 'OFF-09',
     transport: '',
     openingDue: 0
   },
@@ -957,7 +947,6 @@ export const INITIAL_DEALERS = [
     phone: '০১৭৩১ ১১৩৫২৩',
     zone: 'রাণীশংকৈল',
     officerCode: '9',
-    assignedOfficerId: 'OFF-09',
     transport: '',
     openingDue: 0
   },
@@ -970,7 +959,6 @@ export const INITIAL_DEALERS = [
     phone: '০১৭২৬-৯৭৭২২১',
     zone: 'রাণীশংকৈল',
     officerCode: '9',
-    assignedOfficerId: 'OFF-09',
     transport: '',
     openingDue: 0
   },
@@ -983,7 +971,6 @@ export const INITIAL_DEALERS = [
     phone: '০১৭২০ ৪৩৫৫৩২',
     zone: 'রাণীশংকৈল',
     officerCode: '9',
-    assignedOfficerId: 'OFF-09',
     transport: '',
     openingDue: 0
   },
@@ -996,7 +983,6 @@ export const INITIAL_DEALERS = [
     phone: '০১৭৫১-২৬৬৭২৩',
     zone: 'রাণীশংকৈল',
     officerCode: '9',
-    assignedOfficerId: 'OFF-09',
     transport: '',
     openingDue: 0
   },
@@ -1009,7 +995,6 @@ export const INITIAL_DEALERS = [
     phone: '০১৭৭৪-৮৮৮৫১০',
     zone: 'রাণীশংকৈল',
     officerCode: '9',
-    assignedOfficerId: 'OFF-09',
     transport: '',
     openingDue: 0
   },
@@ -1022,7 +1007,6 @@ export const INITIAL_DEALERS = [
     phone: '০১৭৬১-৫৮৭৯২৮',
     zone: 'রাণীশংকৈল',
     officerCode: '9',
-    assignedOfficerId: 'OFF-09',
     transport: '',
     openingDue: 0
   },
@@ -1035,7 +1019,6 @@ export const INITIAL_DEALERS = [
     phone: '০১৭১৬ ২১৬১১১',
     zone: 'রাণীশংকৈল',
     officerCode: '9',
-    assignedOfficerId: 'OFF-09',
     transport: '',
     openingDue: 0
   },
@@ -1048,7 +1031,6 @@ export const INITIAL_DEALERS = [
     phone: '০১৭৬৭ ০৭৬৬৮৯',
     zone: 'রাণীশংকৈল',
     officerCode: '9',
-    assignedOfficerId: 'OFF-09',
     transport: '',
     openingDue: 0
   },
@@ -1061,7 +1043,6 @@ export const INITIAL_DEALERS = [
     phone: '০১৭২২ ৪২০৪১৯',
     zone: 'রাণীশংকৈল',
     officerCode: '9',
-    assignedOfficerId: 'OFF-09',
     transport: '',
     openingDue: 0
   },
@@ -1074,7 +1055,6 @@ export const INITIAL_DEALERS = [
     phone: '০১৭৩৭ ৭৫০৪৯১',
     zone: 'রাণীশংকৈল',
     officerCode: '9',
-    assignedOfficerId: 'OFF-09',
     transport: '',
     openingDue: 0
   },
@@ -1087,7 +1067,6 @@ export const INITIAL_DEALERS = [
     phone: '০১৭৭৩-০৮২৭২৯',
     zone: 'রাণীশংকৈল',
     officerCode: '9',
-    assignedOfficerId: 'OFF-09',
     transport: '',
     openingDue: 0
   },
@@ -1100,7 +1079,6 @@ export const INITIAL_DEALERS = [
     phone: '০১৭৮৮-৭৭৪৭৭৭',
     zone: 'রাণীশংকৈল',
     officerCode: '9',
-    assignedOfficerId: 'OFF-09',
     transport: '',
     openingDue: 0
   },
@@ -1113,7 +1091,6 @@ export const INITIAL_DEALERS = [
     phone: '০১৭২২-১২৮৪২১',
     zone: 'রাণীশংকৈল',
     officerCode: '9',
-    assignedOfficerId: 'OFF-09',
     transport: '',
     openingDue: 0
   },
@@ -1126,7 +1103,6 @@ export const INITIAL_DEALERS = [
     phone: '০১৭৬১ ২৫৯১২৩',
     zone: 'রাণীশংকৈল',
     officerCode: '9',
-    assignedOfficerId: 'OFF-09',
     transport: '',
     openingDue: 0
   },
@@ -1139,7 +1115,6 @@ export const INITIAL_DEALERS = [
     phone: '০১৭৩৭-৪০৬৯৮০',
     zone: 'রাণীশংকৈল',
     officerCode: '9',
-    assignedOfficerId: 'OFF-09',
     transport: '',
     openingDue: 0
   },
@@ -1152,7 +1127,6 @@ export const INITIAL_DEALERS = [
     phone: '০১৭৩৭-৩৪৮০৪৯',
     zone: 'রাণীশংকৈল',
     officerCode: '9',
-    assignedOfficerId: 'OFF-09',
     transport: '',
     openingDue: 0
   },
@@ -1165,7 +1139,6 @@ export const INITIAL_DEALERS = [
     phone: '০১৭২২-২৫২৮৬৬',
     zone: 'রাণীশংকৈল',
     officerCode: '9',
-    assignedOfficerId: 'OFF-09',
     transport: '',
     openingDue: 0
   },
@@ -1180,7 +1153,6 @@ export const INITIAL_DEALERS = [
     phone: '০১৭১৭ ৯৪৮৯৫১',
     zone: 'বীরগঞ্জ',
     officerCode: '4',
-    assignedOfficerId: 'OFF-04',
     transport: '',
     openingDue: 0
   },
@@ -1193,7 +1165,6 @@ export const INITIAL_DEALERS = [
     phone: '০১৭১৭২৮৯২৮০',
     zone: 'বীরগঞ্জ',
     officerCode: '4',
-    assignedOfficerId: 'OFF-04',
     transport: '',
     openingDue: 0
   },
@@ -1206,7 +1177,6 @@ export const INITIAL_DEALERS = [
     phone: '০১৭৩৮২২৯১১৩',
     zone: 'বীরগঞ্জ',
     officerCode: '4',
-    assignedOfficerId: 'OFF-04',
     transport: '',
     openingDue: 0
   },
@@ -1219,7 +1189,6 @@ export const INITIAL_DEALERS = [
     phone: '০১৭৭৪৩৭৭৬০৯',
     zone: 'বীরগঞ্জ',
     officerCode: '4',
-    assignedOfficerId: 'OFF-04',
     transport: '',
     openingDue: 0
   },
@@ -1232,7 +1201,6 @@ export const INITIAL_DEALERS = [
     phone: '০১৭৬৪৮০৭৪৪৫',
     zone: 'বীরগঞ্জ',
     officerCode: '4',
-    assignedOfficerId: 'OFF-04',
     transport: '',
     openingDue: 0
   },
@@ -1245,7 +1213,6 @@ export const INITIAL_DEALERS = [
     phone: '০১৭৯৬৭৯১৩৯৮',
     zone: 'বীরগঞ্জ',
     officerCode: '4',
-    assignedOfficerId: 'OFF-04',
     transport: '',
     openingDue: 0
   },
@@ -1258,7 +1225,6 @@ export const INITIAL_DEALERS = [
     phone: '০১৩০০৮৯৬২৬৬',
     zone: 'বীরগঞ্জ',
     officerCode: '4',
-    assignedOfficerId: 'OFF-04',
     transport: '',
     openingDue: 0
   },
@@ -1273,7 +1239,6 @@ export const INITIAL_DEALERS = [
     phone: '০১৭১৮-৭৮৩৪৬৬',
     zone: 'দিনাজপুর',
     officerCode: '7',
-    assignedOfficerId: 'OFF-07',
     transport: '',
     openingDue: 0
   },
@@ -1286,7 +1251,6 @@ export const INITIAL_DEALERS = [
     phone: '০১৭৩৪-৪১১৬১০',
     zone: 'দিনাজপুর',
     officerCode: '7',
-    assignedOfficerId: 'OFF-07',
     transport: '',
     openingDue: 0
   },
@@ -1299,7 +1263,6 @@ export const INITIAL_DEALERS = [
     phone: '০১৭৩০-৪৭৮৪৭৭',
     zone: 'দিনাজপুর',
     officerCode: '7',
-    assignedOfficerId: 'OFF-07',
     transport: '',
     openingDue: 0
   },
@@ -1312,7 +1275,6 @@ export const INITIAL_DEALERS = [
     phone: '০১৭৩৮-২৫৮২৮৯',
     zone: 'দিনাজপুর',
     officerCode: '7',
-    assignedOfficerId: 'OFF-07',
     transport: '',
     openingDue: 0
   },
@@ -1325,7 +1287,6 @@ export const INITIAL_DEALERS = [
     phone: '০১৮৮৮-৬০২৩৩৯',
     zone: 'দিনাজপুর',
     officerCode: '7',
-    assignedOfficerId: 'OFF-07',
     transport: '',
     openingDue: 0
   },
@@ -1338,7 +1299,6 @@ export const INITIAL_DEALERS = [
     phone: '০১৩১৮১৩৮৩০৮',
     zone: 'দিনাজপুর',
     officerCode: '7',
-    assignedOfficerId: 'OFF-07',
     transport: '',
     openingDue: 0
   },
@@ -1351,7 +1311,6 @@ export const INITIAL_DEALERS = [
     phone: '০১৭৮৪-৯৩৩৭২২',
     zone: 'দিনাজপুর',
     officerCode: '7',
-    assignedOfficerId: 'OFF-07',
     transport: '',
     openingDue: 0
   },
@@ -1364,7 +1323,6 @@ export const INITIAL_DEALERS = [
     phone: '০১৭৪৪-৩৩৭৯৯০',
     zone: 'দিনাজপুর',
     officerCode: '7',
-    assignedOfficerId: 'OFF-07',
     transport: '',
     openingDue: 0
   },
@@ -1377,7 +1335,6 @@ export const INITIAL_DEALERS = [
     phone: '০১৭১৫-৬১৪৭৬১',
     zone: 'দিনাজপুর',
     officerCode: '7',
-    assignedOfficerId: 'OFF-07',
     transport: '',
     openingDue: 0
   },
@@ -1390,7 +1347,6 @@ export const INITIAL_DEALERS = [
     phone: '০১৭২৮-৩১৭৫৬৮',
     zone: 'দিনাজপুর',
     officerCode: '7',
-    assignedOfficerId: 'OFF-07',
     transport: '',
     openingDue: 0
   },
@@ -1403,7 +1359,6 @@ export const INITIAL_DEALERS = [
     phone: '০১৭৫১-২২৩৪১২',
     zone: 'দিনাজপুর',
     officerCode: '7',
-    assignedOfficerId: 'OFF-07',
     transport: '',
     openingDue: 0
   }

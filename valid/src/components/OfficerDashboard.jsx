@@ -54,20 +54,12 @@ export default function OfficerDashboard() {
     [currentUser?.officerCode, currentUser?.officerId, currentOfficer?.designation, invoices, officerCode]
   );
   const availableDealers = useMemo(() => {
-    const codeNumber = officerCode.match(/\d+$/)?.[0];
-    const officerIds = new Set([
-      currentUser?.officerId,
-      currentOfficer?.id,
-      currentOfficer?.officerId,
-      ...(codeNumber ? [`OFF-${codeNumber.padStart(2, '0')}`] : [])
-    ].filter(Boolean));
     return dealers.filter((dealer) => isDealerAssignedToOfficer(
       dealer,
-      officerIds,
       officerCode,
       currentOfficer?.designation
     ));
-  }, [currentOfficer, currentUser?.officerId, dealers, officerCode]);
+  }, [currentOfficer?.designation, dealers, officerCode]);
   useEffect(() => {
     if (!availableDealers.some((dealer) => dealer.id === dealerId)) {
       setDealerId(availableDealers[0]?.id || '');

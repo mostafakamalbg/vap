@@ -8,7 +8,12 @@ import {
   INITIAL_DAMAGES,
   INITIAL_PAYMENTS
 } from '../data/initialData';
-import { formatDealerCode, getNextDealerCode, normalizeOfficerCode } from '../../shared/codes';
+import {
+  formatDealerCode,
+  getNextDealerCode,
+  normalizeDealerAssignment,
+  normalizeOfficerCode
+} from '../../shared/codes';
 import { isDealerCollection, normalizePaymentMethod } from '../../shared/paymentMethods';
 import { applyInvoiceStockChanges } from '../../shared/invoiceStock';
 
@@ -17,7 +22,7 @@ const AgroContext = createContext();
 const isSalesInvoice = (invoice) =>
   invoice.invoiceType !== 'dealer_return' && invoice.invoiceType !== 'factory_damage';
 
-function normalizeBusinessRecords(type, records) {
+function normalizeBusinessRecords(type, records, officers = []) {
   return records.map((record) => {
     const normalized = { ...record };
     if (type === 'officers') {
@@ -26,6 +31,7 @@ function normalizeBusinessRecords(type, records) {
     }
     if (type === 'dealers') {
       normalized.code = formatDealerCode(record.code);
+      return normalizeDealerAssignment(normalized, officers);
     }
     if (record.officerCode) normalized.officerCode = normalizeOfficerCode(record.officerCode);
     if (record.dealerCode) normalized.dealerCode = formatDealerCode(record.dealerCode);
@@ -144,7 +150,7 @@ export function AgroProvider({ children }) {
 
   const [dealers, setDealers] = useState(() => {
     const saved = localStorage.getItem('vap_dealers_v5');
-    return normalizeBusinessRecords('dealers', saved ? JSON.parse(saved) : INITIAL_DEALERS);
+    return normalizeBusinessRecords('dealers', saved ? JSON.parse(saved) : INITIAL_DEALERS, officers);
   });
 
   const [invoices, setInvoices] = useState(() => {
@@ -287,7 +293,11 @@ export function AgroProvider({ children }) {
     if (!Array.isArray(records) || !setters[type]) {
       throw new Error('সার্ভার থেকে সঠিক ডেটা পাওয়া যায়নি।');
     }
-    const normalizedRecords = normalizeBusinessRecords(type, records);
+    const normalizedRecords = normalizeBusinessRecords(
+      type,
+      records,
+      type === 'dealers' ? officers : []
+    );
     setters[type](normalizedRecords);
     return normalizedRecords;
   };
@@ -322,11 +332,22 @@ export function AgroProvider({ children }) {
           return [type, records];
         }));
         const hasSharedData = sharedRecords.some(([, records]) => records.length > 0);
+        const sharedOfficers = sharedRecords.find(([type]) => type === 'officers')?.[1];
+        const officersForAssignments = normalizeBusinessRecords(
+          'officers',
+          sharedOfficers?.length ? sharedOfficers : localRecords.officers
+        );
 
         for (const [type, records] of sharedRecords) {
           const setter = setters[type];
           if (records.length > 0 || currentUser.role === 'officer' || hasSharedData) {
-            if (!cancelled) setter(normalizeBusinessRecords(type, records));
+            if (!cancelled) {
+              setter(normalizeBusinessRecords(
+                type,
+                records,
+                type === 'dealers' ? officersForAssignments : []
+              ));
+            }
           } else if (localRecords[type].length > 0 && type === 'invoices') {
             for (const invoice of localRecords[type]) {
               const saveResponse = await fetch('/api/invoices', {
@@ -337,10 +358,13 @@ export function AgroProvider({ children }) {
               await readJsonResponse(saveResponse);
             }
           } else if (localRecords[type].length > 0) {
+            const recordsToSave = type === 'dealers'
+              ? normalizeBusinessRecords(type, localRecords[type], officersForAssignments)
+              : localRecords[type];
             const saveResponse = await fetch(`/api/records?type=${encodeURIComponent(type)}`, {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(localRecords[type])
+              body: JSON.stringify(recordsToSave)
             });
             await readJsonResponse(saveResponse);
           }
@@ -644,11 +668,11 @@ export function AgroProvider({ children }) {
     const nextCode = getNextDealerCode(dealers);
     const serial = Number(nextCode.match(/\d+$/)?.[0]);
 
-    const newDlr = {
+    const newDlr = normalizeBusinessRecords('dealers', [{
       ...dealerData,
       id: `DLR-${serial}`,
       code: nextCode
-    };
+    }], officers)[0];
     setDealers((prev) => [...prev, newDlr]);
     return newDlr;
   };
@@ -812,7 +836,7 @@ export function AgroProvider({ children }) {
 
     setProducts(INITIAL_PRODUCTS);
     setOfficers(normalizeBusinessRecords('officers', INITIAL_OFFICERS));
-    setDealers(normalizeBusinessRecords('dealers', INITIAL_DEALERS));
+    setDealers(normalizeBusinessRecords('dealers', INITIAL_DEALERS, INITIAL_OFFICERS));
     setInvoices(normalizeBusinessRecords('invoices', INITIAL_INVOICES));
     setStockInLogs(INITIAL_STOCK_IN);
     setDamageLogs(normalizeBusinessRecords('damageLogs', INITIAL_DAMAGES));
@@ -1005,7 +1029,7 @@ export function AgroProvider({ children }) {
     await readJsonResponse(response);
     setProducts(backup.data.products);
     setOfficers(normalizeBusinessRecords('officers', backup.data.officers));
-    setDealers(normalizeBusinessRecords('dealers', backup.data.dealers));
+    setDealers(normalizeBusinessRecords('dealers', backup.data.dealers, backup.data.officers));
     setInvoices(normalizeBusinessRecords('invoices', backup.data.invoices));
     setStockInLogs(backup.data.stockInLogs);
     setDamageLogs(normalizeBusinessRecords('damageLogs', backup.data.damageLogs));

@@ -3,6 +3,7 @@ import dbConnect from '../lib/mongodb.js';
 import { authorize, hasSuperAdminAccess, verifyPassword } from '../lib/auth.js';
 import { User } from '../lib/models.js';
 import { BusinessRecord, Dealer, Invoice, Order, Product } from '../lib/models.js';
+import { normalizeDealerAssignment } from '../shared/codes.js';
 import {
   INITIAL_DAMAGES,
   INITIAL_DEALERS,
@@ -51,7 +52,9 @@ function isValidBackup(value) {
 async function replaceRecords(data, session = null) {
   const options = session ? { session } : {};
   for (const type of recordTypes) {
-    const records = data[type];
+    const records = type === 'dealers'
+      ? data[type].map((record) => normalizeDealerAssignment(record, data.officers))
+      : data[type];
     const Model = databaseModels[type];
     if (Model) {
       await Model.deleteMany({}, options);

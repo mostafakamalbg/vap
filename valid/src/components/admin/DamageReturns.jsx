@@ -11,7 +11,7 @@ import {
   FileText
 } from 'lucide-react';
 import { useAgro } from '../../context/AgroContext';
-import { formatDealerCode, formatOfficerCode } from '../../../shared/codes';
+import { formatDealerCode, formatOfficerCode, normalizeOfficerCode } from '../../../shared/codes';
 
 function formatDamageQuantity(log, products) {
   const product = products.find((entry) => entry.id === log.productId);
@@ -56,10 +56,14 @@ export default function DamageReturns() {
   // When dealer changes, auto-set officer
   const handleDealerChange = (dlrId) => {
     const dlr = dealers.find((d) => d.id === dlrId);
+    const assignedOfficer = officers.find((officer) => (
+      normalizeOfficerCode(officer.code, officer.designation)
+        === normalizeOfficerCode(dlr?.officerCode, officer.designation)
+    ));
     setForm({
       ...form,
       dealerId: dlrId,
-      officerId: dlr?.assignedOfficerId || officers[0]?.id || ''
+      officerId: assignedOfficer?.id || officers[0]?.id || ''
     });
   };
 

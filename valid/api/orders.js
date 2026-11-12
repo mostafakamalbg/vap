@@ -1,14 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import mongoose from 'mongoose';
 import dbConnect from '../lib/mongodb.js';
-import { Dealer, Invoice, Order, Product } from '../lib/models.js';
+import { Invoice, Order, Product } from '../lib/models.js';
 import { authorize } from '../lib/auth.js';
 import { INVOICE_SESSIONS } from '../shared/sessions.js';
-import { BusinessRecord } from '../lib/models.js';
-import {
-  isDealerAssignedToOfficer,
-  normalizeOfficerCode
-} from '../shared/codes.js';
+import { isDealerAssignedToOfficer, normalizeOfficerCode } from '../shared/codes.js';
+import { getDealersWithOfficerCodes } from '../lib/dealerAssignments.js';
 
 const invoiceIdPattern = /^VAP-(\d{4})-(\d+)$/;
 
@@ -76,23 +73,18 @@ async function loadOrderItems(requestedItems, session = null) {
 
 async function getAssignedDealer(user, dealerId) {
   const normalizedCode = normalizeOfficerCode(user.officerCode);
-  const officerRecords = await BusinessRecord.find({ type: 'officers' }).select('data').lean();
-  const relatedOfficerIds = officerRecords
-    .filter((record) => (
-      normalizeOfficerCode(record.data?.code, record.data?.designation) === normalizedCode
-      || record.data?.id === user.officerId
-      || record.data?.officerId === user.officerId
-    ))
-    .flatMap((record) => [record.data?.id, record.data?.officerId])
-    .filter(Boolean);
-  const officerCodeNumber = normalizedCode.match(/\d+/)?.[0];
-  const officerIds = new Set([
-    user.officerId,
-    ...relatedOfficerIds,
-    ...(officerCodeNumber ? [`OFF-${officerCodeNumber}`] : [])
-  ].filter(Boolean));
-  const dealer = await Dealer.findOne({ id: String(dealerId || '') }).lean();
-  return isDealerAssignedToOfficer(dealer, officerIds, user.officerCode) ? dealer : null;
+  const { officers, dealers } = await getDealersWithOfficerCodes();
+  const officer = (user.officerId && officers.find((entry) => (
+    String(entry.id || entry.officerId || '') === String(user.officerId || '')
+  ))) || (normalizedCode && officers.find((entry) => (
+    normalizeOfficerCode(entry.code, entry.designation) === normalizedCode
+  )));
+  const dealer = dealers.find((entry) => entry.id === String(dealerId || ''));
+  return isDealerAssignedToOfficer(
+    dealer,
+    user.officerCode || officer?.code,
+    officer?.designation
+  ) ? dealer : null;
 }
 
 export default async function handler(req, res) {

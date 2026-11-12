@@ -1,5 +1,5 @@
 export const OFFICER_DESIGNATIONS = [
-  { value: 'ফিল্ড সেলস অফিসার (FSO)', prefix: 'SO' },
+  { value: 'ফিল্ড সেলস অফিসার (FSO)', prefix: 'FSO' },
   { value: 'সেলস অফিসার (SO)', prefix: 'SO' },
   { value: 'টেরিটরি সেলস অফিসার (TSO)', prefix: 'TSO' },
   { value: 'এরিয়া সেলস ম্যানেজার (ASM)', prefix: 'ASM' },
@@ -22,16 +22,51 @@ export function normalizeOfficerCode(code, designation = '') {
   return `${getOfficerCodePrefix(designation)}-${value.padStart(2, '0')}`;
 }
 
-export function isDealerAssignedToOfficer(dealer, officerIds, officerCode, designation = '') {
-  const ids = officerIds instanceof Set ? officerIds : new Set(officerIds || []);
-  const normalizedCode = normalizeOfficerCode(officerCode, designation);
-  const assignedIds = [dealer?.assignedOfficerId, dealer?.officerId].filter(Boolean);
-  const assignedCodes = [dealer?.assignedOfficerCode, dealer?.officerCode]
-    .map((code) => normalizeOfficerCode(code, designation))
-    .filter(Boolean);
+export function normalizeDealerOfficerCode(dealer, officers = []) {
+  const assignedId = String(dealer?.assignedOfficerId || dealer?.officerId || '');
+  const rawDealerCode = dealer?.officerCode || dealer?.assignedOfficerCode || '';
+  const officerById = assignedId && officers.find((entry) => (
+    String(entry.id || entry.officerId || '') === assignedId
+    || String(entry.officerId || '') === assignedId
+  ));
+  const normalizedDealerCode = normalizeOfficerCode(rawDealerCode);
+  const officerByCode = officers.find((entry) => (
+    normalizedDealerCode
+    && normalizeOfficerCode(entry.code, entry.designation) === normalizedDealerCode
+  ));
+  const codeNumber = String(rawDealerCode || assignedId).match(/(\d+)$/)?.[1];
+  const matchingOfficers = codeNumber
+    ? officers.filter((entry) => (
+      Number(normalizeOfficerCode(entry.code, entry.designation).match(/\d+$/)?.[0])
+        === Number(codeNumber)
+    ))
+    : [];
+  const officer = officerById
+    || officerByCode
+    || (matchingOfficers.length === 1 ? matchingOfficers[0] : null);
+  const legacyCode = assignedId.match(/^OFF-?(\d+)$/i)?.[1];
+  const rawCode = officer?.code || rawDealerCode || (legacyCode ? normalizeOfficerCode(legacyCode) : '');
+  return normalizeOfficerCode(rawCode, officer?.designation)
+    || String(rawCode || '').trim().toUpperCase();
+}
 
-  return assignedIds.some((id) => ids.has(id))
-    || Boolean(normalizedCode && assignedCodes.includes(normalizedCode));
+export function normalizeDealerAssignment(dealer, officers = []) {
+  const normalized = { ...dealer };
+  const officerCode = normalizeDealerOfficerCode(dealer, officers);
+  delete normalized.assignedOfficerId;
+  delete normalized.assignedOfficerCode;
+  delete normalized.officerId;
+  if (officerCode) normalized.officerCode = officerCode;
+  else delete normalized.officerCode;
+  return normalized;
+}
+
+export function isDealerAssignedToOfficer(dealer, officerCode, designation = '') {
+  const normalizedCode = normalizeOfficerCode(officerCode, designation);
+  return Boolean(
+    normalizedCode
+    && normalizeOfficerCode(dealer?.officerCode, designation) === normalizedCode
+  );
 }
 
 export function createOfficerCode(serial, designation) {

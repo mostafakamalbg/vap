@@ -1,7 +1,12 @@
 import dbConnect from '../lib/mongodb.js';
 import { BusinessRecord, Dealer, Invoice, Product } from '../lib/models.js';
 import { authorize } from '../lib/auth.js';
-import { isDealerAssignedToOfficer, normalizeOfficerCode } from '../shared/codes.js';
+import {
+  isDealerAssignedToOfficer,
+  normalizeDealerAssignment,
+  normalizeOfficerCode
+} from '../shared/codes.js';
+import { getDealersWithOfficerCodes } from '../lib/dealerAssignments.js';
 
 const recordTypes = new Set([
   'products',
@@ -37,31 +42,24 @@ export default async function handler(req, res) {
   try {
     const Model = databaseModels[type];
     if (req.method === 'GET') {
+      if (type === 'dealers') {
+        const { officers, dealers } = await getDealersWithOfficerCodes();
+        if (user.role === 'admin') return res.status(200).json(dealers);
+        const normalizedUserCode = normalizeOfficerCode(user.officerCode);
+        const officer = (user.officerId && officers.find((entry) => (
+          String(entry.id || entry.officerId || '') === String(user.officerId || '')
+        ))) || (normalizedUserCode && officers.find((entry) => (
+          normalizeOfficerCode(entry.code, entry.designation) === normalizedUserCode
+        )));
+        const officerCode = user.officerCode || officer?.code;
+        const designation = officer?.designation || '';
+        return res.status(200).json(dealers.filter((dealer) => (
+          isDealerAssignedToOfficer(dealer, officerCode, designation)
+        )));
+      }
       if (Model) {
         let filter = {};
-        if (user.role !== 'admin' && type === 'dealers') {
-          const officerRecords = await BusinessRecord.find({ type: 'officers' }).select('data').lean();
-          const normalizedUserCode = normalizeOfficerCode(user.officerCode);
-          const relatedOfficerIds = officerRecords
-            .filter((record) => (
-              normalizeOfficerCode(record.data?.code, record.data?.designation) === normalizedUserCode
-              || record.data?.id === user.officerId
-              || record.data?.officerId === user.officerId
-            ))
-            .flatMap((record) => [record.data?.id, record.data?.officerId])
-            .filter(Boolean);
-          const officerIds = new Set([
-            user.officerId,
-            ...relatedOfficerIds,
-            ...(normalizedUserCode.match(/\d+/)
-              ? [`OFF-${normalizedUserCode.match(/\d+/)[0]}`]
-              : [])
-          ]);
-          const assignedDealers = await Dealer.find({}).sort({ code: 1 }).lean();
-          return res.status(200).json(assignedDealers.filter((dealer) => (
-            isDealerAssignedToOfficer(dealer, officerIds, user.officerCode)
-          )));
-        } else if (user.role !== 'admin' && type === 'invoices') {
+        if (user.role !== 'admin' && type === 'invoices') {
           const officerCodeMatch = String(user.officerCode || '').match(/\d+/);
           const officerCodeDigits = officerCodeMatch ? String(Number(officerCodeMatch[0])) : '';
           const conditions = [
@@ -79,7 +77,6 @@ export default async function handler(req, res) {
         }
         const query = Model.find(filter);
         if (type === 'invoices') query.sort({ createdAt: -1 });
-        if (type === 'dealers') query.sort({ code: 1 });
         if (type === 'products') query.sort({ id: 1 });
         return res.status(200).json(await query.lean());
       }
@@ -111,8 +108,14 @@ export default async function handler(req, res) {
     if (!Array.isArray(records)) return res.status(400).json({ error: 'Expected an array of records.' });
 
     if (Model) {
+      let normalizedRecords = records;
+      if (type === 'dealers') {
+        const officerRecords = await BusinessRecord.find({ type: 'officers' }).select('data').lean();
+        const officers = officerRecords.map((record) => record.data).filter(Boolean);
+        normalizedRecords = records.map((record) => normalizeDealerAssignment(record, officers));
+      }
       await Model.deleteMany({});
-      if (records.length) await Model.insertMany(records);
+      if (normalizedRecords.length) await Model.insertMany(normalizedRecords);
     } else {
       await BusinessRecord.deleteMany({ type });
       if (records.length) {
