@@ -130,6 +130,12 @@ function createExcelWorksheet(name, rows) {
 }
 
 async function readJsonResponse(response) {
+  const contentType = response.headers.get('content-type') || '';
+  if (!/json/i.test(contentType)) {
+    throw new Error(import.meta.env.DEV
+      ? 'স্থানীয় Vite preview API routes চালায় না। API চালাতে Vercel login ও project environment-সহ npm run dev:vercel ব্যবহার করুন।'
+      : 'সার্ভার থেকে সঠিক প্রতিক্রিয়া পাওয়া যায়নি।');
+  }
   let result;
   try {
     result = await response.json();

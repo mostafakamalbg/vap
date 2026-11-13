@@ -12,6 +12,7 @@ export default function AuthPage({ initialRole = 'admin', onNavigate, onLoginSuc
   const [showAdminHelp, setShowAdminHelp] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [passwordFieldActive, setPasswordFieldActive] = useState(false);
+  const [showEmailSuggestion, setShowEmailSuggestion] = useState(false);
   const [form, setForm] = useState({
     name: '',
     email: isRegistering ? '' : deviceOwnerEmail,
@@ -140,10 +141,38 @@ export default function AuthPage({ initialRole = 'admin', onNavigate, onLoginSuc
 
           <label className="block space-y-1">
             <span className="text-xs font-bold text-slate-700">{t('auth.email')}</span>
-            <input required type="email" name="email" value={form.email} onChange={changeForm} autoComplete="off" list="device-owner-email-suggestions" className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100" />
-            <datalist id="device-owner-email-suggestions">
-              {!isRegistering && deviceOwnerEmail && <option value={deviceOwnerEmail} />}
-            </datalist>
+            <span className="relative block">
+              <input
+                required
+                type="email"
+                name="email"
+                value={form.email}
+                onChange={changeForm}
+                onFocus={() => setShowEmailSuggestion(Boolean(deviceOwnerEmail) && !isRegistering)}
+                onBlur={() => window.setTimeout(() => setShowEmailSuggestion(false), 150)}
+                autoComplete="off"
+                aria-autocomplete="list"
+                aria-expanded={showEmailSuggestion && !isRegistering && Boolean(deviceOwnerEmail)}
+                aria-controls="device-owner-email-suggestions"
+                className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
+              />
+              {showEmailSuggestion && !isRegistering && deviceOwnerEmail && (
+                <ul id="device-owner-email-suggestions" role="listbox" className="absolute inset-x-0 top-full z-30 mt-1 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+                  <li role="option" aria-selected={form.email === deviceOwnerEmail}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setForm((previous) => ({ ...previous, email: deviceOwnerEmail }));
+                        setShowEmailSuggestion(false);
+                      }}
+                      className="w-full px-3 py-2 text-left text-sm text-slate-800 hover:bg-emerald-50 focus:bg-emerald-50"
+                    >
+                      {deviceOwnerEmail}
+                    </button>
+                  </li>
+                </ul>
+              )}
+            </span>
           </label>
           <label className="block space-y-1">
             <span className="text-xs font-bold text-slate-700">{t('auth.password')} {isRegistering && `(${t('auth.minimumPassword')})`}</span>
@@ -172,7 +201,7 @@ export default function AuthPage({ initialRole = 'admin', onNavigate, onLoginSuc
 
         <div className="mt-5 border-t border-slate-100 pt-4 text-center">
           {showAdminHelp ? null : isRegistering ? (
-            <button type="button" onClick={() => { setIsRegistering(false); setMessage(''); setError(''); }} className="text-sm font-bold text-emerald-700 hover:underline">
+            <button type="button" onClick={() => { setForm((previous) => ({ ...previous, email: deviceOwnerEmail })); setIsRegistering(false); setMessage(''); setError(''); }} className="text-sm font-bold text-emerald-700 hover:underline">
               {t('auth.existingOfficer')}
             </button>
           ) : (
