@@ -1,5 +1,6 @@
 import React from 'react';
 import { toBn } from '../../utils/bengali';
+import { HEAD_OFFICE_ADDRESS, HOTLINE_ADDRESS, HOTLINE_NUMBER } from '../../../shared/companyContact';
 
 export default function CompanyLetterhead({ className = '' }) {
   return (
@@ -11,8 +12,8 @@ export default function CompanyLetterhead({ className = '' }) {
         <div className="invoice-company-copy">
           <h1>ভ্যালিড এগ্রো প্রোডাক্ট লিমিটেড</h1>
           <h2>মহানন্দা এগ্রো ইন্ডাস্ট্রিজ</h2>
-          <p>হেড অফিস ও ডিস্ট্রিবিউশন হাব: নিশিন্দারা, বগুড়া</p>
-          <p>হটলাইন: {toBn('01867912167')} • অফিস/কারখানা: মাটিডালি, বগুড়া সদর, বগুড়া</p>
+          <p>হেড অফিস: {HEAD_OFFICE_ADDRESS}</p>
+          <p>হটলাইন: {toBn(HOTLINE_NUMBER)} • ঠিকানা: {HOTLINE_ADDRESS}</p>
         </div>
         <div className="invoice-print-logo invoice-print-logo-mahananda">
           <img src="/logos/mahananda-logo-transparent.png" alt="" />

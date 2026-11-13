@@ -3,6 +3,17 @@ import test from 'node:test';
 import { getInvoiceCartons } from './invoiceCartons.js';
 import { getInvoiceSalesAmount } from './invoiceTotals.js';
 import { applyInvoiceStockChanges } from './invoiceStock.js';
+import { getPackageQuantityUnit } from './quantityUnits.js';
+
+test('invoice package units use bags for gypsum and magnesium', () => {
+  assert.equal(getPackageQuantityUnit({ productName: 'জিপসাম', packPerBox: 1 }), 'বস্তা');
+  assert.equal(getPackageQuantityUnit({ productName: 'Magnesium Sulphate', packPerBox: 20 }), 'বস্তা');
+});
+
+test('invoice package units use jars for five-liter products and cartons otherwise', () => {
+  assert.equal(getPackageQuantityUnit({ productName: 'Product A', size: '5 L', packPerBox: 1 }), 'জার');
+  assert.equal(getPackageQuantityUnit({ productName: 'Product B', size: '১০০ মিলি', packPerBox: 30 }), 'কার্টুন');
+});
 
 test('invoice carton totals fall back to item quantities when the stored total is missing or zero', () => {
   assert.equal(getInvoiceCartons({

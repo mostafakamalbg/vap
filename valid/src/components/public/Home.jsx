@@ -15,6 +15,8 @@ import {
 } from 'lucide-react';
 import { useAgro } from '../../context/AgroContext';
 import { useUiPreferences } from '../../context/UiPreferencesContext';
+import { toBn } from '../../utils/bengali';
+import { HEAD_OFFICE_ADDRESS, HOTLINE_ADDRESS, HOTLINE_NUMBER } from '../../../shared/companyContact';
 
 const heroSlides = [
   {
@@ -127,11 +129,11 @@ export default function Home({ onNavigate }) {
               </button>
 
               <a
-                href="tel:01867912167"
+                href={`tel:${HOTLINE_NUMBER}`}
                 className="flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-slate-900 px-5 py-3 rounded-xl font-extrabold text-sm shadow transition"
               >
                 <Phone className="w-4 h-4" />
-                <span>01867912167</span>
+                <span>{toBn(HOTLINE_NUMBER)}</span>
               </a>
             </div>
 
@@ -161,7 +163,7 @@ export default function Home({ onNavigate }) {
                 </div>
                 <div>
                   <h3 className="font-bold text-lg leading-tight">ডিস্ট্রিবিউশন ও প্রধান কার্যালয়</h3>
-                  <p className="text-xs text-emerald-200">নিশিন্দারা, বগুড়া।</p>
+                  <p className="text-xs text-emerald-200">{HEAD_OFFICE_ADDRESS}</p>
                 </div>
               </div>
 
@@ -344,11 +346,11 @@ export default function Home({ onNavigate }) {
             <div className="space-y-2 text-xs text-slate-300 pt-2">
               <div className="flex items-center gap-2">
                 <MapPin className="w-4 h-4 text-emerald-400" />
-                <span>নিশিন্দারা, বগুড়া (বগুড়া-রংপুর মহাসড়ক সংলগ্ন)</span>
+                <span>হেড অফিস: {HEAD_OFFICE_ADDRESS}</span>
               </div>
               <div className="flex items-center gap-2">
                 <Phone className="w-4 h-4 text-emerald-400" />
-                <span>হটলাইন ও ডিলার যোগাযোগ: 01867912167</span>
+                <span>হটলাইন: {toBn(HOTLINE_NUMBER)} • {HOTLINE_ADDRESS}</span>
               </div>
             </div>
           </div>
@@ -376,10 +378,10 @@ export default function Home({ onNavigate }) {
 
             <div className="pt-2">
               <a
-                href="tel:01867912167"
+                href={`tel:${HOTLINE_NUMBER}`}
                 className="inline-flex items-center justify-center w-full bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-bold py-2.5 rounded-lg text-xs transition"
               >
-                ডিলার হতে কল করুন: 01867912167
+                ডিলার হতে কল করুন: {toBn(HOTLINE_NUMBER)}
               </a>
             </div>
           </div>
@@ -397,7 +399,7 @@ export default function Home({ onNavigate }) {
                 আপনাদের মতামত ভবিষ্যতে সেবার মান উন্নত করতে সাহায্য করবে।
               </p>
             </div>
-            <a href="tel:01867912167" className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-700 px-5 py-3 text-sm font-bold text-white shadow transition hover:bg-emerald-800">
+            <a href={`tel:${HOTLINE_NUMBER}`} className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-700 px-5 py-3 text-sm font-bold text-white shadow transition hover:bg-emerald-800">
               <Phone className="h-4 w-4" /> মতামত জানাতে কল করুন
             </a>
           </div>

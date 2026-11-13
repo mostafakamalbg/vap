@@ -86,7 +86,7 @@ export default function InvoicePrintHeader({ invoice }) {
   const paymentMethod = PAYMENT_METHODS.find(
     (method) => method.value === normalizePaymentMethod(invoice.paymentMethod)
   )?.label || PAYMENT_METHODS[0].label;
-  const defaultComment = 'চালানের মালামাল সঠিক কার্টুন সংখ্যায় বুঝে দেওয়া হলো।';
+  const defaultComment = 'চালানের পণ্য সঠিক পরিমাণে বুঝে দেওয়া হলো।';
   const defaultNote = 'বিক্রিত পণ্য ডিলার কর্তৃক সঠিকভাবে বুঝে নেওয়া হলো।';
 
   return (
@@ -94,7 +94,7 @@ export default function InvoicePrintHeader({ invoice }) {
       <header className="invoice-company-header">
         <CompanyLetterhead className="invoice-print-letterhead" />
         <div className="invoice-session-badge">সেশন: {invoice.session || LEGACY_INVOICE_SESSION}</div>
-        <h2 className="invoice-title-bar">{invoice.invoiceType === 'factory_damage' ? 'ডেমেজ / ক্ষতিগ্রস্ত পণ্য ফেরত বিবরণী' : 'ডিলার বিক্রয় ইনভয়েস ও মেমো কপি'}</h2>
+        <h2 className="invoice-title-bar">{invoice.invoiceType === 'factory_damage' ? 'ক্ষতিগ্রস্ত পণ্য ফেরত বিবরণী' : 'ডিলার ইনভয়েস কপি'}</h2>
       </header>
 
       <section className="invoice-parties-grid">
@@ -117,7 +117,7 @@ export default function InvoicePrintHeader({ invoice }) {
       </section>
 
       <section className="invoice-table-section">
-        <h2 className="invoice-section-heading">সরবরাহকৃত পণ্য ও কার্টুন তালিকা</h2>
+        <h2 className="invoice-section-heading">সরবরাহকৃত পণ্য ও পরিমাণের তালিকা</h2>
         <div className="invoice-table-scroll">
           <table className="invoice-items-table">
             <colgroup>
@@ -135,7 +135,7 @@ export default function InvoicePrintHeader({ invoice }) {
                 <th>নং</th>
                 <th>পণ্যের নাম ও প্যাক সাইজ</th>
                 <th>পরিমাণ</th>
-                <th>একক মূল্য</th>
+                <th>ট্রেড প্রাইজ</th>
                 <th>মোট ট্রেড প্রাইজ</th>
                 <th>কমিশন (%)</th>
                 <th>কমিশন এ্যামাউন্ট</th>
@@ -164,7 +164,7 @@ export default function InvoicePrintHeader({ invoice }) {
                 <tr><td colSpan="8" className="invoice-empty-row">কোনো পণ্য নেই</td></tr>
               )}
               <tr className="invoice-table-total">
-                <th colSpan="2">মোট প্যাক / কার্টুন</th>
+                <th colSpan="2">মোট প্যাকেজ</th>
                 <th>{toBn(itemTotals.cartons)}</th>
                 <th>—</th>
                 <th>{money(itemTotals.tradePrice)}</th>
@@ -199,10 +199,13 @@ export default function InvoicePrintHeader({ invoice }) {
               <tbody>
                 {returns.map((item, index) => {
                   const values = getReturnValues(item);
+                  const quantityUnit = getPackageQuantityUnit(item);
                   return (
                     <tr key={`${item.sku || item.productId}-return-${index}`}>
                       <td className="invoice-product-name">{getProductDescription({ ...item, productName: item.productName || 'ফেরত পণ্য' })}</td>
-                      <td>{toBn(values.cartons)} {getPackageQuantityUnit(item)} {toBn(values.loosePieces)} {item.unit || 'পিস/বোতল'}</td>
+                      <td>{quantityUnit === 'কার্টুন'
+                        ? <>{toBn(values.cartons)} কার্টুন{values.loosePieces > 0 && ` ${toBn(values.loosePieces)} ${item.unit || 'পিস/বোতল'}`}</>
+                        : <>{toBn(values.quantity)} {quantityUnit}</>}</td>
                       <td>{money(values.price)}</td>
                       <td className="invoice-return-deduction">− {money(values.total)}</td>
                     </tr>
@@ -220,13 +223,13 @@ export default function InvoicePrintHeader({ invoice }) {
 
       <section className="invoice-summary-grid">
         <div className="invoice-notes">
-          <h2 className="invoice-section-heading">মন্তব্য ও পরিশোধ</h2>
+          <h2 className="invoice-section-heading">বিতরণ ও পরিশোধের বিবরণ</h2>
           <p><strong>চালান মন্তব্য:</strong> {invoice.deliveryComment || defaultComment}</p>
           <p><strong>পেমেন্ট মেথড:</strong> {paymentMethod}</p>
           <p><strong>নোট:</strong> {invoice.note || defaultNote}</p>
         </div>
         <div className="invoice-totals">
-          <div><span>মোট প্যাক / কার্টুন</span><strong>{toBn(itemTotals.cartons)}</strong></div>
+          <div><span>মোট প্যাকেজ</span><strong>{toBn(itemTotals.cartons)}</strong></div>
           <div><span>মোট ট্রেড প্রাইজ</span><strong>{money(itemTotals.tradePrice)}</strong></div>
           <div><span>ট্রেড কমিশন</span><strong>− {money(itemTotals.commission)}</strong></div>
           {transportCost > 0 && <div><span>পরিবহন খরচ</span><strong>+ {money(transportCost)}</strong></div>}
@@ -241,7 +244,7 @@ export default function InvoicePrintHeader({ invoice }) {
       <footer className="invoice-signatures">
         <div>ডিলারের স্বাক্ষর ও সীল</div>
         <div>সেলস অফিসারের স্বাক্ষর ও তারিখ</div>
-        <div>কোম্পানির পক্ষে / হিসাব বিভাগ ও অনুমোদিত স্বাক্ষর</div>
+        <div>কোম্পানির পক্ষে লজিস্টিক অফিসারের স্বাক্ষর ও তারিখ</div>
       </footer>
     </article>
   );

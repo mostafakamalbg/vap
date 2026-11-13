@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { useAgro } from '../context/AgroContext';
 import { UI_THEMES, useUiPreferences } from '../context/UiPreferencesContext';
+import { HOTLINE_NUMBER } from '../../shared/companyContact';
 
 export default function Navbar({ activeTab, setActiveTab }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -82,7 +83,7 @@ export default function Navbar({ activeTab, setActiveTab }) {
 
           <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
             <a
-              href="tel:01867912167"
+              href={`tel:${HOTLINE_NUMBER}`}
               className="flex items-center gap-1.5 bg-emerald-700 hover:bg-emerald-600 px-2.5 py-0.5 rounded-full text-white font-medium transition"
             >
               <Phone className="w-3.5 h-3.5" />

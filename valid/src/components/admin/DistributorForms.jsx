@@ -4,6 +4,7 @@ import SearchableRecordSelect from './SearchableRecordSelect';
 import { formatDealerCode } from '../../../shared/codes';
 import { toBn, toBnDate } from '../../utils/bengali';
 import CompanyLetterhead from './CompanyLetterhead';
+import { HEAD_OFFICE_ADDRESS, HOTLINE_ADDRESS, HOTLINE_NUMBER } from '../../../shared/companyContact';
 
 const today = () => new Date().toISOString().slice(0, 10);
 const socialOptions = ['প্রকৃত ব্যবসায়ী', 'ইউপি সদস্য', 'পৌর কাউন্সিলর', 'রাজনীতির সঙ্গে সংশ্লিষ্ট', 'অন্যান্য পেশা'];
@@ -123,8 +124,8 @@ function CompanyHeader({ reference, date }) {
 function CompanyFooter() {
   return (
     <footer className="corporate-document-footer">
-      <p>অফিস/কারখানা: মাটিডালি, বগুড়া সদর, বগুড়া।</p>
-      <p>মোবাইল: {toBn('01713-736920, 01773-523723')} • ই-মেইল: mohananda.agro@gmail.com</p>
+      <p>হেড অফিস: {HEAD_OFFICE_ADDRESS}।</p>
+      <p>হটলাইন: {toBn(HOTLINE_NUMBER)} • ঠিকানা: {HOTLINE_ADDRESS}।</p>
     </footer>
   );
 }

@@ -4,6 +4,7 @@ import { useAgro } from '../../context/AgroContext';
 import { toBn, toBnCurrency, toBnDate } from '../../utils/bengali';
 import { formatInvoiceNumber } from '../../../shared/codes';
 import { LEGACY_INVOICE_SESSION } from '../../../shared/sessions';
+import { getPackageQuantityUnit } from '../../../shared/quantityUnits';
 import { printInvoiceSheet } from '../../utils/printInvoice';
 import InvoicePrintHeader from './InvoicePrintHeader';
 
@@ -151,15 +152,17 @@ export default function InvoiceList({ onNewInvoiceClick, onEditInvoice, initialI
           <thead className="bg-slate-100 text-slate-600">
             <tr>
               <th className="p-3">ইনভয়েস / তারিখ</th><th className="p-3">সেশন</th><th className="p-3">ডিলার</th>
-              <th className="p-3">অফিসার</th><th className="p-3 text-right">মোট কার্টুন</th><th className="p-3 text-right">মোট</th><th className="p-3 text-right">বকেয়া</th><th className="p-3">কাজ</th>
+              <th className="p-3">অফিসার</th><th className="p-3 text-right">মোট প্যাকেজ</th><th className="p-3 text-right">মোট</th><th className="p-3 text-right">বকেয়া</th><th className="p-3">কাজ</th>
             </tr>
           </thead>
           <tbody>
             {filteredRecords.map(({ type, record }) => {
               const isDamage = type === 'damage';
               const invoice = isDamage ? toDamageInvoice(record) : record;
-              const cartons = isDamage
-                ? `${Math.floor((Number(record.quantityPieces) || 0) / (Number(record.packPerBox) || 1))} কার্টুন`
+              const quantity = isDamage
+                ? getPackageQuantityUnit(record) === 'কার্টুন'
+                  ? `${toBn(Math.floor((Number(record.quantityPieces) || 0) / (Number(record.packPerBox) || 1)))} কার্টুন`
+                  : `${toBn(record.quantityPieces)} ${getPackageQuantityUnit(record)}`
                 : (invoice.items || []).reduce((sum, item) => sum + (Number(item.cartons ?? item.quantity) || 0), 0);
               return (
               <tr key={`${type}-${record.id}`} className="border-t border-slate-100">
@@ -167,7 +170,7 @@ export default function InvoiceList({ onNewInvoiceClick, onEditInvoice, initialI
                 <td className="p-3 font-semibold text-emerald-800">{invoice.session || 'সেশন নির্ধারিত নয়'}</td>
                 <td className="p-3">{invoice.dealerName || invoice.dealerId}</td>
                 <td className="p-3">{invoice.officerName || invoice.officerId}</td>
-                <td className="p-3 text-right">{toBn(cartons)}</td>
+                <td className="p-3 text-right">{isDamage ? quantity : toBn(quantity)}</td>
                 <td className="p-3 text-right">৳{toBnCurrency(isDamage ? record.totalDamageValue : invoice.totalAmount ?? invoice.grandTotal)}</td>
                 <td className="p-3 text-right text-rose-700">৳{toBnCurrency(isDamage ? 0 : invoice.dueAmount ?? invoice.currentDue)}</td>
                 <td className="p-3">

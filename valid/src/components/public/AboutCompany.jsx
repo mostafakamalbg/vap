@@ -11,6 +11,7 @@ import {
   Target
 } from 'lucide-react';
 import { useUiPreferences } from '../../context/UiPreferencesContext';
+import { HOTLINE_NUMBER } from '../../../shared/companyContact';
 
 export default function AboutCompany() {
   const { t } = useUiPreferences();
@@ -84,7 +85,7 @@ export default function AboutCompany() {
 
           <div className="pt-4 border-t border-emerald-800">
             <a
-              href="tel:01867912167"
+              href={`tel:${HOTLINE_NUMBER}`}
               className="inline-block bg-white text-emerald-900 font-bold px-5 py-2.5 rounded-lg text-xs hover:bg-emerald-50 transition"
             >
               {t('about.call')}

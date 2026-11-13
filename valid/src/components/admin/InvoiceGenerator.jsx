@@ -453,7 +453,7 @@ export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCa
                   <input type="number" min="1" step="1" required value={item.cartons} onChange={(event) => updateItem(index, 'cartons', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" />
                 </label>
                 <label className="text-sm font-semibold text-slate-700">
-                  একক মূল্য (৳/{getPackageQuantityUnit(item)})
+                  ট্রেড প্রাইজ (৳/{getPackageQuantityUnit(item)})
                   <input type="number" min="0" step="0.01" required value={item.cartonPrice} onChange={(event) => updateItem(index, 'cartonPrice', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" />
                 </label>
                 <div className="text-sm font-semibold text-slate-700">
@@ -489,14 +489,16 @@ export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCa
                       </select>
                     </label>
                     <label className="text-sm font-semibold text-slate-700">
-                      সংখ্যা (পিস/বোতল)
+                      {getPackageQuantityUnit(item) === 'কার্টুন' ? 'সংখ্যা (পিস/বোতল)' : `সংখ্যা (${getPackageQuantityUnit(item)})`}
                       <input type="number" min="1" step="1" required value={item.quantity} onChange={(event) => updateReturnAdjustment(index, 'quantity', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" />
                       <span className="mt-1 block text-xs font-medium text-slate-500">
-                        {toBnCurrency(Math.floor(returnAdjustments[index].quantity / (Number(item.packPerBox) || 1)))} কার্টুন {toBnCurrency(returnAdjustments[index].quantity % (Number(item.packPerBox) || 1))} {item.unit}
+                        {getPackageQuantityUnit(item) === 'কার্টুন'
+                          ? <>{toBnCurrency(Math.floor(returnAdjustments[index].quantity / (Number(item.packPerBox) || 1)))} কার্টুন {toBnCurrency(returnAdjustments[index].quantity % (Number(item.packPerBox) || 1))} {item.unit}</>
+                          : <>{toBnCurrency(returnAdjustments[index].quantity)} {getPackageQuantityUnit(item)}</>}
                       </span>
                     </label>
                     <label className="text-sm font-semibold text-slate-700">
-                      দর (৳/পিস)
+                      দর (৳/{getPackageQuantityUnit(item) === 'কার্টুন' ? item.unit || 'পিস' : getPackageQuantityUnit(item)})
                       <input type="number" min="0" step="0.01" required value={item.price} onChange={(event) => updateReturnAdjustment(index, 'price', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" />
                     </label>
                     <button type="button" aria-label="ফেরত পণ্য সরান" onClick={() => removeReturnAdjustment(index)} className="rounded-lg p-2 text-rose-600 hover:bg-rose-50">
