@@ -20,49 +20,49 @@ import { HEAD_OFFICE_ADDRESS, HOTLINE_ADDRESS, HOTLINE_NUMBER } from '../../../s
 
 const heroSlides = [
   {
-    image: 'https://images.unsplash.com/photo-1500382017468-9049fed747ef?auto=format&fit=crop&w=1800&q=88',
+    image: '/hero-crops/green-fields.jpg',
     alt: 'দিগন্তজোড়া সবুজ ফসলের মাঠ',
     title: 'সুস্থ ফসল, সমৃদ্ধ কৃষক',
     detail: 'কৃষির প্রতিটি মৌসুমে পাশে আছি'
   },
   {
-    image: 'https://images.pexels.com/photos/20234940/pexels-photo-20234940.jpeg?auto=compress&cs=tinysrgb&w=1200&h=900&dpr=1',
+    image: '/hero-crops/corn.jpg',
     alt: 'দিগন্তজোড়া ভুট্টাক্ষেত',
     title: 'ভুট্টার মাঠে সম্ভাবনার ফসল',
     detail: 'সুস্থ গাছ ও ভালো ফলনে কৃষকের পাশে'
   },
   {
-    image: 'https://images.pexels.com/photos/36400786/pexels-photo-36400786.jpeg?auto=compress&cs=tinysrgb&w=1200&h=900&dpr=1',
+    image: '/hero-crops/potatoes.jpg',
     alt: 'তাজা আলু ফসল',
     title: 'আলুর ভালো ফলনে যত্ন ও পরিচর্যা',
     detail: 'মাটির ফসল ঘরে তুলতে সঠিক সুরক্ষা জরুরি'
   },
   {
-    image: 'https://images.pexels.com/photos/5529588/pexels-photo-5529588.jpeg?auto=compress&cs=tinysrgb&w=1200&h=900&dpr=1',
+    image: '/hero-crops/eggplant.jpg',
     alt: 'বেগুনক্ষেতে ফলন দেখাচ্ছেন একজন কৃষক',
     title: 'বেগুনের সতেজ ফলন',
     detail: 'সবজি ক্ষেতের পরিচর্যায় কৃষকের নির্ভরযোগ্য সঙ্গী'
   },
   {
-    image: 'https://images.pexels.com/photos/40934147/pexels-photo-40934147.jpeg?auto=compress&cs=tinysrgb&w=1200&h=900&dpr=1',
+    image: '/hero-crops/beans.jpg',
     alt: 'ক্ষেত থেকে শিম তুলছেন একজন কৃষক',
     title: 'শিমের ক্ষেতে পরিশ্রমের ফল',
     detail: 'ফসলের প্রতিটি ধাপে যত্নশীল পরিচর্যা'
   },
   {
-    image: 'https://images.pexels.com/photos/13888402/pexels-photo-13888402.jpeg?auto=compress&cs=tinysrgb&w=1200&h=900&dpr=1',
+    image: '/hero-crops/rice-fields.jpg',
     alt: 'সবুজ ধানক্ষেত',
     title: 'ধানের সবুজে বাংলার মাঠ',
     detail: 'কৃষকের ঘরে উঠুক সুস্থ ও নিরাপদ ফসল'
   },
   {
-    image: 'https://images.pexels.com/photos/13829439/pexels-photo-13829439.jpeg?auto=compress&cs=tinysrgb&w=1200&h=900&dpr=1',
+    image: '/hero-crops/farmer-seedlings.jpg',
     alt: 'মাথায় ধানের চারা নিয়ে মাঠে যাচ্ছেন একজন কৃষক',
     title: 'মাথায় চারা, মনে নতুন আশার বীজ',
     detail: 'কৃষকের শ্রমেই মাঠ ভরে ওঠে সবুজে'
   },
   {
-    image: 'https://images.pexels.com/photos/9915751/pexels-photo-9915751.jpeg?auto=compress&cs=tinysrgb&w=1200&h=900&dpr=1',
+    image: '/hero-crops/farmer-harvest.jpg',
     alt: 'মাথায় কাটা ফসল নিয়ে ফিরছেন বাংলাদেশের একজন কৃষক',
     title: 'ফসলের বোঝা কাঁধে-মাথায় ঘরে ফেরা',
     detail: 'কৃষকের পরিশ্রম ও সাফল্যের পাশে আমরা'
@@ -97,7 +97,7 @@ export default function Home({ onNavigate }) {
                   className={`absolute inset-0 transition-opacity duration-700 ${activeSlide === index ? 'opacity-100' : 'pointer-events-none opacity-0'}`}
                   aria-hidden={activeSlide !== index}
                 >
-                  <img src={slide.image} alt={slide.alt} className="h-full w-full object-cover object-center" />
+                  <img src={slide.image} alt={slide.alt} loading={index === activeSlide ? 'eager' : 'lazy'} decoding="async" className="h-full w-full object-cover object-center" />
                   <div className="absolute inset-0 bg-gradient-to-r from-emerald-950/85 via-emerald-950/35 to-transparent" />
                   <div className="absolute bottom-8 left-4 right-3 text-white sm:bottom-9 sm:left-6">
                     <p className="text-sm font-black sm:text-lg">{slide.title}</p>
