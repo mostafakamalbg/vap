@@ -498,6 +498,25 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
   .monthly-report-sheet > section {
     break-inside: auto;
   }
+  body.monthly-report-stock-printing .monthly-report-stock-mode > :not(.monthly-report-print-header):not(.monthly-report-stock-section) {
+    display: none !important;
+  }
+  .monthly-report-stock-table {
+    table-layout: fixed;
+    font-size: 7pt !important;
+  }
+  .monthly-report-stock-table th,
+  .monthly-report-stock-table td {
+    padding: 1mm !important;
+    overflow-wrap: anywhere;
+  }
+  .monthly-report-stock-table thead {
+    display: table-header-group;
+  }
+  .monthly-report-stock-table tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
   .monthly-report-sheet h2,
   .monthly-report-sheet h3,
   .monthly-report-sheet h4,
@@ -508,7 +527,7 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
     position: absolute !important;
     inset: 0 auto auto 0 !important;
     display: block !important;
-    width: 196mm !important;
+    width: 190mm !important;
     max-width: none !important;
     margin: 0 !important;
     border: 0 !important;
@@ -939,11 +958,11 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
   }
 
   .company-letterhead-copy h1 {
-    font-size: 12pt;
+    display: none;
   }
 
   .company-letterhead-copy h2 {
-    font-size: 9pt;
+    font-size: 12pt;
   }
 
   .company-letterhead-copy p {

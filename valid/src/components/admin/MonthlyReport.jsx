@@ -379,9 +379,14 @@ export default function MonthlyReport() {
 
   const printReport = () => {
     const printClass = 'monthly-report-printing';
+    const stockPrintClass = 'monthly-report-stock-printing';
     const cleanup = () => document.body.classList.remove(printClass);
+    document.body.classList.toggle(stockPrintClass, filterMode === 'stock');
     document.body.classList.add(printClass);
-    window.addEventListener('afterprint', cleanup, { once: true });
+    window.addEventListener('afterprint', () => {
+      cleanup();
+      document.body.classList.remove(stockPrintClass);
+    }, { once: true });
     window.print();
   };
 
@@ -712,7 +717,7 @@ export default function MonthlyReport() {
       </div>
 
       {/* Official Printable Statement Sheet */}
-      <div className="monthly-report-sheet bg-white rounded-xl border border-slate-200 shadow-sm p-8 space-y-6">
+      <div className={`monthly-report-sheet ${filterMode === 'stock' ? 'monthly-report-stock-mode' : ''} bg-white rounded-xl border border-slate-200 shadow-sm p-8 space-y-6`}>
         <div className="monthly-report-print-header border-b-2 border-emerald-800 pb-4">
           <CompanyLetterhead className="monthly-report-letterhead" />
           <div className="mt-2 text-center">
@@ -724,7 +729,7 @@ export default function MonthlyReport() {
         </div>
 
         {/* Summary Metric Ribbon */}
-        <div className={`grid grid-cols-2 ${filterMode === 'officer' ? 'md:grid-cols-5' : 'md:grid-cols-4'} gap-4 bg-slate-50 p-4 rounded-lg border border-slate-200 text-xs`}>
+        <div className={`monthly-report-summary grid grid-cols-2 ${filterMode === 'officer' ? 'md:grid-cols-5' : 'md:grid-cols-4'} gap-4 bg-slate-50 p-4 rounded-lg border border-slate-200 text-xs`}>
           <div>
             <span className="text-slate-500 font-medium">মোট বিক্রিত কার্টুন:</span>
             <p className="text-base font-black text-emerald-800 font-mono">{totalCartonsSold} কার্টুন</p>
@@ -821,12 +826,12 @@ export default function MonthlyReport() {
         )}
 
         {filterMode === 'stock' && (
-          <section className="space-y-3">
+          <section className="monthly-report-stock-section space-y-3">
             <div className="rounded-lg bg-emerald-50 p-3 text-xs font-semibold text-emerald-900">
               রিপোর্টের সময়কাল: {toBnDate(`${selectedMonth}-01`)} থেকে {toBnDate(monthEndDate)} • প্যাকের অংশবিশেষ থাকলে দশমিক কার্টুনে দেখানো হবে।
             </div>
             <div className="overflow-x-auto rounded-lg border border-slate-200">
-              <table className="w-full min-w-[1000px] text-left text-xs">
+              <table className="monthly-report-stock-table w-full min-w-[1000px] text-left text-xs">
                 <thead className="bg-slate-100 text-slate-700">
                   <tr>
                     <th className="p-2">পণ্য</th><th className="p-2">প্যাক</th>

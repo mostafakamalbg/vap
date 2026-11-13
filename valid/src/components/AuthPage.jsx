@@ -6,13 +6,15 @@ import { useUiPreferences } from '../context/UiPreferencesContext';
 export default function AuthPage({ initialRole = 'admin', onNavigate, onLoginSuccess }) {
   const { login, registerOfficer } = useAgro();
   const { t } = useUiPreferences();
+  const [deviceOwnerEmail, setDeviceOwnerEmail] = useState(() => localStorage.getItem('vap_device_owner_email_v1') || '');
   const [role, setRole] = useState(initialRole.startsWith('officer') ? 'officer' : 'admin');
   const [isRegistering, setIsRegistering] = useState(initialRole === 'officer-register');
   const [showAdminHelp, setShowAdminHelp] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [passwordFieldActive, setPasswordFieldActive] = useState(false);
   const [form, setForm] = useState({
     name: '',
-    email: '',
+    email: isRegistering ? '' : deviceOwnerEmail,
     password: '',
     officerCode: '',
     phone: ''
@@ -38,6 +40,11 @@ export default function AuthPage({ initialRole = 'admin', onNavigate, onLoginSuc
         setRole('officer');
       } else {
         const user = await login({ email: form.email, password: form.password, expectedRole: role });
+        if (!deviceOwnerEmail) {
+          const email = form.email.trim().toLowerCase();
+          localStorage.setItem('vap_device_owner_email_v1', email);
+          setDeviceOwnerEmail(email);
+        }
         onLoginSuccess(user);
       }
     } catch (requestError) {
@@ -133,12 +140,15 @@ export default function AuthPage({ initialRole = 'admin', onNavigate, onLoginSuc
 
           <label className="block space-y-1">
             <span className="text-xs font-bold text-slate-700">{t('auth.email')}</span>
-            <input required type="email" name="email" value={form.email} onChange={changeForm} autoComplete="email" className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100" />
+            <input required type="email" name="email" value={form.email} onChange={changeForm} autoComplete="off" list="device-owner-email-suggestions" className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100" />
+            <datalist id="device-owner-email-suggestions">
+              {!isRegistering && deviceOwnerEmail && <option value={deviceOwnerEmail} />}
+            </datalist>
           </label>
           <label className="block space-y-1">
             <span className="text-xs font-bold text-slate-700">{t('auth.password')} {isRegistering && `(${t('auth.minimumPassword')})`}</span>
             <span className="relative block">
-              <input required minLength={isRegistering ? 10 : undefined} type={showPassword ? 'text' : 'password'} name="password" value={form.password} onChange={changeForm} autoComplete={isRegistering ? 'new-password' : 'current-password'} className="w-full rounded-lg border border-slate-300 px-3 py-2.5 pr-11 text-sm outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100" />
+              <input required minLength={isRegistering ? 10 : undefined} type={showPassword ? 'text' : 'password'} name="password" value={form.password} onChange={changeForm} onFocus={() => setPasswordFieldActive(true)} readOnly={!passwordFieldActive} autoComplete="new-password" className="w-full rounded-lg border border-slate-300 px-3 py-2.5 pr-11 text-sm outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100" />
               <button
                 type="button"
                 onClick={() => setShowPassword((visible) => !visible)}
@@ -168,7 +178,7 @@ export default function AuthPage({ initialRole = 'admin', onNavigate, onLoginSuc
           ) : (
             <div className="flex flex-wrap justify-center gap-4">
               {role === 'officer' && (
-                <button type="button" onClick={() => { setIsRegistering(true); setMessage(''); setError(''); }} className="text-sm font-bold text-emerald-700 hover:underline">
+                <button type="button" onClick={() => { setForm((previous) => ({ ...previous, email: '' })); setIsRegistering(true); setMessage(''); setError(''); }} className="text-sm font-bold text-emerald-700 hover:underline">
                   {t('auth.newOfficer')}
                 </button>
               )}

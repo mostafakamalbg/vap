@@ -113,8 +113,8 @@ function CompanyHeader({ reference, date }) {
     <>
       <CompanyLetterhead className="agreement-header" />
       <div className="agreement-ref-row">
-        <span><strong>Ref:</strong> {reference || '________________'}</span>
-        <span><strong>Date:</strong> {toBnDate(date) || '________________'}</span>
+        <span><strong>রেফারেন্স:</strong> {toBn(reference) || '________________'}</span>
+        <span><strong>তারিখ:</strong> {toBnDate(date) || '________________'}</span>
       </div>
     </>
   );
@@ -123,8 +123,8 @@ function CompanyHeader({ reference, date }) {
 function CompanyFooter() {
   return (
     <footer className="corporate-document-footer">
-      <p>Office/Factory: Matidali, Bogra Sadar, Bogra.</p>
-      <p>Mob: 01713-736920, 01773-523723 • E-mail: mohananda.agro@gmail.com</p>
+      <p>অফিস/কারখানা: মাটিডালি, বগুড়া সদর, বগুড়া।</p>
+      <p>মোবাইল: {toBn('01713-736920, 01773-523723')} • ই-মেইল: mohananda.agro@gmail.com</p>
     </footer>
   );
 }

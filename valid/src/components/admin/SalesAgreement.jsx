@@ -409,8 +409,8 @@ export default function SalesAgreement() {
           <article className="sales-agreement-print bg-white p-6 text-slate-900 shadow-sm sm:p-10">
             <CompanyLetterhead className="agreement-header" />
             <div className="agreement-ref-row">
-              <span><strong>Ref:</strong> {form.reference || '________________'}</span>
-              <span><strong>Date:</strong> {toBnDate(form.date) || '________________'}</span>
+              <span><strong>রেফারেন্স:</strong> {toBn(form.reference) || '________________'}</span>
+              <span><strong>তারিখ:</strong> {toBnDate(form.date) || '________________'}</span>
             </div>
             <h2 className="agreement-title">সেলস ও কালেকশনের বিপরীতে অতিরিক্ত সুবিধা প্রদান ও গ্রহণের চুক্তি</h2>
             <p className="agreement-intro">

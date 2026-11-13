@@ -18,20 +18,20 @@ import { useUiPreferences } from '../../context/UiPreferencesContext';
 
 const heroSlides = [
   {
-    image: 'https://images.unsplash.com/photo-1500382017468-9049fed747ef?auto=format&fit=crop&w=1100&q=85',
-    alt: 'সবুজ ফসলের মাঠ',
-    title: 'সবুজ ফসল, সমৃদ্ধ কৃষক',
+    image: 'https://images.unsplash.com/photo-1500382017468-9049fed747ef?auto=format&fit=crop&w=1800&q=88',
+    alt: 'দিগন্তজোড়া সবুজ ফসলের মাঠ',
+    title: 'সুস্থ ফসল, সমৃদ্ধ কৃষক',
     detail: 'কৃষির প্রতিটি মৌসুমে পাশে আছি'
   },
   {
-    image: 'https://images.unsplash.com/photo-1592982537447-7440770cbfc9?auto=format&fit=crop&w=1100&q=85',
-    alt: 'কৃষকের মাঠে কাজ',
+    image: 'https://images.unsplash.com/photo-1592982537447-7440770cbfc9?auto=format&fit=crop&w=1800&q=88',
+    alt: 'কৃষকের ফসলের জমিতে পরিচর্যা',
     title: 'কৃষকের সাফল্যই আমাদের লক্ষ্য',
     detail: 'ফসল সুরক্ষায় নির্ভরযোগ্য পণ্য ও সহায়তা'
   },
   {
-    image: 'https://images.unsplash.com/photo-1416879595882-3373a0480b5b?auto=format&fit=crop&w=1100&q=85',
-    alt: 'সতেজ সবুজ গাছের চারা',
+    image: 'https://images.unsplash.com/photo-1416879595882-3373a0480b5b?auto=format&fit=crop&w=1800&q=88',
+    alt: 'সারিবদ্ধ সবুজ ফসলের চারা',
     title: 'ফসল সুরক্ষায় মানসম্মত সমাধান',
     detail: 'সঠিক পণ্য বাছাইয়ে ডিলার ও কৃষকের পাশে'
   }
@@ -58,14 +58,14 @@ export default function Home({ onNavigate }) {
         
         <div className="max-w-7xl mx-auto relative z-10 grid grid-cols-1 lg:grid-cols-12 gap-7 sm:gap-12 items-center">
           <div className="lg:col-span-7 space-y-4 sm:space-y-6">
-            <div className="relative h-40 w-full max-w-md overflow-hidden rounded-2xl border border-white/30 bg-emerald-950 shadow-2xl sm:h-52">
+            <div className="relative left-1/2 h-64 w-screen max-w-none -translate-x-1/2 overflow-hidden border-y border-white/30 bg-emerald-950 shadow-2xl sm:left-auto sm:h-96 sm:w-full sm:translate-x-0 sm:rounded-2xl sm:border">
               {heroSlides.map((slide, index) => (
                 <div
                   key={slide.image}
                   className={`absolute inset-0 transition-opacity duration-700 ${activeSlide === index ? 'opacity-100' : 'pointer-events-none opacity-0'}`}
                   aria-hidden={activeSlide !== index}
                 >
-                  <img src={slide.image} alt={slide.alt} className="h-full w-full object-cover" />
+                  <img src={slide.image} alt={slide.alt} className="h-full w-full object-cover object-center" />
                   <div className="absolute inset-0 bg-gradient-to-r from-emerald-950/85 via-emerald-950/35 to-transparent" />
                   <div className="absolute bottom-8 left-4 right-3 text-white sm:bottom-9 sm:left-6">
                     <p className="text-sm font-black sm:text-lg">{slide.title}</p>
