@@ -26,7 +26,7 @@ export const INITIAL_OFFICERS = [
     name: 'মো: বদিরুল ইসলাম',
     designation: 'সেলস অফিসার (SO)',
     territory: 'বীরগঞ্জ ও কাহারোল',
-    phone: '০১৭৯৬৭৯১৩৯৮',
+    phone: '০১৭১৩৭৩৬৩২০',
     joinDate: '2024-01-01'
   },
   {
@@ -1210,7 +1210,7 @@ export const INITIAL_DEALERS = [
     shopName: 'মেসার্স বদিরুল ইসলাম',
     proprietor: 'এস.ও/ মহানন্দা এগ্রো ইন্ডাস্ট্রিজ',
     address: 'জয়নন্দ, কাহারোল, দিনাজপুর',
-    phone: '০১৭৯৬৭৯১৩৯৮',
+    phone: '০১৭১৩৭৩৬৩২০',
     zone: 'বীরগঞ্জ',
     officerCode: '4',
     transport: '',

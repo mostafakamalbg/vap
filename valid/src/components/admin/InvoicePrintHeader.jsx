@@ -5,6 +5,7 @@ import { normalizePaymentMethod, PAYMENT_METHODS } from '../../../shared/payment
 import { LEGACY_INVOICE_SESSION } from '../../../shared/sessions';
 import { getPackageQuantityUnit } from '../../../shared/quantityUnits';
 import { getInvoiceSalesAmount } from '../../../shared/invoiceTotals';
+import { normalizeHotlineNumber } from '../../../shared/companyContact';
 import { useAgro } from '../../context/AgroContext';
 import CompanyLetterhead from './CompanyLetterhead';
 
@@ -104,7 +105,7 @@ export default function InvoicePrintHeader({ invoice }) {
           <p><strong>প্রতিষ্ঠান:</strong> {invoice.dealerName || dealer?.shopName || '—'}</p>
           <p><strong>প্রোপাইটর:</strong> {invoice.dealerProprietor || dealer?.proprietor || '—'}</p>
           <p><strong>ঠিকানা:</strong> {invoice.dealerAddress || dealer?.address || dealer?.businessAddress || '—'}</p>
-          <p><strong>মোবাইল:</strong> {toBn(invoice.dealerPhone || dealer?.phone || dealer?.mobile || dealer?.phoneNumber || '—')}</p>
+          <p><strong>মোবাইল:</strong> {toBn(normalizeHotlineNumber(invoice.dealerPhone || dealer?.phone || dealer?.mobile || dealer?.phoneNumber || '—'))}</p>
         </div>
         <div className="invoice-party invoice-party-invoice">
           <h2>চালান তথ্য</h2>

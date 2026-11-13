@@ -18,6 +18,7 @@ import { isDealerCollection, normalizePaymentMethod } from '../../shared/payment
 import { applyInvoiceStockChanges } from '../../shared/invoiceStock';
 import { getInvoiceCartons } from '../../shared/invoiceCartons';
 import { getInvoiceSalesAmount } from '../../shared/invoiceTotals';
+import { normalizeHotlineNumber } from '../../shared/companyContact';
 
 const AgroContext = createContext();
 
@@ -31,7 +32,9 @@ const isInvoicePaymentRecord = (payment) => (
 
 function normalizeBusinessRecords(type, records, officers = []) {
   return records.map((record) => {
-    const normalized = { ...record };
+    const normalized = Object.fromEntries(Object.entries(record).map(([key, value]) => (
+      [key, normalizeHotlineNumber(value)]
+    )));
     if (type === 'officers') {
       normalized.id = String(record.id || record.officerId || normalizeOfficerCode(record.code, record.designation));
       normalized.code = normalizeOfficerCode(record.code, record.designation);

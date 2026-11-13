@@ -4,6 +4,13 @@ import { getInvoiceCartons } from './invoiceCartons.js';
 import { getInvoiceSalesAmount } from './invoiceTotals.js';
 import { applyInvoiceStockChanges } from './invoiceStock.js';
 import { getPackageQuantityUnit } from './quantityUnits.js';
+import { normalizeHotlineNumber } from './companyContact.js';
+
+test('legacy hotline values normalize to the current company number', () => {
+  assert.equal(normalizeHotlineNumber('017-96791398'), '01713736320');
+  assert.equal(normalizeHotlineNumber('০১৭৯৬৭৯১৩৯৮'), '01713736320');
+  assert.equal(normalizeHotlineNumber('01700000000'), '01700000000');
+});
 
 test('invoice package units use bags for gypsum and magnesium', () => {
   assert.equal(getPackageQuantityUnit({ productName: 'জিপসাম', packPerBox: 1 }), 'বস্তা');

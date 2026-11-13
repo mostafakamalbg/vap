@@ -26,16 +26,46 @@ const heroSlides = [
     detail: 'কৃষির প্রতিটি মৌসুমে পাশে আছি'
   },
   {
-    image: 'https://images.unsplash.com/photo-1592982537447-7440770cbfc9?auto=format&fit=crop&w=1800&q=88',
-    alt: 'কৃষকের ফসলের জমিতে পরিচর্যা',
-    title: 'কৃষকের সাফল্যই আমাদের লক্ষ্য',
-    detail: 'ফসল সুরক্ষায় নির্ভরযোগ্য পণ্য ও সহায়তা'
+    image: 'https://images.pexels.com/photos/20234940/pexels-photo-20234940.jpeg?auto=compress&cs=tinysrgb&w=1200&h=900&dpr=1',
+    alt: 'দিগন্তজোড়া ভুট্টাক্ষেত',
+    title: 'ভুট্টার মাঠে সম্ভাবনার ফসল',
+    detail: 'সুস্থ গাছ ও ভালো ফলনে কৃষকের পাশে'
   },
   {
-    image: 'https://images.unsplash.com/photo-1416879595882-3373a0480b5b?auto=format&fit=crop&w=1800&q=88',
-    alt: 'সারিবদ্ধ সবুজ ফসলের চারা',
-    title: 'ফসল সুরক্ষায় মানসম্মত সমাধান',
-    detail: 'সঠিক পণ্য বাছাইয়ে ডিলার ও কৃষকের পাশে'
+    image: 'https://images.pexels.com/photos/36400786/pexels-photo-36400786.jpeg?auto=compress&cs=tinysrgb&w=1200&h=900&dpr=1',
+    alt: 'তাজা আলু ফসল',
+    title: 'আলুর ভালো ফলনে যত্ন ও পরিচর্যা',
+    detail: 'মাটির ফসল ঘরে তুলতে সঠিক সুরক্ষা জরুরি'
+  },
+  {
+    image: 'https://images.pexels.com/photos/5529588/pexels-photo-5529588.jpeg?auto=compress&cs=tinysrgb&w=1200&h=900&dpr=1',
+    alt: 'বেগুনক্ষেতে ফলন দেখাচ্ছেন একজন কৃষক',
+    title: 'বেগুনের সতেজ ফলন',
+    detail: 'সবজি ক্ষেতের পরিচর্যায় কৃষকের নির্ভরযোগ্য সঙ্গী'
+  },
+  {
+    image: 'https://images.pexels.com/photos/40934147/pexels-photo-40934147.jpeg?auto=compress&cs=tinysrgb&w=1200&h=900&dpr=1',
+    alt: 'ক্ষেত থেকে শিম তুলছেন একজন কৃষক',
+    title: 'শিমের ক্ষেতে পরিশ্রমের ফল',
+    detail: 'ফসলের প্রতিটি ধাপে যত্নশীল পরিচর্যা'
+  },
+  {
+    image: 'https://images.pexels.com/photos/13888402/pexels-photo-13888402.jpeg?auto=compress&cs=tinysrgb&w=1200&h=900&dpr=1',
+    alt: 'সবুজ ধানক্ষেত',
+    title: 'ধানের সবুজে বাংলার মাঠ',
+    detail: 'কৃষকের ঘরে উঠুক সুস্থ ও নিরাপদ ফসল'
+  },
+  {
+    image: 'https://images.pexels.com/photos/13829439/pexels-photo-13829439.jpeg?auto=compress&cs=tinysrgb&w=1200&h=900&dpr=1',
+    alt: 'মাথায় ধানের চারা নিয়ে মাঠে যাচ্ছেন একজন কৃষক',
+    title: 'মাথায় চারা, মনে নতুন আশার বীজ',
+    detail: 'কৃষকের শ্রমেই মাঠ ভরে ওঠে সবুজে'
+  },
+  {
+    image: 'https://images.pexels.com/photos/9915751/pexels-photo-9915751.jpeg?auto=compress&cs=tinysrgb&w=1200&h=900&dpr=1',
+    alt: 'মাথায় কাটা ফসল নিয়ে ফিরছেন বাংলাদেশের একজন কৃষক',
+    title: 'ফসলের বোঝা কাঁধে-মাথায় ঘরে ফেরা',
+    detail: 'কৃষকের পরিশ্রম ও সাফল্যের পাশে আমরা'
   }
 ];
 
