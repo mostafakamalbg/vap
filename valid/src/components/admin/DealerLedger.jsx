@@ -28,6 +28,7 @@ import {
   normalizePaymentMethod,
   normalizePaymentType
 } from '../../../shared/paymentMethods';
+import CompanyLetterhead from './CompanyLetterhead';
 
 const createPaymentEntries = () => LEDGER_PAYMENT_TYPES.map(({ value }) => ({
   paymentType: value,
@@ -443,16 +444,31 @@ export default function DealerLedger() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-semibold text-slate-600 mb-1">পেমেন্ট মেথড</label>
-                  <select
-                    value={paymentForm.paymentMethod}
-                    onChange={(e) => setPaymentForm({ ...paymentForm, paymentMethod: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-300 rounded p-2 text-xs"
-                  >
-                    {PAYMENT_METHODS.filter((method) => method.value !== 'credit').map((method) => (
-                      <option key={method.value} value={method.value}>{method.label}</option>
-                    ))}
-                  </select>
+                  <fieldset>
+                    <legend className="mb-1 block font-semibold text-slate-600">পেমেন্ট মেথড</legend>
+                    <div className="grid gap-1.5">
+                      {PAYMENT_METHODS.map((method) => (
+                        <label
+                          key={method.value}
+                          className={`flex cursor-pointer items-center gap-2 rounded border px-2 py-1.5 text-xs font-semibold ${
+                            paymentForm.paymentMethod === method.value
+                              ? 'border-emerald-600 bg-emerald-50 text-emerald-900'
+                              : 'border-slate-200 bg-white text-slate-700'
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name="ledgerPaymentMethod"
+                            value={method.value}
+                            checked={paymentForm.paymentMethod === method.value}
+                            onChange={(event) => setPaymentForm({ ...paymentForm, paymentMethod: event.target.value })}
+                            className="accent-emerald-700"
+                          />
+                          {method.label}
+                        </label>
+                      ))}
+                    </div>
+                  </fieldset>
                 </div>
 
                 <div>
@@ -689,8 +705,7 @@ export default function DealerLedger() {
 
             {/* Printable Ledger Header */}
             <div className="text-center border-b border-emerald-800 pb-3">
-              <h2 className="text-xl font-black text-slate-900">ভ্যালিড এগ্রো প্রোডাক্ট লিমিটেড</h2>
-              <p className="text-xs text-emerald-800 font-bold">মহানন্দা এগ্রো ইন্ডাস্ট্রিজ • নিশিন্দারা, বগুড়া</p>
+              <CompanyLetterhead className="dealer-ledger-letterhead" />
               <div className="mt-2 inline-block bg-slate-100 text-slate-800 border border-slate-300 px-3 py-0.5 rounded text-xs font-bold">
                 ডিলার লেজার ও বাকি হিসাব বিবরণী
               </div>

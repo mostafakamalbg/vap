@@ -6,6 +6,8 @@ import dbConnect from '../lib/mongodb.js';
 import { BusinessRecord, Dealer, Invoice } from '../lib/models.js';
 import { authorize } from '../lib/auth.js';
 import { INVOICE_SESSIONS } from '../shared/sessions.js';
+import { normalizeOfficerCode } from '../shared/codes.js';
+import { isDealerCollection } from '../shared/paymentMethods.js';
 
 const SALES_TYPES = ['dealer_return', 'factory_damage'];
 
@@ -78,6 +80,13 @@ const cartonsExpression = {
     }
   ]
 };
+const invoiceAmountExpression = {
+  $cond: [
+    { $ne: [{ $ifNull: ['$grandTotal', 0] }, 0] },
+    '$grandTotal',
+    { $ifNull: ['$totalAmount', 0] }
+  ]
+};
 const piecesExpression = quantityExpression(
   '$items.totalPieces',
   {
@@ -106,13 +115,16 @@ function money(value) {
 }
 
 async function getOfficerSales(query) {
-  const { officerId, month, year } = query;
+  const { officerId, officerCode: requestedOfficerCode, month, year } = query;
   if (!officerId) throw badRequest('অফিসার নির্বাচন করুন।');
   if (month && year) throw badRequest('মাস অথবা বছর—একটি নির্বাচন করুন।');
   if (!month && !year) throw badRequest('রিপোর্টের মাস অথবা বছর দিন।');
   const range = getDateFilter({ month, year });
+  const normalizedOfficerCode = normalizeOfficerCode(requestedOfficerCode || officerId);
+  const officerConditions = [{ officerId: String(officerId) }];
+  if (normalizedOfficerCode) officerConditions.push({ officerCode: normalizedOfficerCode });
   const [result = { sales: [], quantities: [] }] = await Invoice.aggregate([
-    { $match: { officerId: String(officerId), ...dateMatch(range) } },
+    { $match: { $or: officerConditions, ...dateMatch(range) } },
     {
       $facet: {
         sales: [
@@ -120,7 +132,8 @@ async function getOfficerSales(query) {
           {
             $group: {
               _id: null,
-              totalSalesAmount: { $sum: { $ifNull: ['$grandTotal', '$totalAmount'] } },
+              totalSalesAmount: { $sum: invoiceAmountExpression },
+              invoiceCollections: { $sum: { $ifNull: ['$paidAmount', 0] } },
               invoiceCount: { $sum: 1 }
             }
           }
@@ -139,12 +152,32 @@ async function getOfficerSales(query) {
       }
     }
   ]);
+  const paymentConditions = [{ 'data.officerId': String(officerId) }];
+  if (normalizedOfficerCode) paymentConditions.push({ 'data.officerCode': normalizedOfficerCode });
+  const payments = await BusinessRecord.find({
+    type: 'payments',
+    ...(range ? { 'data.date': range } : {}),
+    $or: paymentConditions
+  }).select('data').lean();
+  const otherCollections = payments
+    .map((record) => record.data)
+    .filter((payment) => (
+      isDealerCollection(payment)
+      && !payment.sourceInvoiceId
+      && !isInvoicePayment(payment)
+    ))
+    .reduce((sum, payment) => sum + money(payment.amount), 0);
   return {
     reportType: 'officer-sales',
-    filters: { officerId: String(officerId), ...(month ? { month } : { year }) },
+    filters: {
+      officerId: String(officerId),
+      ...(normalizedOfficerCode ? { officerCode: normalizedOfficerCode } : {}),
+      ...(month ? { month } : { year })
+    },
     summary: {
       totalSalesAmount: money(result.sales[0]?.totalSalesAmount),
       invoiceCount: money(result.sales[0]?.invoiceCount),
+      totalCollected: money(result.sales[0]?.invoiceCollections) + otherCollections,
       totalItemsSold: money(result.quantities[0]?.totalItemsSold),
       totalCartonsSold: money(result.quantities[0]?.totalCartonsSold)
     }
@@ -271,10 +304,10 @@ async function getDealerLedger(query) {
       $group: {
         _id: null,
         billAmount: {
-          $sum: { $cond: [{ $not: [{ $in: ['$invoiceType', SALES_TYPES] }] }, { $ifNull: ['$grandTotal', '$totalAmount'] }, 0] }
+          $sum: { $cond: [{ $not: [{ $in: ['$invoiceType', SALES_TYPES] }] }, invoiceAmountExpression, 0] }
         },
         returnAmount: {
-          $sum: { $cond: [{ $eq: ['$invoiceType', 'dealer_return'] }, { $ifNull: ['$grandTotal', '$totalAmount'] }, 0] }
+          $sum: { $cond: [{ $eq: ['$invoiceType', 'dealer_return'] }, invoiceAmountExpression, 0] }
         },
         invoicePayments: {
           $sum: { $cond: [{ $not: [{ $in: ['$invoiceType', SALES_TYPES] }] }, { $ifNull: ['$paidAmount', 0] }, 0] }
@@ -317,10 +350,10 @@ async function getCurrentCompanyDue() {
       $group: {
         _id: null,
         bills: {
-          $sum: { $cond: [{ $not: [{ $in: ['$invoiceType', SALES_TYPES] }] }, { $ifNull: ['$grandTotal', '$totalAmount'] }, 0] }
+          $sum: { $cond: [{ $not: [{ $in: ['$invoiceType', SALES_TYPES] }] }, invoiceAmountExpression, 0] }
         },
         returns: {
-          $sum: { $cond: [{ $eq: ['$invoiceType', 'dealer_return'] }, { $ifNull: ['$grandTotal', '$totalAmount'] }, 0] }
+          $sum: { $cond: [{ $eq: ['$invoiceType', 'dealer_return'] }, invoiceAmountExpression, 0] }
         },
         invoicePayments: {
           $sum: { $cond: [{ $not: [{ $in: ['$invoiceType', SALES_TYPES] }] }, { $ifNull: ['$paidAmount', 0] }, 0] }
@@ -369,10 +402,10 @@ async function getCompanyReport(query) {
         $group: {
           _id: { $ifNull: ['$session', 'সেশন নির্ধারিত নয়'] },
           totalSales: {
-            $sum: { $cond: [{ $not: [{ $in: ['$invoiceType', SALES_TYPES] }] }, { $ifNull: ['$grandTotal', '$totalAmount'] }, 0] }
+            $sum: { $cond: [{ $not: [{ $in: ['$invoiceType', SALES_TYPES] }] }, invoiceAmountExpression, 0] }
           },
           returns: {
-            $sum: { $cond: [{ $eq: ['$invoiceType', 'dealer_return'] }, { $ifNull: ['$grandTotal', '$totalAmount'] }, 0] }
+            $sum: { $cond: [{ $eq: ['$invoiceType', 'dealer_return'] }, invoiceAmountExpression, 0] }
           },
           invoiceCashCollected: {
             $sum: { $cond: [{ $not: [{ $in: ['$invoiceType', SALES_TYPES] }] }, { $ifNull: ['$paidAmount', 0] }, 0] }
@@ -535,17 +568,35 @@ async function getCompanyReport(query) {
 
 async function createExcel(report) {
   const workbook = new ExcelJS.Workbook();
-  workbook.creator = 'Valid Agro';
+  workbook.creator = 'MOHANANDA AGRO INDUSTRIES';
+  workbook.title = 'Mohananda Agro Industries Sales Report';
+  workbook.subject = 'Sales, collection and inventory report';
   workbook.created = new Date();
   const addSheet = (name, rows) => {
     const sheet = workbook.addWorksheet(name);
-    sheet.columns = rows.length
+    const columns = rows.length
       ? Object.keys(rows[0]).map((key) => ({ header: key, key, width: 22 }))
       : [{ header: 'তথ্য', key: 'info', width: 28 }];
-    if (rows.length) sheet.addRows(rows);
-    else sheet.addRow({ info: 'কোনো তথ্য নেই' });
-    sheet.getRow(1).font = { bold: true };
-    sheet.views = [{ state: 'frozen', ySplit: 1 }];
+    sheet.columns = columns.map(({ key, width }) => ({ key, width }));
+    [
+      'MOHANANDA AGRO INDUSTRIES',
+      'মহানন্দা এগ্রো ইন্ডাস্ট্রিজ',
+      'Agricultural Commodities Importer, Repacker & Supplier',
+      'Office/Factory: Matidali, Bogra Sadar, Bogra | Mob: 01713-736920, 01773-523723 | E-mail: mohananda.agro@gmail.com'
+    ].forEach((value, index) => {
+      const row = sheet.addRow([value]);
+      if (columns.length > 1) sheet.mergeCells(row.number, 1, row.number, columns.length);
+      row.font = { bold: index < 2, size: index === 0 ? 16 : index === 1 ? 13 : 10 };
+      row.alignment = { horizontal: 'center' };
+    });
+    sheet.addRow([]);
+    sheet.addRow(columns.map((column) => column.header)).font = { bold: true };
+    if (rows.length) {
+      rows.forEach((row) => sheet.addRow(columns.map((column) => row[column.key] ?? '')));
+    } else {
+      sheet.addRow(['কোনো তথ্য নেই']);
+    }
+    sheet.views = [{ state: 'frozen', ySplit: 6 }];
   };
 
   if (report.reportType === 'company-session') {
@@ -596,8 +647,10 @@ function reportRows(report) {
 }
 
 async function createPdf(report) {
-  const fontPath = process.env.REPORT_FONT_PATH;
-  if (!fontPath || !existsSync(path.resolve(fontPath))) {
+  const fontPath = process.env.REPORT_FONT_PATH
+    ? path.resolve(process.env.REPORT_FONT_PATH)
+    : path.resolve(process.cwd(), 'public', 'fonts', 'Nirmala.ttf');
+  if (!existsSync(fontPath)) {
     const error = new Error('PDF export-এর জন্য REPORT_FONT_PATH-এ বাংলা সমর্থিত TTF ফন্ট সেট করুন।');
     error.statusCode = 503;
     throw error;
@@ -608,8 +661,12 @@ async function createPdf(report) {
     document.on('data', (chunk) => chunks.push(chunk));
     document.on('error', reject);
     document.on('end', () => resolve(Buffer.concat(chunks)));
-    document.font(path.resolve(fontPath));
-    document.fontSize(17).text('Valid Agro — Sales Report', { align: 'center' });
+    document.font(fontPath);
+    document.fontSize(17).text('MOHANANDA AGRO INDUSTRIES', { align: 'center' });
+    document.fontSize(13).text('মহানন্দা এগ্রো ইন্ডাস্ট্রিজ', { align: 'center' });
+    document.moveDown(0.2).fontSize(9).text('Agricultural Commodities Importer, Repacker & Supplier', { align: 'center' });
+    document.fontSize(8).text('Office/Factory: Matidali, Bogra Sadar, Bogra', { align: 'center' });
+    document.text('Mob: 01713-736920, 01773-523723 • E-mail: mohananda.agro@gmail.com', { align: 'center' });
     document.moveDown(0.5).fontSize(10).text(`Report: ${report.reportType}`);
     document.moveDown();
     for (const line of reportRows(report)) {

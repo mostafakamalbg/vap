@@ -4,7 +4,9 @@ import { formatDealerCode, formatInvoiceNumber, formatOfficerCode } from '../../
 import { normalizePaymentMethod, PAYMENT_METHODS } from '../../../shared/paymentMethods';
 import { LEGACY_INVOICE_SESSION } from '../../../shared/sessions';
 import { getPackageQuantityUnit } from '../../../shared/quantityUnits';
+import { getInvoiceSalesAmount } from '../../../shared/invoiceTotals';
 import { useAgro } from '../../context/AgroContext';
+import CompanyLetterhead from './CompanyLetterhead';
 
 const money = (value) => {
   const amount = Number(value) || 0;
@@ -73,10 +75,8 @@ export default function InvoicePrintHeader({ invoice }) {
   const returnTotal = returns.reduce((sum, item) => sum + getReturnValues(item).total, 0)
     || Number(invoice.returnAdjustmentTotal) || 0;
   const transportCost = Number(invoice.transportCost) || 0;
-  const storedInvoiceNet = invoice.totalAmount ?? invoice.grandTotal;
-  const invoiceNet = storedInvoiceNet == null
-    ? itemTotals.net + transportCost - returnTotal
-    : Number(storedInvoiceNet) || 0;
+  const invoiceNet = getInvoiceSalesAmount(invoice)
+    || itemTotals.net + transportCost - returnTotal;
   const previousDue = Number(invoice.previousDue) || 0;
   const paidAmount = Number(invoice.paidAmount) || 0;
   const storedDue = invoice.currentDue ?? invoice.dueAmount;
@@ -92,22 +92,7 @@ export default function InvoicePrintHeader({ invoice }) {
   return (
     <article className="invoice-print-sheet mx-auto w-full max-w-4xl bg-white p-4 text-slate-900 sm:p-8">
       <header className="invoice-company-header">
-        <div className="invoice-print-company-row">
-          <div className="invoice-print-company-group">
-            <div className="invoice-print-logo invoice-print-logo-valid">
-              <img src="/logos/valid-logo.png" alt="Valid Agro" />
-            </div>
-            <div className="invoice-company-copy">
-              <h1>ভ্যালিড এগ্রো প্রোডাক্ট লিমিটেড</h1>
-              <h2>মহানন্দা এগ্রো ইন্ডাস্ট্রিজ</h2>
-              <p>হেড অফিস ও ডিস্ট্রিবিউশন হাব: নিশিন্দারা, বগুড়া।</p>
-              <p>হটলাইন: 01867912167 • উন্নত ফসল সুরক্ষা ও বালাইনাশক</p>
-            </div>
-            <div className="invoice-print-logo invoice-print-logo-mahananda">
-              <img src="/logos/mahananda-logo-transparent.png" alt="Mahananda Agro" />
-            </div>
-          </div>
-        </div>
+        <CompanyLetterhead className="invoice-print-letterhead" />
         <div className="invoice-session-badge">সেশন: {invoice.session || LEGACY_INVOICE_SESSION}</div>
         <h2 className="invoice-title-bar">{invoice.invoiceType === 'factory_damage' ? 'ডেমেজ / ক্ষতিগ্রস্ত পণ্য ফেরত বিবরণী' : 'ডিলার বিক্রয় ইনভয়েস ও মেমো কপি'}</h2>
       </header>

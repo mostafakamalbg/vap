@@ -17,8 +17,10 @@ import { formatDealerCode, formatOfficerCode, normalizeOfficerCode } from '../..
 import { isDealerCollection, normalizePaymentType, PAYMENT_TYPES } from '../../../shared/paymentMethods';
 import { getPackageQuantityUnit } from '../../../shared/quantityUnits';
 import { getInvoiceCartons, getItemCartons } from '../../../shared/invoiceCartons';
+import { getInvoiceSalesAmount } from '../../../shared/invoiceTotals';
 import { INVOICE_SESSIONS, LEGACY_INVOICE_SESSION } from '../../../shared/sessions';
 import SearchableRecordSelect from './SearchableRecordSelect';
+import CompanyLetterhead from './CompanyLetterhead';
 
 export default function MonthlyReport() {
   const { products, invoices, stockInLogs, damageLogs, payments, officers, dealers } = useAgro();
@@ -162,7 +164,6 @@ export default function MonthlyReport() {
   let totalCartonsSold = 0;
   let totalDealerReturnCartons = 0;
   let totalFactoryReturnCartons = 0;
-  let totalCollected = 0;
   let totalDueOutstanding = 0;
   const productCartonStockChange = {};
 
@@ -172,15 +173,14 @@ export default function MonthlyReport() {
     const isFactoryReturn = inv.invoiceType === 'factory_damage';
 
     if (isDealerReturn) {
-      totalSalesValue -= Number(inv.grandTotal) || 0;
+      totalSalesValue -= getInvoiceSalesAmount(inv);
       totalDealerReturnCartons += cartons;
     } else if (isFactoryReturn) {
       totalFactoryReturnCartons += cartons;
     } else {
-      totalSalesValue += Number(inv.grandTotal) || 0;
+      totalSalesValue += getInvoiceSalesAmount(inv);
       totalCartonsSold += cartons;
-      totalCollected += Number(inv.paidAmount) || 0;
-      totalDueOutstanding += Number(inv.currentDue) || 0;
+      totalDueOutstanding += Number(inv.currentDue ?? inv.dueAmount) || 0;
     }
 
     (inv.items || []).forEach((item) => {
@@ -713,32 +713,12 @@ export default function MonthlyReport() {
 
       {/* Official Printable Statement Sheet */}
       <div className="monthly-report-sheet bg-white rounded-xl border border-slate-200 shadow-sm p-8 space-y-6">
-        <div className="border-b-2 border-emerald-800 pb-4">
-          <div className="flex items-center justify-between mb-3">
-            <img
-              src="/logos/valid-logo.png"
-              alt="Valid Agro"
-              className="h-16 w-auto object-contain"
-            />
-            <div className="text-center flex-1 px-4">
-              <h2 className="text-2xl font-black text-slate-900 tracking-tight">
-                ভ্যালিড এগ্রো প্রোডাক্ট লিমিটেড
-              </h2>
-              <h3 className="text-base font-bold text-emerald-800">
-                মহানন্দা এগ্রো ইন্ডাস্ট্রিজ • নিশিন্দারা, বগুড়া।
-              </h3>
-              <p className="text-xs text-slate-600 mt-0.5">
-                হটলাইনঃ 01867912167 • ডিস্ট্রিবিউশন হাব ও সেন্ট্রাল ইনভেন্টরি শাখা
-              </p>
-              <div className="mt-2 inline-block bg-emerald-800 text-white px-5 py-1 rounded text-xs font-black uppercase tracking-wider">
-                {reportTitle}
-              </div>
+        <div className="monthly-report-print-header border-b-2 border-emerald-800 pb-4">
+          <CompanyLetterhead className="monthly-report-letterhead" />
+          <div className="mt-2 text-center">
+            <div className="inline-block rounded bg-emerald-800 px-5 py-1 text-xs font-black uppercase tracking-wider text-white">
+              {reportTitle}
             </div>
-            <img
-              src="/logos/mahananda-logo-transparent.png"
-              alt="Mahananda Agro"
-              className="h-16 w-auto object-contain"
-            />
           </div>
           <p className="text-xs text-slate-600 mt-1 font-medium text-center">{reportSubtitle}</p>
         </div>
@@ -947,9 +927,9 @@ export default function MonthlyReport() {
                       </span>
                     </td>
                     <td className="p-2 text-center font-bold text-emerald-800 font-mono">{getInvoiceCartons(inv)}</td>
-                    <td className="p-2 text-right font-mono font-bold">৳{inv.grandTotal.toLocaleString()}</td>
-                    <td className="p-2 text-right font-mono text-emerald-700 font-bold">৳{inv.paidAmount.toLocaleString()}</td>
-                    <td className="p-2 text-right font-mono text-rose-700 font-bold">৳{inv.currentDue.toLocaleString()}</td>
+                    <td className="p-2 text-right font-mono font-bold">৳{getInvoiceSalesAmount(inv).toLocaleString()}</td>
+                    <td className="p-2 text-right font-mono text-emerald-700 font-bold">৳{(Number(inv.paidAmount) || 0).toLocaleString()}</td>
+                    <td className="p-2 text-right font-mono text-rose-700 font-bold">৳{(Number(inv.currentDue ?? inv.dueAmount) || 0).toLocaleString()}</td>
                   </tr>
                 ))}
                 {filteredInvoices.length === 0 && (

@@ -16,6 +16,7 @@ import {
 import { useAgro } from '../../context/AgroContext';
 import { createOfficerCode, formatOfficerCode, getNextOfficerCode, OFFICER_DESIGNATIONS, normalizeOfficerCode } from '../../../shared/codes';
 import { getInvoiceCartons } from '../../../shared/invoiceCartons';
+import { getInvoiceSalesAmount } from '../../../shared/invoiceTotals';
 
 export default function OfficerPerformance() {
   const { officers, addNewOfficer, getOfficerSummary } = useAgro();
@@ -338,8 +339,8 @@ export default function OfficerPerformance() {
                         <td className="p-2">{inv.date}</td>
                         <td className="p-2 font-medium">{inv.dealerName}</td>
                         <td className="p-2 text-center font-bold text-emerald-800 font-mono">{getInvoiceCartons(inv)} কার্টুন</td>
-                        <td className="p-2 text-right font-mono font-bold">৳{inv.grandTotal.toLocaleString()}</td>
-                        <td className="p-2 text-right font-mono text-emerald-700">৳{inv.paidAmount.toLocaleString()}</td>
+                        <td className="p-2 text-right font-mono font-bold">৳{getInvoiceSalesAmount(inv).toLocaleString()}</td>
+                        <td className="p-2 text-right font-mono text-emerald-700">৳{(Number(inv.paidAmount) || 0).toLocaleString()}</td>
                       </tr>
                     ))}
                     {selectedOfficerDetail.invoices.length === 0 && (

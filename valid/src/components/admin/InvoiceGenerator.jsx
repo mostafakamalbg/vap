@@ -92,6 +92,8 @@ export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCa
   const selectedOfficer = officers.find((officer) => officer.id === form.officerId);
   const selectedDealer = dealers.find((dealer) => dealer.id === form.dealerId);
   const selectedDealerName = selectedDealer?.shopName || selectedDealer?.name || '';
+  const selectedDealerProprietor = selectedDealer?.proprietor || '';
+  const selectedDealerCode = selectedDealer ? formatDealerCode(selectedDealer.code || selectedDealer.id) : '';
   const selectedDealerAddress = selectedDealer?.address || selectedDealer?.businessAddress || '';
   const selectedDealerPhone = selectedDealer?.phone || selectedDealer?.mobile || selectedDealer?.phoneNumber || '';
   const dealerSummary = selectedDealer ? getDealerSummary(selectedDealer.id) : null;
@@ -410,9 +412,11 @@ export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCa
           />
           {selectedDealer && (
             <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-950 sm:col-span-2 lg:col-span-4">
-              <p className="font-bold">{selectedDealerName || 'ডিলার'}</p>
-              <div className="mt-1 grid gap-1 text-xs sm:grid-cols-2">
-                <p><strong>ঠিকানা:</strong> {selectedDealerAddress || '—'}</p>
+              <div className="grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-3">
+                <p><strong>ডিলার কোড:</strong> {selectedDealerCode || '—'}</p>
+                <p><strong>প্রতিষ্ঠান:</strong> {selectedDealerName || '—'}</p>
+                <p><strong>প্রোপাইটর:</strong> {selectedDealerProprietor || '—'}</p>
+                <p className="sm:col-span-2 lg:col-span-2"><strong>ঠিকানা:</strong> {selectedDealerAddress || '—'}</p>
                 <p><strong>মোবাইল:</strong> {selectedDealerPhone || '—'}</p>
               </div>
             </div>

@@ -6,6 +6,7 @@ import { useAgro } from '../../context/AgroContext';
 import SearchableRecordSelect from './SearchableRecordSelect';
 import { formatDealerCode } from '../../../shared/codes';
 import DistributorForms from './DistributorForms';
+import CompanyLetterhead from './CompanyLetterhead';
 
 const DEFAULT_AGREEMENT_START_SESSION = 'জানুয়ারি - জুন ২০২৭';
 const DEFAULT_AGREEMENT_END_SESSION = 'জুলাই - ডিসেম্বর ২০২৭';
@@ -406,20 +407,7 @@ export default function SalesAgreement() {
             </button>
           </div>
           <article className="sales-agreement-print bg-white p-6 text-slate-900 shadow-sm sm:p-10">
-            <header className="agreement-header">
-              <div className="agreement-brand-row">
-                <div className="agreement-brand">
-                  <img src="/logos/valid-logo.png" alt="ভ্যালিড এগ্রো প্রোডাক্ট লিমিটেড লোগো" />
-                  <h1>ভ্যালিড এগ্রো প্রোডাক্ট লিমিটেড</h1>
-                </div>
-                <div className="agreement-brand">
-                  <img src="/logos/mahananda-logo-transparent.png" alt="মহানন্দা এগ্রো ইন্ডাস্ট্রিজ লোগো" />
-                  <h1>মহানন্দা এগ্রো ইন্ডাস্ট্রিজ</h1>
-                </div>
-              </div>
-              <p className="agreement-subtitle">(Agricultural Commodities Importer, Repacker &amp; Supplier)</p>
-              <p>Office/Factory: Matidali, Bogra Sadar, Bogra</p>
-            </header>
+            <CompanyLetterhead className="agreement-header" />
             <div className="agreement-ref-row">
               <span><strong>Ref:</strong> {form.reference || '________________'}</span>
               <span><strong>Date:</strong> {toBnDate(form.date) || '________________'}</span>

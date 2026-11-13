@@ -17,11 +17,17 @@ import {
 import { isDealerCollection, normalizePaymentMethod } from '../../shared/paymentMethods';
 import { applyInvoiceStockChanges } from '../../shared/invoiceStock';
 import { getInvoiceCartons } from '../../shared/invoiceCartons';
+import { getInvoiceSalesAmount } from '../../shared/invoiceTotals';
 
 const AgroContext = createContext();
 
 const isSalesInvoice = (invoice) =>
   invoice.invoiceType !== 'dealer_return' && invoice.invoiceType !== 'factory_damage';
+
+const isInvoicePaymentRecord = (payment) => (
+  Boolean(payment?.sourceInvoiceId)
+  || /(?:invoice|চালান)\s*#/i.test(String(payment?.reference || ''))
+);
 
 function normalizeBusinessRecords(type, records, officers = []) {
   return records.map((record) => {
@@ -44,7 +50,7 @@ function getInvoicePaymentFields(invoice) {
   const paymentMethod = normalizePaymentMethod(invoice.paymentMethod);
   if (paymentMethod !== 'credit') return { paymentMethod };
 
-  const invoiceAmount = Number(invoice.totalAmount ?? invoice.grandTotal) || 0;
+  const invoiceAmount = getInvoiceSalesAmount(invoice);
   const previousDue = Number(invoice.previousDue) || 0;
   const netPayable = invoiceAmount + previousDue;
   const dueAmount = Math.max(0, netPayable);
@@ -732,11 +738,11 @@ export function AgroProvider({ children }) {
     
     // Total purchases from regular invoices
     const regularInvoices = dealerInvoices.filter(isSalesInvoice);
-    const totalPurchases = regularInvoices.reduce((acc, curr) => acc + (Number(curr.grandTotal) || 0), 0);
+    const totalPurchases = regularInvoices.reduce((acc, curr) => acc + getInvoiceSalesAmount(curr), 0);
 
     // Total returns (credit) from dealer_return invoices
     const returnInvoices = dealerInvoices.filter((inv) => inv.invoiceType === 'dealer_return');
-    const totalReturnCredits = returnInvoices.reduce((acc, curr) => acc + (Number(curr.grandTotal) || 0), 0);
+    const totalReturnCredits = returnInvoices.reduce((acc, curr) => acc + getInvoiceSalesAmount(curr), 0);
 
     const dealerPays = payments.filter((p) => (
       isDealerCollection(p) && (p.dealerId === dealer.id || p.dealerName === dealer.shopName)
@@ -777,7 +783,7 @@ export function AgroProvider({ children }) {
 
     const totalSalesAmount = officerInvoices
       .filter(isSalesInvoice)
-      .reduce((acc, curr) => acc + (Number(curr.grandTotal) || 0), 0);
+      .reduce((acc, curr) => acc + getInvoiceSalesAmount(curr), 0);
 
     const totalCartonsSold = officerInvoices
       .filter(isSalesInvoice)
@@ -789,10 +795,15 @@ export function AgroProvider({ children }) {
           === normalizeOfficerCode(officer.code, officer.designation)
         || p.officerName === officer.name
     );
-    const totalCollected = officerPayments.filter(isDealerCollection).reduce(
-      (acc, curr) => acc + (Number(curr.amount) || 0),
+    const salesInvoices = officerInvoices.filter(isSalesInvoice);
+    const invoiceCollections = salesInvoices.reduce(
+      (sum, invoice) => sum + (Number(invoice.paidAmount) || 0),
       0
     );
+    const standaloneCollections = officerPayments
+      .filter((payment) => isDealerCollection(payment) && !isInvoicePaymentRecord(payment))
+      .reduce((sum, payment) => sum + (Number(payment.amount) || 0), 0);
+    const totalCollected = invoiceCollections + standaloneCollections;
 
     return {
       ...officer,

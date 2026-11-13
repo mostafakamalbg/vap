@@ -3,6 +3,7 @@ import { Printer, Save, Trash2 } from 'lucide-react';
 import SearchableRecordSelect from './SearchableRecordSelect';
 import { formatDealerCode } from '../../../shared/codes';
 import { toBn, toBnDate } from '../../utils/bengali';
+import CompanyLetterhead from './CompanyLetterhead';
 
 const today = () => new Date().toISOString().slice(0, 10);
 const socialOptions = ['প্রকৃত ব্যবসায়ী', 'ইউপি সদস্য', 'পৌর কাউন্সিলর', 'রাজনীতির সঙ্গে সংশ্লিষ্ট', 'অন্যান্য পেশা'];
@@ -110,20 +111,7 @@ function TickList({ values = [], options }) {
 function CompanyHeader({ reference, date }) {
   return (
     <>
-      <header className="agreement-header">
-        <div className="agreement-brand-row">
-          <div className="agreement-brand">
-            <img src="/logos/valid-logo.png" alt="ভ্যালিড এগ্রো প্রোডাক্ট লিমিটেড লোগো" />
-            <h1>ভ্যালিড এগ্রো প্রোডাক্ট লিমিটেড</h1>
-          </div>
-          <div className="agreement-brand">
-            <img src="/logos/mahananda-logo-transparent.png" alt="মহানন্দা এগ্রো ইন্ডাস্ট্রিজ লোগো" />
-            <h1>মহানন্দা এগ্রো ইন্ডাস্ট্রিজ</h1>
-          </div>
-        </div>
-        <p className="agreement-subtitle">(Agricultural Commodities Importer, Repacker &amp; Supplier)</p>
-        <p>Office/Factory: Matidali, Bogra Sadar, Bogra</p>
-      </header>
+      <CompanyLetterhead className="agreement-header" />
       <div className="agreement-ref-row">
         <span><strong>Ref:</strong> {reference || '________________'}</span>
         <span><strong>Date:</strong> {toBnDate(date) || '________________'}</span>
