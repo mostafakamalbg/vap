@@ -56,6 +56,12 @@ const heroSlides = [
     detail: 'কৃষকের ঘরে উঠুক সুস্থ ও নিরাপদ ফসল'
   },
   {
+    image: '/hero-crops/mustard-field.webp',
+    alt: 'হলুদ সরিষা ফুলে ভরা ফসলের মাঠ',
+    title: 'সরিষা ফুলে হলুদ বাংলার মাঠ',
+    detail: 'তেলবীজ ফসলের পরিচর্যায় কৃষকের পাশে'
+  },
+  {
     image: '/hero-crops/farmer-seedlings.jpg',
     alt: 'মাথায় ধানের চারা নিয়ে মাঠে যাচ্ছেন একজন কৃষক',
     title: 'মাথায় চারা, মনে নতুন আশার বীজ',
