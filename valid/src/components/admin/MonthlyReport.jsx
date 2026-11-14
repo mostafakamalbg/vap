@@ -21,6 +21,7 @@ import { getInvoiceSalesAmount } from '../../../shared/invoiceTotals';
 import { getInvoiceSessionForDate, INVOICE_SESSIONS, LEGACY_INVOICE_SESSION } from '../../../shared/sessions';
 import SearchableRecordSelect from './SearchableRecordSelect';
 import CompanyLetterhead from './CompanyLetterhead';
+import StockResetButton from './StockResetButton';
 
 function getBengaliDesignation(designation = '') {
   return String(designation)
@@ -32,7 +33,16 @@ function getBengaliDesignation(designation = '') {
 }
 
 export default function MonthlyReport() {
-  const { products, invoices, stockInLogs, damageLogs, payments, officers, dealers } = useAgro();
+  const {
+    products,
+    invoices,
+    stockInLogs,
+    damageLogs,
+    payments,
+    officers,
+    dealers,
+    currentUser
+  } = useAgro();
 
   // Mode: 'month' | 'year' | 'dealer' | 'officer' | 'session'
   const [filterMode, setFilterMode] = useState('dealer');
@@ -441,13 +451,19 @@ export default function MonthlyReport() {
           </p>
         </div>
 
-        <button
-          onClick={printReport}
-          className="flex items-center gap-1.5 bg-emerald-700 hover:bg-emerald-800 text-white px-4 py-2 rounded-lg text-xs font-bold shadow transition"
-        >
-          <Printer className="w-4 h-4" />
-          <span>রিপোর্ট প্রিন্ট করুন</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          {currentUser?.role === 'admin' && (
+            <StockResetButton className="rounded-lg bg-rose-700 px-4 py-2 text-xs font-bold text-white shadow transition hover:bg-rose-800 disabled:cursor-not-allowed disabled:opacity-50" />
+          )}
+          <button
+            type="button"
+            onClick={printReport}
+            className="flex items-center gap-1.5 bg-emerald-700 hover:bg-emerald-800 text-white px-4 py-2 rounded-lg text-xs font-bold shadow transition"
+          >
+            <Printer className="w-4 h-4" />
+            <span>রিপোর্ট প্রিন্ট করুন</span>
+          </button>
+        </div>
       </div>
 
       {/* Unified report selector */}
