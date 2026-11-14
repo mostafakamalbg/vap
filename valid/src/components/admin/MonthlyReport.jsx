@@ -308,7 +308,6 @@ export default function MonthlyReport() {
   const stockReportRows = products.flatMap((product) => (product.variants || []).map((variant) => {
     const productKey = `${product.id}::${variant.sku}`;
     const packPerBox = Number(variant.packPerBox) || 1;
-    const quantityUnit = getPackageQuantityUnit(variant);
     const itemPieces = (item) => Number(item.totalPieces)
       || getItemCartons(item) * (Number(item.packPerBox) || packPerBox);
     const invoiceMovementPieces = (invoice) => {
@@ -369,17 +368,33 @@ export default function MonthlyReport() {
       key: productKey,
       productName: product.name,
       size: variant.size || '',
-      packPerBox,
-      quantityUnit,
       openingCartons: openingPieces / packPerBox,
       stockInCartons: stockInPieces / packPerBox,
-      soldCartons: salesPieces / packPerBox,
       dealerReturnCartons: dealerReturnPieces / packPerBox,
+      totalStockCartons: (openingPieces + stockInPieces + dealerReturnPieces) / packPerBox,
       factoryReturnCartons: factoryReturnPieces / packPerBox,
+      soldCartons: salesPieces / packPerBox,
       closingCartons: closingPieces / packPerBox
     };
   }));
   const formatStockCartons = (cartons) => toBn(Number(cartons.toFixed(2)));
+  const stockReportTotals = stockReportRows.reduce((totals, row) => ({
+    openingCartons: totals.openingCartons + row.openingCartons,
+    stockInCartons: totals.stockInCartons + row.stockInCartons,
+    dealerReturnCartons: totals.dealerReturnCartons + row.dealerReturnCartons,
+    totalStockCartons: totals.totalStockCartons + row.totalStockCartons,
+    factoryReturnCartons: totals.factoryReturnCartons + row.factoryReturnCartons,
+    soldCartons: totals.soldCartons + row.soldCartons,
+    closingCartons: totals.closingCartons + row.closingCartons
+  }), {
+    openingCartons: 0,
+    stockInCartons: 0,
+    dealerReturnCartons: 0,
+    totalStockCartons: 0,
+    factoryReturnCartons: 0,
+    soldCartons: 0,
+    closingCartons: 0
+  });
 
   const printReport = () => {
     const printClass = 'monthly-report-printing';
@@ -835,27 +850,18 @@ export default function MonthlyReport() {
               রিপোর্টের সময়কাল: {toBnDate(`${selectedMonth}-01`)} থেকে {toBnDate(monthEndDate)} • প্যাকের অংশবিশেষ থাকলে দশমিক কার্টুনে দেখানো হবে।
             </div>
             <div className="overflow-x-auto rounded-lg border border-slate-200">
-              <table className="monthly-report-stock-table w-full min-w-[1100px] text-left text-xs">
-                <colgroup>
-                  <col className="w-[24%]" />
-                  <col className="w-[10%]" />
-                  <col className="w-[11%]" />
-                  <col className="w-[11%]" />
-                  <col className="w-[11%]" />
-                  <col className="w-[11%]" />
-                  <col className="w-[11%]" />
-                  <col className="w-[11%]" />
-                </colgroup>
+              <table className="monthly-report-stock-table w-full min-w-[1200px] text-left text-xs">
                 <thead className="bg-slate-100 text-slate-700">
                   <tr className="monthly-report-stock-month-row">
-                    <th colSpan={8}>মাসিক স্টক রিপোর্ট: {stockReportMonth}</th>
+                    <th colSpan={9} className="p-2">মাসিক স্টক রিপোর্ট: {stockReportMonth}</th>
                   </tr>
                   <tr>
-                    <th className="p-2">পণ্যের নাম</th>
+                    <th className="min-w-[240px] p-2">পণ্যের নাম</th>
                     <th className="p-2">প্যাক সাইজ</th>
                     <th className="p-2 text-right">ওপেনিং স্টক (কার্টুন)</th>
                     <th className="p-2 text-right">স্টক ইন (কার্টুন)</th>
                     <th className="p-2 text-right">ডিলার ফেরত (কার্টুন)</th>
+                    <th className="p-2 text-right">টোটাল স্টক (কার্টুন)</th>
                     <th className="p-2 text-right">ফ্যাক্টরি ফেরত (কার্টুন)</th>
                     <th className="p-2 text-right">সেলস (কার্টুন)</th>
                     <th className="p-2 text-right">মাসের শেষে স্টক (কার্টুন)</th>
@@ -864,19 +870,46 @@ export default function MonthlyReport() {
                 <tbody className="divide-y divide-slate-100">
                   {stockReportRows.map((row) => (
                     <tr key={row.key}>
-                      <td className="p-2 font-semibold break-words">{row.productName}</td>
+                      <td className="min-w-[240px] p-2 font-semibold break-words">{row.productName}</td>
                       <td className="p-2">{row.size}</td>
                       <td className="p-2 text-right">{formatStockCartons(row.openingCartons)}</td>
                       <td className="p-2 text-right">{formatStockCartons(row.stockInCartons)}</td>
                       <td className="p-2 text-right">{formatStockCartons(row.dealerReturnCartons)}</td>
+                      <td className="p-2 text-right font-semibold">{formatStockCartons(row.totalStockCartons)}</td>
                       <td className="p-2 text-right text-rose-700">{formatStockCartons(row.factoryReturnCartons)}</td>
                       <td className="p-2 text-right">{formatStockCartons(row.soldCartons)}</td>
                       <td className="p-2 text-right font-bold text-emerald-800">{formatStockCartons(row.closingCartons)}</td>
                     </tr>
                   ))}
-                  {!stockReportRows.length && <tr><td colSpan={8} className="p-5 text-center text-slate-500">পণ্যের কোনো তথ্য পাওয়া যায়নি।</td></tr>}
+                  {!stockReportRows.length && <tr><td colSpan={9} className="p-5 text-center text-slate-500">পণ্যের কোনো তথ্য পাওয়া যায়নি।</td></tr>}
                 </tbody>
+                <tfoot className="monthly-report-stock-total bg-slate-100 font-bold">
+                  <tr>
+                    <th colSpan={2} className="p-2 text-left">সর্বমোট</th>
+                    <td className="p-2 text-right">{formatStockCartons(stockReportTotals.openingCartons)}</td>
+                    <td className="p-2 text-right">{formatStockCartons(stockReportTotals.stockInCartons)}</td>
+                    <td className="p-2 text-right">{formatStockCartons(stockReportTotals.dealerReturnCartons)}</td>
+                    <td className="p-2 text-right">{formatStockCartons(stockReportTotals.totalStockCartons)}</td>
+                    <td className="p-2 text-right">{formatStockCartons(stockReportTotals.factoryReturnCartons)}</td>
+                    <td className="p-2 text-right">{formatStockCartons(stockReportTotals.soldCartons)}</td>
+                    <td className="p-2 text-right">{formatStockCartons(stockReportTotals.closingCartons)}</td>
+                  </tr>
+                </tfoot>
               </table>
+            </div>
+            <div className="monthly-report-stock-signatures mt-12 grid grid-cols-2 gap-x-6 gap-y-8 sm:grid-cols-4" aria-label="স্টক রিপোর্টের স্বাক্ষর">
+              {[
+                { label: 'প্রস্তুত করেছেন', role: 'এস.ও.' },
+                { label: 'যাচাই করেছেন', role: 'এ.এস.এম.' },
+                { label: 'যাচাই করেছেন', role: 'এল.ও.' },
+                { label: 'অনুমোদন করেছেন', role: 'সি.ই.ও.' }
+              ].map(({ label, role }) => (
+                <div key={role} className="pt-8 text-center text-xs font-semibold text-slate-800">
+                  <div className="mb-1 border-t border-slate-500" />
+                  <p>{label}</p>
+                  <p className="font-bold">{role}</p>
+                </div>
+              ))}
             </div>
           </section>
         )}

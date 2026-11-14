@@ -509,6 +509,7 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
     background: #e2e8f0 !important;
     font-size: 7pt !important;
     font-weight: 700 !important;
+    padding: 5mm 1mm 1mm !important;
     text-align: left !important;
   }
   .monthly-report-stock-table th,
@@ -520,6 +521,24 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
     display: table-header-group;
   }
   .monthly-report-stock-table tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .monthly-report-stock-table tfoot {
+    display: table-row-group;
+  }
+  .monthly-report-stock-table .monthly-report-stock-total {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    font-weight: 700;
+    background: #e2e8f0 !important;
+  }
+  .monthly-report-stock-signatures {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  }
+  .monthly-report-stock-signatures > div {
     break-inside: avoid;
     page-break-inside: avoid;
   }
