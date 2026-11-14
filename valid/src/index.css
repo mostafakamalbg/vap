@@ -502,8 +502,14 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
     display: none !important;
   }
   .monthly-report-stock-table {
-    table-layout: fixed;
+    table-layout: auto;
     font-size: 7pt !important;
+  }
+  .monthly-report-stock-table .monthly-report-stock-month-row th {
+    background: #e2e8f0 !important;
+    font-size: 7pt !important;
+    font-weight: 700 !important;
+    text-align: left !important;
   }
   .monthly-report-stock-table th,
   .monthly-report-stock-table td {

@@ -65,6 +65,10 @@ export default function MonthlyReport() {
     ...invoices.map((invoice) => invoice.date?.slice(0, 4)),
     ...damageLogs.map((entry) => entry.date?.slice(0, 4))
   ].filter(Boolean))].sort((a, b) => b.localeCompare(a));
+  const stockReportMonth = selectedMonth
+    ? new Intl.DateTimeFormat('bn-BD', { month: 'long', year: 'numeric', timeZone: 'UTC' })
+      .format(new Date(`${selectedMonth}-01T00:00:00.000Z`))
+    : '';
 
   // Date Preset Handlers
   const handlePresetDate = (months) => {
@@ -145,7 +149,7 @@ export default function MonthlyReport() {
   } else if (filterMode === 'stock') {
     filteredInvoices = invoices.filter((invoice) => invoice.date?.startsWith(selectedMonth));
     filteredDamages = damageLogs.filter((entry) => entry.date?.startsWith(selectedMonth));
-    reportTitle = `মাসশেষ ইনভেন্টরি স্টক রিপোর্ট (${selectedMonth})`;
+    reportTitle = `মাসশেষ ইনভেন্টরি স্টক রিপোর্ট (${stockReportMonth})`;
     reportSubtitle = 'মাসের শেষ দিনের অবশিষ্ট স্টক, স্টক ইন, বিক্রয়, ফেরত ও ড্যামেজ';
   }
 
@@ -831,30 +835,46 @@ export default function MonthlyReport() {
               রিপোর্টের সময়কাল: {toBnDate(`${selectedMonth}-01`)} থেকে {toBnDate(monthEndDate)} • প্যাকের অংশবিশেষ থাকলে দশমিক কার্টুনে দেখানো হবে।
             </div>
             <div className="overflow-x-auto rounded-lg border border-slate-200">
-              <table className="monthly-report-stock-table w-full min-w-[1000px] text-left text-xs">
+              <table className="monthly-report-stock-table w-full min-w-[1100px] text-left text-xs">
+                <colgroup>
+                  <col className="w-[24%]" />
+                  <col className="w-[10%]" />
+                  <col className="w-[11%]" />
+                  <col className="w-[11%]" />
+                  <col className="w-[11%]" />
+                  <col className="w-[11%]" />
+                  <col className="w-[11%]" />
+                  <col className="w-[11%]" />
+                </colgroup>
                 <thead className="bg-slate-100 text-slate-700">
+                  <tr className="monthly-report-stock-month-row">
+                    <th colSpan={8}>মাসিক স্টক রিপোর্ট: {stockReportMonth}</th>
+                  </tr>
                   <tr>
-                    <th className="p-2">পণ্য</th><th className="p-2">প্যাক</th>
-                    <th className="p-2 text-right">মাসের শুরু</th><th className="p-2 text-right">স্টক ইন</th>
-                    <th className="p-2 text-right">বিক্রি</th><th className="p-2 text-right">ডিলার ফেরত</th>
-                    <th className="p-2 text-right">ফ্যাক্টরি ফেরত</th><th className="p-2">একক</th><th className="p-2 text-right">মাসের শেষে</th>
+                    <th className="p-2">পণ্যের নাম</th>
+                    <th className="p-2">প্যাক সাইজ</th>
+                    <th className="p-2 text-right">ওপেনিং স্টক (কার্টুন)</th>
+                    <th className="p-2 text-right">স্টক ইন (কার্টুন)</th>
+                    <th className="p-2 text-right">ডিলার ফেরত (কার্টুন)</th>
+                    <th className="p-2 text-right">ফ্যাক্টরি ফেরত (কার্টুন)</th>
+                    <th className="p-2 text-right">সেলস (কার্টুন)</th>
+                    <th className="p-2 text-right">মাসের শেষে স্টক (কার্টুন)</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {stockReportRows.map((row) => (
                     <tr key={row.key}>
-                      <td className="p-2 font-semibold">{row.productName}</td>
+                      <td className="p-2 font-semibold break-words">{row.productName}</td>
                       <td className="p-2">{row.size}</td>
                       <td className="p-2 text-right">{formatStockCartons(row.openingCartons)}</td>
                       <td className="p-2 text-right">{formatStockCartons(row.stockInCartons)}</td>
-                      <td className="p-2 text-right">{formatStockCartons(row.soldCartons)}</td>
                       <td className="p-2 text-right">{formatStockCartons(row.dealerReturnCartons)}</td>
                       <td className="p-2 text-right text-rose-700">{formatStockCartons(row.factoryReturnCartons)}</td>
-                      <td className="p-2">{row.quantityUnit}</td>
+                      <td className="p-2 text-right">{formatStockCartons(row.soldCartons)}</td>
                       <td className="p-2 text-right font-bold text-emerald-800">{formatStockCartons(row.closingCartons)}</td>
                     </tr>
                   ))}
-                  {!stockReportRows.length && <tr><td colSpan={9} className="p-5 text-center text-slate-500">পণ্যের কোনো তথ্য পাওয়া যায়নি।</td></tr>}
+                  {!stockReportRows.length && <tr><td colSpan={8} className="p-5 text-center text-slate-500">পণ্যের কোনো তথ্য পাওয়া যায়নি।</td></tr>}
                 </tbody>
               </table>
             </div>
