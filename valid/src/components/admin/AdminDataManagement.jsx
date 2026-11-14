@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { Database, Download, FileUp, ShieldCheck } from 'lucide-react';
+import { AlertTriangle, Database, Download, FileUp, ShieldCheck } from 'lucide-react';
 import { useAgro } from '../../context/AgroContext';
 
 export default function AdminDataManagement() {
@@ -7,12 +7,33 @@ export default function AdminDataManagement() {
     currentUser,
     cloudReady,
     exportBackup,
-    importBackup
+    importBackup,
+    clearStockOnly
   } = useAgro();
   const fileInputRef = useRef(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+
+  const handleStockReset = async () => {
+    setError('');
+    setMessage('');
+    if (!window.confirm('স্টক রিসেট করলে সব পণ্যের স্টক শূন্য হবে এবং সব স্টক-ইন রেকর্ড মুছে যাবে। ইনভয়েস, অন্যান্য হিসাব, ব্যবহারকারী ও অ্যাডমিন সিট অক্ষত থাকবে। এগোবেন?')) {
+      return;
+    }
+    const password = window.prompt('স্টক রিসেট নিশ্চিত করতে আপনার অ্যাডমিন পাসওয়ার্ড দিন।');
+    if (!password) return;
+
+    setBusy(true);
+    try {
+      const result = await clearStockOnly(password);
+      setMessage(`${result.message} (${result.stockInLogs}টি স্টক-ইন রেকর্ড মুছে ফেলা হয়েছে।)`);
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const handleImport = async (event) => {
     const file = event.target.files?.[0];
@@ -106,6 +127,23 @@ export default function AdminDataManagement() {
         </article>
       </section>
 
+      <section className="rounded-xl border border-rose-200 bg-rose-50 p-5">
+        <div className="flex items-center gap-2 text-rose-800">
+          <AlertTriangle className="h-5 w-5" />
+          <h2 className="font-black">স্টক রিসেট</h2>
+        </div>
+        <p className="mt-2 text-sm text-rose-900">
+          সব পণ্যের স্টক শূন্য করে স্টক-ইন রেকর্ড মুছুন। ইনভয়েস, অন্যান্য হিসাব, ব্যবহারকারী ও অ্যাডমিন সিট পরিবর্তন হবে না।
+        </p>
+        <button
+          type="button"
+          disabled={busy || !cloudReady || currentUser?.role !== 'admin'}
+          onClick={handleStockReset}
+          className="mt-4 rounded-lg bg-rose-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-rose-800 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {busy ? 'রিসেট হচ্ছে…' : 'Reset Stock'}
+        </button>
+      </section>
     </div>
   );
 }

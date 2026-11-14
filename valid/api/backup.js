@@ -107,9 +107,11 @@ async function clearSalesAndStock(setStage) {
   });
 }
 
-async function clearProductStock() {
+async function clearStockAndLogs() {
   let matchedProducts = 0;
+  let deletedStockInLogs = 0;
   await withTransactionFallback(async (session) => {
+    const options = transactionOptions(session);
     const result = await Product.updateMany(
       { variants: { $type: 'array' } },
       {
@@ -118,11 +120,13 @@ async function clearProductStock() {
           'variants.$[].stockCartons': 0
         }
       },
-      transactionOptions(session)
+      options
     );
     matchedProducts = result.matchedCount;
+    const deleteResult = await BusinessRecord.deleteMany({ type: 'stockInLogs' }, options);
+    deletedStockInLogs = deleteResult.deletedCount;
   });
-  return matchedProducts;
+  return { products: matchedProducts, stockInLogs: deletedStockInLogs };
 }
 
 export default async function handler(req, res) {
@@ -148,11 +152,11 @@ export default async function handler(req, res) {
         return res.status(403).json({ error: 'এই রিসেট ব্যবহারের অনুমতি নেই।' });
       }
       if (req.body.action === 'clear-stock-only') {
-        stage = 'পণ্যের স্টক শূন্য করা';
-        const products = await clearProductStock();
+        stage = 'পণ্যের স্টক শূন্য করা ও স্টক-ইন রেকর্ড মুছে ফেলা';
+        const cleared = await clearStockAndLogs();
         return res.status(200).json({
-          message: 'ইনভয়েস ও অন্যান্য হিসাব অক্ষত রেখে সব পণ্যের স্টক শূন্য করা হয়েছে।',
-          products
+          message: 'ইনভয়েস, হিসাব, ব্যবহারকারী ও অ্যাডমিন সিট অক্ষত রেখে স্টক শূন্য এবং স্টক-ইন রেকর্ড মুছে ফেলা হয়েছে।',
+          ...cleared
         });
       }
       if (req.body.action === 'clear-sales-stock') {
@@ -190,7 +194,7 @@ export default async function handler(req, res) {
       const errorMessage = req.body.action === 'clear-sales-stock'
         ? `ডেটা মুছতে ব্যর্থ হয়েছে (${stage} ধাপ)। অনুগ্রহ করে আবার চেষ্টা করুন।`
         : req.body.action === 'clear-stock-only'
-          ? `স্টক শূন্য করা যায়নি (${stage} ধাপ)। অনুগ্রহ করে আবার চেষ্টা করুন।`
+          ? `স্টক রিসেট করা যায়নি (${stage} ধাপ)। অনুগ্রহ করে আবার চেষ্টা করুন।`
           : 'ফ্যাক্টরি ডেটা পুনরুদ্ধার করা যায়নি।';
       return res.status(500).json({ error: errorMessage });
     }

@@ -929,6 +929,9 @@ export function AgroProvider({ children }) {
     if (typeof password !== 'string' || !password) {
       throw new Error('স্টক শূন্য করতে অ্যাডমিন পাসওয়ার্ড দিন।');
     }
+    await Promise.all(['products', 'stockInLogs'].map((type) => (
+      syncQueueRef.current[type] || Promise.resolve()
+    )));
     const response = await fetch('/api/backup', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -943,8 +946,13 @@ export function AgroProvider({ children }) {
         stockCartons: 0
       }))
     }));
-    localRecordsRef.current = { ...localRecordsRef.current, products: clearedProducts };
+    localRecordsRef.current = {
+      ...localRecordsRef.current,
+      products: clearedProducts,
+      stockInLogs: []
+    };
     setProducts(clearedProducts);
+    setStockInLogs([]);
     return result;
   };
 
