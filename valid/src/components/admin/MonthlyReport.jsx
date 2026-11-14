@@ -48,6 +48,9 @@ export default function MonthlyReport() {
 
   const [selectedMonth, setSelectedMonth] = useState(currentMonthStr);
   const [selectedStockOfficerId, setSelectedStockOfficerId] = useState(officers[0]?.id || '');
+  const [selectedStockSession, setSelectedStockSession] = useState(
+    getInvoiceSessionForDate(`${currentMonthStr}-01`) || LEGACY_INVOICE_SESSION
+  );
   const [selectedYear, setSelectedYear] = useState(currentYearStr);
   const [selectedDealerId, setSelectedDealerId] = useState(dealers[0]?.id || '');
   const [selectedOfficerCode, setSelectedOfficerCode] = useState(officers[0]?.code || '5');
@@ -62,11 +65,13 @@ export default function MonthlyReport() {
   const selectedStockOfficer = officers.find((officer) => officer.id === selectedStockOfficerId)
     || officers[0]
     || null;
-  const stockReportSession = getInvoiceSessionForDate(`${selectedMonth}-01`);
   const availableSessions = [...new Set([
     ...INVOICE_SESSIONS,
     ...invoices.map((invoice) => invoice.session || LEGACY_INVOICE_SESSION)
   ])].map((session) => ({ id: session }));
+  const stockReportSession = availableSessions.some((session) => session.id === selectedStockSession)
+    ? selectedStockSession
+    : LEGACY_INVOICE_SESSION;
   const activeSession = availableSessions.some((session) => session.id === selectedSession)
     ? selectedSession
     : availableSessions[0]?.id || LEGACY_INVOICE_SESSION;
@@ -389,15 +394,14 @@ export default function MonthlyReport() {
     };
   }));
   const formatStockCartons = (cartons) => toBn(Number(cartons.toFixed(2)));
-  const positiveStockCartons = (cartons) => Math.max(0, Number(cartons) || 0);
   const stockReportTotals = stockReportRows.reduce((totals, row) => ({
-    openingCartons: totals.openingCartons + positiveStockCartons(row.openingCartons),
-    stockInCartons: totals.stockInCartons + positiveStockCartons(row.stockInCartons),
-    dealerReturnCartons: totals.dealerReturnCartons + positiveStockCartons(row.dealerReturnCartons),
-    totalStockCartons: totals.totalStockCartons + positiveStockCartons(row.totalStockCartons),
-    factoryReturnCartons: totals.factoryReturnCartons + positiveStockCartons(row.factoryReturnCartons),
-    soldCartons: totals.soldCartons + positiveStockCartons(row.soldCartons),
-    closingCartons: totals.closingCartons + positiveStockCartons(row.closingCartons)
+    openingCartons: totals.openingCartons + row.openingCartons,
+    stockInCartons: totals.stockInCartons + row.stockInCartons,
+    dealerReturnCartons: totals.dealerReturnCartons + row.dealerReturnCartons,
+    totalStockCartons: totals.totalStockCartons + row.totalStockCartons,
+    factoryReturnCartons: totals.factoryReturnCartons + row.factoryReturnCartons,
+    soldCartons: totals.soldCartons + row.soldCartons,
+    closingCartons: totals.closingCartons + row.closingCartons
   }), {
     openingCartons: 0,
     stockInCartons: 0,
@@ -493,6 +497,22 @@ export default function MonthlyReport() {
                   <option value="">অফিসার নির্বাচন করুন</option>
                   {officers.map((officer) => (
                     <option key={officer.id} value={officer.id}>{officer.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {filterMode === 'stock' && (
+              <div>
+                <label className="block font-bold text-slate-700 mb-1" htmlFor="stock-report-session">সেশন নির্বাচন করুন:</label>
+                <select
+                  id="stock-report-session"
+                  value={stockReportSession}
+                  onChange={(event) => setSelectedStockSession(event.target.value)}
+                  className="w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm font-bold text-slate-800"
+                >
+                  {availableSessions.map((session) => (
+                    <option key={session.id} value={session.id}>{session.id}</option>
                   ))}
                 </select>
               </div>
@@ -775,7 +795,7 @@ export default function MonthlyReport() {
           </div>
           <p className="text-xs text-slate-600 mt-1 font-medium text-center">{reportSubtitle}</p>
           {filterMode === 'stock' && (
-            <div className="monthly-report-stock-officer-details ml-auto mt-3 grid max-w-xl grid-cols-2 gap-x-5 gap-y-1 text-right text-xs">
+            <div className="monthly-report-stock-officer-details mt-3 grid grid-cols-1 gap-x-5 gap-y-1 text-left text-xs sm:grid-cols-3">
               <p><span className="font-bold">প্রস্তুতকারী:</span> {selectedStockOfficer?.name || '—'}</p>
               <p><span className="font-bold">পদবি:</span> {getBengaliDesignation(selectedStockOfficer?.designation || '—')}</p>
               <p><span className="font-bold">ঠিকানা / এলাকা:</span> {selectedStockOfficer?.territory || '—'}</p>
@@ -884,8 +904,8 @@ export default function MonthlyReport() {
 
         {filterMode === 'stock' && (
           <section className="monthly-report-stock-section space-y-3">
-            <div className="rounded-lg bg-emerald-50 p-3 text-xs font-semibold text-emerald-900">
-              রিপোর্টের সময়কাল: {toBnDate(`${selectedMonth}-01`)} থেকে {toBnDate(monthEndDate)} • প্যাকের অংশবিশেষ থাকলে দশমিক কার্টুনে দেখানো হবে।
+            <div className="monthly-report-period text-xs font-semibold text-slate-800">
+              রিপোর্টের সময়কাল: {toBnDate(`${selectedMonth}-01`)} থেকে {toBnDate(monthEndDate)}
             </div>
             <div className="overflow-x-auto rounded-lg border border-slate-200">
               <table className="monthly-report-stock-table w-full min-w-[1200px] text-left text-xs">
@@ -896,13 +916,13 @@ export default function MonthlyReport() {
                   <tr>
                     <th className="min-w-[240px] whitespace-nowrap p-2">পণ্যের নাম</th>
                     <th className="whitespace-nowrap p-2">প্যাক সাইজ</th>
-                    <th className="p-2 text-right">ওপেনিং স্টক<br />(কার্টুন)</th>
-                    <th className="p-2 text-right">স্টক ইন<br />(কার্টুন)</th>
-                    <th className="p-2 text-right">ডিলার ফেরত<br />(কার্টুন)</th>
-                    <th className="p-2 text-right">টোটাল স্টক<br />(কার্টুন)</th>
-                    <th className="p-2 text-right">ফ্যাক্টরি ফেরত<br />(কার্টুন)</th>
-                    <th className="p-2 text-right">সেলস<br />(কার্টুন)</th>
-                    <th className="p-2 text-right">মাসের শেষে স্টক<br />(কার্টুন)</th>
+                    <th className="p-2 text-right">শুরুর মজুদ</th>
+                    <th className="p-2 text-right">স্টক ইন</th>
+                    <th className="p-2 text-right">ডিলার ফেরত</th>
+                    <th className="p-2 text-right">মোট স্টক</th>
+                    <th className="p-2 text-right">ফ্যাক্টরি ফেরত</th>
+                    <th className="p-2 text-right">বিক্রয়</th>
+                    <th className="p-2 text-right">শেষ মজুদ</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -916,7 +936,7 @@ export default function MonthlyReport() {
                       <td className="p-2 text-right font-semibold">{formatStockCartons(row.totalStockCartons)}</td>
                       <td className="p-2 text-right text-rose-700">{formatStockCartons(row.factoryReturnCartons)}</td>
                       <td className="p-2 text-right">{formatStockCartons(row.soldCartons)}</td>
-                      <td className="p-2 text-right font-bold text-emerald-800">{formatStockCartons(row.closingCartons)}</td>
+                      <td className={`p-2 text-right font-bold ${row.closingCartons < 0 ? 'text-rose-700' : 'text-emerald-800'}`}>{formatStockCartons(row.closingCartons)}</td>
                     </tr>
                   ))}
                   {!stockReportRows.length && <tr><td colSpan={9} className="p-5 text-center text-slate-500">পণ্যের কোনো তথ্য পাওয়া যায়নি।</td></tr>}

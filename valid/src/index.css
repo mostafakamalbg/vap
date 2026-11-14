@@ -236,6 +236,10 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
     size: A4;
     margin: 10mm;
   }
+  @page monthly-stock {
+    size: A4;
+    margin: 12.7mm 10mm 10mm;
+  }
   body * {
     visibility: hidden !important;
   }
@@ -501,9 +505,27 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
   body.monthly-report-stock-printing .monthly-report-stock-mode > :not(.monthly-report-print-header):not(.monthly-report-stock-section) {
     display: none !important;
   }
+  .monthly-report-stock-mode {
+    page: monthly-stock;
+  }
+  .monthly-report-stock-officer-details {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    margin-top: 2mm !important;
+    text-align: left !important;
+  }
+  .monthly-report-stock-officer-details p {
+    margin: 0 !important;
+    white-space: nowrap;
+  }
+  .monthly-report-period {
+    margin-top: 6mm;
+    margin-bottom: 0;
+    padding: 0 !important;
+    background: transparent !important;
+  }
   .monthly-report-stock-table {
-    table-layout: auto;
-    font-size: 7pt !important;
+    table-layout: fixed;
+    font-size: 6.5pt !important;
   }
   .monthly-report-stock-table .monthly-report-stock-month-row th {
     background: #e2e8f0 !important;
@@ -524,8 +546,9 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
   }
   .monthly-report-stock-table th,
   .monthly-report-stock-table td {
-    padding: 1mm !important;
-    overflow-wrap: anywhere;
+    padding: 0.8mm 0.5mm !important;
+    overflow-wrap: normal;
+    word-break: keep-all;
   }
   .monthly-report-stock-table thead {
     display: table-header-group;
