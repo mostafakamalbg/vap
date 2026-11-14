@@ -794,21 +794,15 @@ export default function MonthlyReport() {
             </div>
           </div>
           <p className="text-xs text-slate-600 mt-1 font-medium text-center">{reportSubtitle}</p>
-        </div>
-        {filterMode === 'stock' && (
-          <div className="monthly-report-stock-meta">
+          {filterMode === 'stock' && (
             <div className="monthly-report-stock-officer-details">
               <span><b>প্রস্তুতকারী:</b> {selectedStockOfficer?.name || '—'}</span>
               <span><b>পদবি:</b> {getBengaliDesignation(selectedStockOfficer?.designation || '—')}</span>
               <span><b>ঠিকানা:</b> {selectedStockOfficer?.territory || '—'}</span>
               <span><b>মোবাইল:</b> {selectedStockOfficer?.phone ? toBn(selectedStockOfficer.phone) : '—'}</span>
             </div>
-            <p className="monthly-report-period">
-              রিপোর্টের সময়কাল: {toBnDate(`${selectedMonth}-01`)} থেকে {toBnDate(monthEndDate)}{' '}
-              {stockReportSession ? toBn(stockReportSession.replace(/\s*-\s*/, ' – ')) : ''}
-            </p>
-          </div>
-        )}
+          )}
+        </div>
 
         {/* Summary Metric Ribbon */}
         <div className={`monthly-report-summary grid grid-cols-2 ${filterMode === 'officer' ? 'md:grid-cols-5' : 'md:grid-cols-4'} gap-4 bg-slate-50 p-4 rounded-lg border border-slate-200 text-xs`}>
@@ -914,19 +908,19 @@ export default function MonthlyReport() {
                 <thead className="bg-slate-100 text-slate-700">
                   <tr className="monthly-report-stock-month-row">
                     <th colSpan={9} className="monthly-report-stock-continuation">
-                      স্টক রিপোর্টের ধারাবাহিক অংশ • {toBnDate(`${selectedMonth}-01`)}–{toBnDate(monthEndDate)} • {toBn(stockReportSession)} • প্রস্তুতকারী: {selectedStockOfficer?.name || '—'}
+                      স্টক রিপোর্টের ধারাবাহিক অংশ
                     </th>
                   </tr>
                   <tr>
                     <th className="p-2">পণ্যের নাম</th>
                     <th className="p-2">প্যাক সাইজ</th>
-                    <th className="p-2 text-right">শুরুর মজুদ (ওপেনিং স্টক)</th>
+                    <th className="p-2 text-right">ওপেনিং স্টক</th>
                     <th className="p-2 text-right">স্টক ইন</th>
                     <th className="p-2 text-right">ডিলার ফেরত</th>
                     <th className="p-2 text-right">মোট স্টক</th>
                     <th className="p-2 text-right">ফ্যাক্টরি ফেরত</th>
                     <th className="p-2 text-right">বিক্রয়</th>
-                    <th className="p-2 text-right">ক্লোজিং মজুদ (ক্লোজিং স্টক)</th>
+                    <th className="p-2 text-right">ক্লোজিং স্টক</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">

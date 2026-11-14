@@ -1,9 +1,10 @@
 const REAL_HORMONE_NAMES = new Set([
   'রিয়েল হরমোন (প্যাকলোবিউট্রাজল ২৫% এসসি)',
-  'রিয়েল হরমোন (প্যাকলোবিউট্রাজল ২৫% এসসি)'
+  'রিয়েল হরমোন (প্যাকলোবিউট্রাজল ২৫% এসসি)',
+  'রিয়েল হরমোন প্যা: ২৫% এসসি'
 ]);
 
-export const REAL_HORMONE_SHORT_NAME = 'রিয়েল হরমোন প্যা: ২৫% এসসি';
+export const REAL_HORMONE_SHORT_NAME = 'রিয়েল হরমোন (প্যা: ২৫% এসসি)';
 
 export function normalizeProductDisplayNames(records) {
   if (Array.isArray(records)) return records.map(normalizeProductDisplayNames);

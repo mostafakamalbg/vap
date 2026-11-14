@@ -502,7 +502,7 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
   .monthly-report-sheet > section {
     break-inside: auto;
   }
-  body.monthly-report-stock-printing .monthly-report-stock-mode > :not(.monthly-report-print-header):not(.monthly-report-stock-meta):not(.monthly-report-stock-section) {
+  body.monthly-report-stock-printing .monthly-report-stock-mode > :not(.monthly-report-print-header):not(.monthly-report-stock-section) {
     display: none !important;
   }
   .monthly-report-stock-mode {
@@ -510,25 +510,19 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
   }
   .monthly-report-stock-mode > .monthly-report-print-header {
     border-bottom-color: #000 !important;
-  }
-  .monthly-report-stock-meta {
-    margin-top: 2mm !important;
-    break-inside: avoid;
-    page-break-inside: avoid;
-    font-size: 7pt !important;
+    padding-bottom: 0 !important;
   }
   .monthly-report-stock-officer-details {
     display: flex;
     align-items: baseline;
     justify-content: space-between;
-    gap: 2mm;
+    gap: 1.5mm;
+    margin-top: 2mm !important;
     white-space: nowrap;
+    font-size: 6.5pt !important;
   }
-  .monthly-report-period {
-    margin: 2mm 0 0 !important;
-    padding: 0 !important;
-    background: transparent !important;
-    font-size: 7pt !important;
+  .monthly-report-stock-officer-details span {
+    min-width: 0;
   }
   .monthly-report-stock-section {
     margin-top: 3mm !important;
@@ -546,6 +540,10 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
   }
   .monthly-report-stock-continuation {
     font-weight: 700 !important;
+  }
+  .monthly-report-stock-table thead tr:not(.monthly-report-stock-month-row) th {
+    white-space: nowrap !important;
+    font-size: 5.7pt !important;
   }
   .monthly-report-stock-table th:nth-child(1),
   .monthly-report-stock-table td:nth-child(1) {
