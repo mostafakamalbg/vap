@@ -15,6 +15,7 @@ test('legacy hotline values normalize to the current company number', () => {
 test('invoice package units use bags for gypsum and magnesium', () => {
   assert.equal(getPackageQuantityUnit({ productName: 'জিপসাম', packPerBox: 1 }), 'বস্তা');
   assert.equal(getPackageQuantityUnit({ productName: 'Magnesium Sulphate', packPerBox: 20 }), 'বস্তা');
+  assert.equal(getPackageQuantityUnit({ productName: 'মহা ম্যাগ', packPerBox: 20 }), 'বস্তা');
 });
 
 test('invoice package units use jars for five-liter products and cartons otherwise', () => {

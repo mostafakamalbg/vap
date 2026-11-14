@@ -18,6 +18,7 @@ import { isDealerCollection, normalizePaymentMethod } from '../../shared/payment
 import { applyInvoiceStockChanges } from '../../shared/invoiceStock';
 import { getInvoiceCartons } from '../../shared/invoiceCartons';
 import { getInvoiceSalesAmount } from '../../shared/invoiceTotals';
+import { getStockInQuantities } from '../../shared/quantityUnits';
 import { normalizeHotlineNumber } from '../../shared/companyContact';
 
 const AgroContext = createContext();
@@ -634,12 +635,16 @@ export function AgroProvider({ children }) {
         variants: (product.variants || []).map((variant) => {
           const variantEntries = productEntries.filter((entry) => entry.sku === variant.sku);
           if (!variantEntries.length) return variant;
+          const packageCount = variantEntries.reduce((sum, entry) => sum + (Number(entry.cartons) || 0), 0);
+          const quantities = getStockInQuantities({
+            ...variant,
+            productName: product.name,
+            generic: product.generic
+          }, packageCount);
           return {
             ...variant,
-            stockCartons: (Number(variant.stockCartons) || 0)
-              + variantEntries.reduce((sum, entry) => sum + (Number(entry.cartons) || 0), 0),
-            stock: (Number(variant.stock) || 0)
-              + variantEntries.reduce((sum, entry) => sum + (Number(entry.quantityPieces) || 0), 0)
+            stockCartons: quantities.stockCartons,
+            stock: quantities.stock
           };
         })
       };

@@ -26,6 +26,19 @@ function getStockInRows(products, previousRows = []) {
   }));
 }
 
+const createStockInForm = () => {
+  const today = new Date().toISOString().slice(0, 10);
+  return {
+    date: today,
+    source: 'কারখানা হতে প্রাপ্ত (বগুড়া কেন্দ্রীয় প্ল্যান্ট)',
+    batchNo: `BAT-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`,
+    mfgDate: today,
+    expDate: '',
+    receivedBy: 'গোডাউন ইনচার্জ, নিশিন্দারা বগুড়া',
+    note: ''
+  };
+};
+
 export default function StockManagement() {
   const { products, stockInLogs, addStockIn, addNewProduct, addProductVariant } = useAgro();
 
@@ -38,15 +51,7 @@ export default function StockManagement() {
   const [stockInSaving, setStockInSaving] = useState(false);
 
   // Stock In Form State
-  const [stockInForm, setStockInForm] = useState({
-    date: new Date().toISOString().slice(0, 10),
-    source: 'কারখানা হতে প্রাপ্ত (বগুড়া কেন্দ্রীয় প্ল্যান্ট)',
-    batchNo: `BAT-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`,
-    mfgDate: new Date().toISOString().slice(0, 10),
-    expDate: '',
-    receivedBy: 'গোডাউন ইনচার্জ, নিশিন্দারা বগুড়া',
-    note: ''
-  });
+  const [stockInForm, setStockInForm] = useState(createStockInForm);
 
   // Brand New Product Form State
   const [newProdForm, setNewProdForm] = useState({
@@ -82,16 +87,20 @@ export default function StockManagement() {
   });
 
   // Calculate total stock value & pieces
-  let totalStockCartons = 0;
+  let totalStockPackages = 0;
   let totalStockValue = 0;
   let lowStockCount = 0;
 
   products.forEach((prod) => {
     prod.variants.forEach((v) => {
       const stockPieces = Number(v.stock) || 0;
-      totalStockCartons += Number(v.stockCartons ?? Math.floor(stockPieces / (Number(v.packPerBox) || 1))) || 0;
+      const quantityUnit = getPackageQuantityUnit({ ...v, productName: prod.name, generic: prod.generic });
+      const packageStock = quantityUnit === 'কার্টুন'
+        ? Number(v.stockCartons ?? Math.floor(stockPieces / (Number(v.packPerBox) || 1))) || 0
+        : stockPieces;
+      totalStockPackages += packageStock;
       totalStockValue += stockPieces * (Number(v.tp) || 0);
-      if (v.stock < 50) lowStockCount += 1;
+      if (packageStock >= 0 && packageStock < 50) lowStockCount += 1;
     });
   });
 
@@ -164,6 +173,7 @@ export default function StockManagement() {
     setStatusMsg(`${stockInPreview.length}টি প্যাক সাইজের স্টক ইন সংরক্ষণ হয়েছে; মোট ${totalPackages.toLocaleString('bn-BD')} প্যাকেজ যোগ হয়েছে।`);
     setTimeout(() => setStatusMsg(''), 4000);
     setStockInItems(getStockInRows(products));
+    setStockInForm(createStockInForm());
     setStockInPreview(null);
     setStockInSaving(false);
   };
@@ -294,7 +304,7 @@ export default function StockManagement() {
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
           <div>
             <p className="text-xs font-semibold text-slate-500 uppercase">মোট প্যাকেজ</p>
-            <p className="text-2xl font-black text-slate-800 mt-1">{totalStockCartons.toLocaleString()} প্যাকেজ</p>
+            <p className="text-2xl font-black text-emerald-700 mt-1">{totalStockPackages.toLocaleString()} প্যাকেজ</p>
           </div>
           <div className="w-10 h-10 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center">
             <Package className="w-5 h-5" />
@@ -387,9 +397,19 @@ export default function StockManagement() {
                   return prod.variants.map((v, vIdx) => {
                     const packPerBox = v.packPerBox || 1;
                     const stockPcs = Number(v.stock) || 0;
+                    const quantityUnit = getPackageQuantityUnit({ ...v, productName: prod.name, generic: prod.generic });
                     const cartonEquivalent = Math.floor(stockPcs / packPerBox);
                     const remainderPcs = stockPcs % packPerBox;
-                    const isLowStock = stockPcs < 50;
+                    const packageStock = quantityUnit === 'কার্টুন'
+                      ? Number(v.stockCartons ?? cartonEquivalent) || 0
+                      : stockPcs;
+                    const isShortStock = packageStock < 0 || stockPcs < 0;
+                    const isLowStock = !isShortStock && packageStock < 50;
+                    const stockColor = isShortStock
+                      ? 'bg-rose-100 text-rose-900'
+                      : isLowStock
+                        ? 'bg-amber-100 text-amber-900'
+                        : 'bg-emerald-100 text-emerald-900';
 
                     return (
                       <tr key={`${prod.id}-${v.sku}`} className="hover:bg-slate-50 transition">
@@ -438,23 +458,17 @@ export default function StockManagement() {
 
                         <td className="py-2.5 px-3 text-center">
                           <span
-                            className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-extrabold font-mono ${
-                              stockPcs < 0
-                                ? 'bg-rose-200 text-rose-900'
-                                : isLowStock
-                                  ? 'bg-amber-100 text-amber-800'
-                                  : 'bg-emerald-100 text-emerald-800'
-                            }`}
+                            className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-extrabold font-mono ${stockColor}`}
                           >
                             {stockPcs < 0 ? `${stockPcs} (ঘাটতি)` : stockPcs} {v.unit}
                           </span>
                         </td>
 
-                        <td className="py-2.5 px-2 text-center text-xs text-slate-600 whitespace-nowrap">
-                          <span className={`font-semibold ${Number(v.stockCartons ?? cartonEquivalent) < 0 ? 'text-rose-800' : 'text-slate-800'}`}>
-                            {Number(v.stockCartons ?? cartonEquivalent) || 0}
-                          </span> {getPackageQuantityUnit({ ...v, productName: prod.name })}
-                          {remainderPcs > 0 && <span className="text-slate-400 text-[11px]"> + {remainderPcs} পিস</span>}
+                        <td className="py-2.5 px-2 text-center text-xs whitespace-nowrap">
+                          <span className={`inline-flex rounded-full px-2.5 py-0.5 font-semibold ${stockColor}`}>
+                            {isShortStock ? `${packageStock} (ঘাটতি)` : packageStock} {quantityUnit}
+                          </span>
+                          {quantityUnit === 'কার্টুন' && remainderPcs > 0 && <span className="ml-1 text-slate-400 text-[11px]">+ {remainderPcs} পিস</span>}
                         </td>
                       </tr>
                     );
