@@ -136,7 +136,7 @@ export default function Navbar({ activeTab, setActiveTab }) {
                 )}
               </div>
             )}
-            {currentUser?.role === 'admin' && currentUser.isSuperAdmin && (
+            {currentUser?.role === 'admin' && (
               <button
                 onClick={() => resetToFactoryData().catch((error) => window.alert(error.message))}
                 title={t('nav.resetData')}

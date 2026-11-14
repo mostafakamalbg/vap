@@ -21,12 +21,14 @@ export default function AdminDataManagement() {
     if (!window.confirm('স্টক রিসেট করলে সব পণ্যের স্টক শূন্য হবে এবং সব স্টক-ইন রেকর্ড মুছে যাবে। ইনভয়েস, অন্যান্য হিসাব, ব্যবহারকারী ও অ্যাডমিন সিট অক্ষত থাকবে। এগোবেন?')) {
       return;
     }
+    const confirmationText = window.prompt('নিশ্চিত করতে RESET লিখুন।');
+    if (confirmationText !== 'RESET') return;
     const password = window.prompt('স্টক রিসেট নিশ্চিত করতে আপনার অ্যাডমিন পাসওয়ার্ড দিন।');
     if (!password) return;
 
     setBusy(true);
     try {
-      const result = await clearStockOnly(password);
+      const result = await clearStockOnly(password, confirmationText);
       setMessage(`${result.message} (${result.stockInLogs}টি স্টক-ইন রেকর্ড মুছে ফেলা হয়েছে।)`);
     } catch (requestError) {
       setError(requestError.message);

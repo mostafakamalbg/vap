@@ -1,5 +1,5 @@
 import dbConnect from '../lib/mongodb.js';
-import { authorize, hasSuperAdminAccess, verifyPassword } from '../lib/auth.js';
+import { authorize, verifyPassword } from '../lib/auth.js';
 import { User } from '../lib/models.js';
 import { BusinessRecord, Dealer, Invoice, Order, Product } from '../lib/models.js';
 import { normalizeDealerAssignment } from '../shared/codes.js';
@@ -146,11 +146,14 @@ export default async function handler(req, res) {
     if (!['factory-reset', 'clear-sales-stock', 'clear-stock-only'].includes(req.body?.action)) {
       return res.status(400).json({ error: 'Invalid reset request.' });
     }
+    if (
+      ['factory-reset', 'clear-stock-only'].includes(req.body.action)
+      && req.body.confirmationText !== 'RESET'
+    ) {
+      return res.status(400).json({ error: 'রিসেট নিশ্চিত করতে RESET লিখুন।' });
+    }
     let stage = 'ডেটাবেসের রেকর্ড';
     try {
-      if (req.body.action === 'factory-reset' && !await hasSuperAdminAccess(user)) {
-        return res.status(403).json({ error: 'এই রিসেট ব্যবহারের অনুমতি নেই।' });
-      }
       if (req.body.action === 'clear-stock-only') {
         stage = 'পণ্যের স্টক শূন্য করা ও স্টক-ইন রেকর্ড মুছে ফেলা';
         const cleared = await clearStockAndLogs();

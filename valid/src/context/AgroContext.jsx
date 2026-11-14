@@ -849,7 +849,7 @@ export function AgroProvider({ children }) {
     const response = await fetch('/api/backup', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'factory-reset', password })
+      body: JSON.stringify({ action: 'factory-reset', password, confirmationText })
     });
     await readJsonResponse(response);
 
@@ -922,12 +922,15 @@ export function AgroProvider({ children }) {
     return result;
   };
 
-  const clearStockOnly = async (password) => {
+  const clearStockOnly = async (password, confirmationText) => {
     if (currentUser?.role !== 'admin') {
       throw new Error('এই রিসেট ব্যবহারের অনুমতি নেই।');
     }
     if (typeof password !== 'string' || !password) {
       throw new Error('স্টক শূন্য করতে অ্যাডমিন পাসওয়ার্ড দিন।');
+    }
+    if (confirmationText !== 'RESET') {
+      throw new Error('রিসেট নিশ্চিত করতে RESET লিখুন।');
     }
     await Promise.all(['products', 'stockInLogs'].map((type) => (
       syncQueueRef.current[type] || Promise.resolve()
@@ -935,7 +938,7 @@ export function AgroProvider({ children }) {
     const response = await fetch('/api/backup', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'clear-stock-only', password })
+      body: JSON.stringify({ action: 'clear-stock-only', password, confirmationText })
     });
     const result = await readJsonResponse(response);
     const clearedProducts = products.map((product) => ({
