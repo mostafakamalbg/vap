@@ -508,47 +508,57 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
   .monthly-report-stock-mode {
     page: monthly-stock;
   }
-  .monthly-report-stock-officer-details {
-    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
-    margin-top: 2mm !important;
-    text-align: left !important;
+  .monthly-report-stock-mode > .monthly-report-print-header {
+    border-bottom-color: #000 !important;
   }
-  .monthly-report-stock-officer-details p {
-    margin: 0 !important;
+  .monthly-report-stock-meta {
+    margin-top: 2mm !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+    font-size: 7pt !important;
+  }
+  .monthly-report-stock-officer-details {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 2mm;
     white-space: nowrap;
   }
   .monthly-report-period {
-    margin-top: 6mm;
-    margin-bottom: 0;
+    margin: 2mm 0 0 !important;
     padding: 0 !important;
     background: transparent !important;
+    font-size: 7pt !important;
+  }
+  .monthly-report-stock-section {
+    margin-top: 3mm !important;
   }
   .monthly-report-stock-table {
-    table-layout: fixed;
+    table-layout: auto;
     font-size: 6.5pt !important;
   }
   .monthly-report-stock-table .monthly-report-stock-month-row th {
     background: #e2e8f0 !important;
-    font-size: 7pt !important;
+    font-size: 6.5pt !important;
     font-weight: 700 !important;
-    padding: 5mm 1mm 1mm !important;
+    padding: 1mm !important;
     text-align: left !important;
   }
   .monthly-report-stock-table th:nth-child(1),
   .monthly-report-stock-table td:nth-child(1) {
-    min-width: 42mm !important;
-    white-space: nowrap !important;
+    width: 30%;
   }
   .monthly-report-stock-table th:nth-child(2),
   .monthly-report-stock-table td:nth-child(2) {
-    min-width: 25mm !important;
-    white-space: nowrap !important;
+    width: 12%;
   }
   .monthly-report-stock-table th,
   .monthly-report-stock-table td {
     padding: 0.8mm 0.5mm !important;
-    overflow-wrap: normal;
-    word-break: keep-all;
+    overflow-wrap: break-word;
+    word-break: normal;
+    white-space: normal !important;
+    vertical-align: middle;
   }
   .monthly-report-stock-table thead {
     display: table-header-group;

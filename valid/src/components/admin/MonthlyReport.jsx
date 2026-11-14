@@ -794,16 +794,21 @@ export default function MonthlyReport() {
             </div>
           </div>
           <p className="text-xs text-slate-600 mt-1 font-medium text-center">{reportSubtitle}</p>
-          {filterMode === 'stock' && (
-            <div className="monthly-report-stock-officer-details mt-3 grid grid-cols-1 gap-x-5 gap-y-1 text-left text-xs sm:grid-cols-3">
-              <p><span className="font-bold">প্রস্তুতকারী:</span> {selectedStockOfficer?.name || '—'}</p>
-              <p><span className="font-bold">পদবি:</span> {getBengaliDesignation(selectedStockOfficer?.designation || '—')}</p>
-              <p><span className="font-bold">ঠিকানা / এলাকা:</span> {selectedStockOfficer?.territory || '—'}</p>
-              <p><span className="font-bold">মোবাইল:</span> {selectedStockOfficer?.phone ? toBn(selectedStockOfficer.phone) : '—'}</p>
-              <p><span className="font-bold">সেশন:</span> {stockReportSession ? toBn(stockReportSession) : '—'}</p>
-            </div>
-          )}
         </div>
+        {filterMode === 'stock' && (
+          <div className="monthly-report-stock-meta">
+            <div className="monthly-report-stock-officer-details">
+              <span><b>প্রস্তুতকারী:</b> {selectedStockOfficer?.name || '—'}</span>
+              <span><b>পদবি:</b> {getBengaliDesignation(selectedStockOfficer?.designation || '—')}</span>
+              <span><b>ঠিকানা:</b> {selectedStockOfficer?.territory || '—'}</span>
+              <span><b>মোবাইল:</b> {selectedStockOfficer?.phone ? toBn(selectedStockOfficer.phone) : '—'}</span>
+            </div>
+            <p className="monthly-report-period">
+              রিপোর্টের সময়কাল: {toBnDate(`${selectedMonth}-01`)} থেকে {toBnDate(monthEndDate)}{' '}
+              {stockReportSession ? toBn(stockReportSession.replace(/\s*-\s*/, ' – ')) : ''}
+            </p>
+          </div>
+        )}
 
         {/* Summary Metric Ribbon */}
         <div className={`monthly-report-summary grid grid-cols-2 ${filterMode === 'officer' ? 'md:grid-cols-5' : 'md:grid-cols-4'} gap-4 bg-slate-50 p-4 rounded-lg border border-slate-200 text-xs`}>
@@ -904,32 +909,29 @@ export default function MonthlyReport() {
 
         {filterMode === 'stock' && (
           <section className="monthly-report-stock-section space-y-3">
-            <div className="monthly-report-period text-xs font-semibold text-slate-800">
-              রিপোর্টের সময়কাল: {toBnDate(`${selectedMonth}-01`)} থেকে {toBnDate(monthEndDate)}
-            </div>
             <div className="overflow-x-auto rounded-lg border border-slate-200">
               <table className="monthly-report-stock-table w-full min-w-[1200px] text-left text-xs">
                 <thead className="bg-slate-100 text-slate-700">
                   <tr className="monthly-report-stock-month-row">
-                    <th colSpan={9} className="p-2">মাসিক স্টক রিপোর্ট: {stockReportMonth}</th>
+                    <th colSpan={9} className="monthly-report-stock-continuation">স্টক রিপোর্টের ধারাবাহিক অংশ — {stockReportMonth}</th>
                   </tr>
                   <tr>
-                    <th className="min-w-[240px] whitespace-nowrap p-2">পণ্যের নাম</th>
-                    <th className="whitespace-nowrap p-2">প্যাক সাইজ</th>
-                    <th className="p-2 text-right">শুরুর মজুদ</th>
+                    <th className="p-2">পণ্যের নাম</th>
+                    <th className="p-2">প্যাক সাইজ</th>
+                    <th className="p-2 text-right">শুরুর মজুদ (ওপেনিং স্টক)</th>
                     <th className="p-2 text-right">স্টক ইন</th>
                     <th className="p-2 text-right">ডিলার ফেরত</th>
                     <th className="p-2 text-right">মোট স্টক</th>
                     <th className="p-2 text-right">ফ্যাক্টরি ফেরত</th>
                     <th className="p-2 text-right">বিক্রয়</th>
-                    <th className="p-2 text-right">শেষ মজুদ</th>
+                    <th className="p-2 text-right">ক্লোজিং মজুদ (ক্লোজিং স্টক)</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {stockReportRows.map((row) => (
                     <tr key={row.key}>
-                      <td className="min-w-[240px] whitespace-nowrap p-2 font-semibold">{row.productName}</td>
-                      <td className="whitespace-nowrap p-2">{row.size}</td>
+                      <td className="p-2 font-semibold">{row.productName}</td>
+                      <td className="p-2">{row.size}</td>
                       <td className="p-2 text-right">{formatStockCartons(row.openingCartons)}</td>
                       <td className="p-2 text-right">{formatStockCartons(row.stockInCartons)}</td>
                       <td className="p-2 text-right">{formatStockCartons(row.dealerReturnCartons)}</td>
