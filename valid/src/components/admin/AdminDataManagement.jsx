@@ -29,9 +29,9 @@ export default function AdminDataManagement() {
     setBusy(true);
     try {
       const result = await clearStockOnly(password, confirmationText);
-      setMessage(`${result.message} (${result.stockInLogs}টি স্টক-ইন রেকর্ড মুছে ফেলা হয়েছে।)`);
+      window.alert(`${result.message} (${result.stockInLogs}টি স্টক-ইন রেকর্ড মুছে ফেলা হয়েছে।)`);
     } catch (requestError) {
-      setError(requestError.message);
+      window.alert(requestError.message);
     } finally {
       setBusy(false);
     }
