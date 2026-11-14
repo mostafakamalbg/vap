@@ -20,58 +20,58 @@ import { HEAD_OFFICE_ADDRESS, HOTLINE_ADDRESS, HOTLINE_NUMBER } from '../../../s
 
 const heroSlides = [
   {
-    image: '/hero-crops/green-fields.jpg',
-    alt: 'দিগন্তজোড়া সবুজ ফসলের মাঠ',
-    title: 'সুস্থ ফসল, সমৃদ্ধ কৃষক',
-    detail: 'কৃষির প্রতিটি মৌসুমে পাশে আছি'
-  },
-  {
-    image: '/hero-crops/corn.jpg',
+    image: '/hero-crops/submitted-corn.jpeg',
     alt: 'দিগন্তজোড়া ভুট্টাক্ষেত',
     title: 'ভুট্টার মাঠে সম্ভাবনার ফসল',
     detail: 'সুস্থ গাছ ও ভালো ফলনে কৃষকের পাশে'
   },
   {
-    image: '/hero-crops/potatoes.jpg',
-    alt: 'তাজা আলু ফসল',
+    image: '/hero-crops/submitted-rice-harvest.jpeg',
+    alt: 'ধান কাটছেন বাংলাদেশের কৃষকেরা',
+    title: 'ধানের মাঠে কৃষকের পরিশ্রম',
+    detail: 'ফসলের প্রতিটি ধাপে কৃষকের পাশে'
+  },
+  {
+    image: '/hero-crops/submitted-potatoes.jpeg',
+    alt: 'গাছ থেকে তোলা তাজা আলু',
     title: 'আলুর ভালো ফলনে যত্ন ও পরিচর্যা',
     detail: 'মাটির ফসল ঘরে তুলতে সঠিক সুরক্ষা জরুরি'
   },
   {
-    image: '/hero-crops/eggplant.jpg',
-    alt: 'বেগুনক্ষেতে ফলন দেখাচ্ছেন একজন কৃষক',
+    image: '/hero-crops/submitted-eggplant.jpeg',
+    alt: 'গাছে ঝুলছে বেগুনের ফলন',
     title: 'বেগুনের সতেজ ফলন',
     detail: 'সবজি ক্ষেতের পরিচর্যায় কৃষকের নির্ভরযোগ্য সঙ্গী'
   },
   {
-    image: '/hero-crops/beans.jpg',
-    alt: 'ক্ষেত থেকে শিম তুলছেন একজন কৃষক',
-    title: 'শিমের ক্ষেতে পরিশ্রমের ফল',
-    detail: 'ফসলের প্রতিটি ধাপে যত্নশীল পরিচর্যা'
+    image: '/hero-crops/submitted-leafy-crops.jpeg',
+    alt: 'সারিবদ্ধ সবুজ শাকসবজির ক্ষেত',
+    title: 'সবুজ ফসলে ভরে উঠুক বাংলার মাঠ',
+    detail: 'সুস্থ ফসলের জন্য চাই যত্নশীল পরিচর্যা'
   },
   {
-    image: '/hero-crops/rice-fields.jpg',
-    alt: 'সবুজ ধানক্ষেত',
-    title: 'ধানের সবুজে বাংলার মাঠ',
-    detail: 'কৃষকের ঘরে উঠুক সুস্থ ও নিরাপদ ফসল'
+    image: '/hero-crops/submitted-vegetable-field.jpeg',
+    alt: 'সকালের আলোয় সবজির ক্ষেত',
+    title: 'সবজির ক্ষেতে নতুন দিনের সম্ভাবনা',
+    detail: 'কৃষির প্রতিটি মৌসুমে পাশে আছি'
   },
   {
-    image: '/hero-crops/mustard-field.webp',
-    alt: 'হলুদ সরিষা ফুলে ভরা ফসলের মাঠ',
-    title: 'সরিষা ফুলে হলুদ বাংলার মাঠ',
-    detail: 'তেলবীজ ফসলের পরিচর্যায় কৃষকের পাশে'
-  },
-  {
-    image: '/hero-crops/farmer-seedlings.jpg',
-    alt: 'মাথায় ধানের চারা নিয়ে মাঠে যাচ্ছেন একজন কৃষক',
-    title: 'মাথায় চারা, মনে নতুন আশার বীজ',
-    detail: 'কৃষকের শ্রমেই মাঠ ভরে ওঠে সবুজে'
-  },
-  {
-    image: '/hero-crops/farmer-harvest.jpg',
-    alt: 'মাথায় কাটা ফসল নিয়ে ফিরছেন বাংলাদেশের একজন কৃষক',
-    title: 'ফসলের বোঝা কাঁধে-মাথায় ঘরে ফেরা',
+    image: '/hero-crops/submitted-harvest-cart.jpeg',
+    alt: 'গরুর গাড়িতে ফসল নিয়ে ফিরছেন কৃষক',
+    title: 'ফসলের ঘরে ফেরা, কৃষকের মুখে হাসি',
     detail: 'কৃষকের পরিশ্রম ও সাফল্যের পাশে আমরা'
+  },
+  {
+    image: '/hero-crops/submitted-farmer-field.jpeg',
+    alt: 'ফুলে ভরা ক্ষেতে কাজ করছেন একজন কৃষক',
+    title: 'কৃষকের শ্রমেই মাঠ ভরে ওঠে সবুজে',
+    detail: 'কৃষকের সমৃদ্ধি ও নিরাপদ ফসল সুরক্ষায় নির্ভরযোগ্য নাম'
+  },
+  {
+    image: '/hero-crops/submitted-tomatoes.jpeg',
+    alt: 'গাছে পাকা লাল টমেটো',
+    title: 'সতেজ ফসল, সমৃদ্ধ কৃষক',
+    detail: 'ফসলের প্রতিটি ধাপে যত্নশীল পরিচর্যা'
   }
 ];
 

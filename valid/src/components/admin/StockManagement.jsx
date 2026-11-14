@@ -15,6 +15,8 @@ import {
 import { useAgro } from '../../context/AgroContext';
 import { getPackageQuantityUnit, getStockInQuantities } from '../../../shared/quantityUnits';
 
+const MINIMUM_STOCK_LEVEL = 50;
+
 function getStockInRows(products, previousRows = []) {
   return products.flatMap((product) => (product.variants || []).map((variant) => {
     const previous = previousRows.find((row) => row.productId === product.id && row.sku === variant.sku);
@@ -39,6 +41,16 @@ const createStockInForm = () => {
   };
 };
 
+const createEmptyStockInForm = () => ({
+  date: '',
+  source: '',
+  batchNo: '',
+  mfgDate: '',
+  expDate: '',
+  receivedBy: '',
+  note: ''
+});
+
 export default function StockManagement() {
   const { products, stockInLogs, addStockIn, addNewProduct, addProductVariant } = useAgro();
 
@@ -49,6 +61,7 @@ export default function StockManagement() {
   const [stockInItems, setStockInItems] = useState(() => getStockInRows(products));
   const [stockInPreview, setStockInPreview] = useState(null);
   const [stockInSaving, setStockInSaving] = useState(false);
+  const [stockInSaveError, setStockInSaveError] = useState('');
 
   // Stock In Form State
   const [stockInForm, setStockInForm] = useState(createStockInForm);
@@ -100,7 +113,7 @@ export default function StockManagement() {
         : stockPieces;
       totalStockPackages += packageStock;
       totalStockValue += stockPieces * (Number(v.tp) || 0);
-      if (packageStock >= 0 && packageStock < 50) lowStockCount += 1;
+      if (packageStock >= 0 && packageStock < MINIMUM_STOCK_LEVEL) lowStockCount += 1;
     });
   });
 
@@ -147,6 +160,7 @@ export default function StockManagement() {
     if (!stockInPreview?.length) return;
     setStockInSaving(true);
     setFormError('');
+    setStockInSaveError('');
     try {
       await addStockIn(stockInPreview.map((entry) => ({
         date: stockInForm.date,
@@ -164,7 +178,7 @@ export default function StockManagement() {
         note: stockInForm.note || 'ডিস্ট্রিবিউশন অফিসে স্টক ইন করা হলো।'
       })));
     } catch (error) {
-      setFormError(error.message || 'স্টক-ইন সংরক্ষণ করা যায়নি।');
+      setStockInSaveError(error.message || 'স্টক-ইন ও পণ্যের মজুত সংরক্ষণ করা যায়নি।');
       setStockInSaving(false);
       return;
     }
@@ -173,7 +187,9 @@ export default function StockManagement() {
     setStatusMsg(`${stockInPreview.length}টি প্যাক সাইজের স্টক ইন সংরক্ষণ হয়েছে; মোট ${totalPackages.toLocaleString('bn-BD')} প্যাকেজ যোগ হয়েছে।`);
     setTimeout(() => setStatusMsg(''), 4000);
     setStockInItems(getStockInRows(products));
-    setStockInForm(createStockInForm());
+    setStockInForm(createEmptyStockInForm());
+    setFormError('');
+    setStockInSaveError('');
     setStockInPreview(null);
     setStockInSaving(false);
   };
@@ -364,6 +380,11 @@ export default function StockManagement() {
               ))}
             </div>
           </div>
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs font-semibold text-slate-600" aria-label="স্টকের রঙের অর্থ">
+            <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />পর্যাপ্ত স্টক</span>
+            <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-amber-400" />সর্বনিম্ন স্টক (৫০-এর কম)</span>
+            <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-rose-500" />স্টক শেষ / ঘাটতি</span>
+          </div>
 
           {/* Product & Variant Table */}
           <div className="border border-slate-200 rounded-lg overflow-x-auto">
@@ -403,8 +424,8 @@ export default function StockManagement() {
                     const packageStock = quantityUnit === 'কার্টুন'
                       ? Number(v.stockCartons ?? cartonEquivalent) || 0
                       : stockPcs;
-                    const isShortStock = packageStock < 0 || stockPcs < 0;
-                    const isLowStock = !isShortStock && packageStock < 50;
+                    const isShortStock = packageStock < 0 || stockPcs <= 0;
+                    const isLowStock = !isShortStock && packageStock < MINIMUM_STOCK_LEVEL;
                     const stockColor = isShortStock
                       ? 'bg-rose-100 text-rose-900'
                       : isLowStock
@@ -659,6 +680,23 @@ export default function StockManagement() {
                 <div className="flex justify-end gap-2 border-t border-slate-200 px-4 py-3 sm:px-6">
                   <button type="button" onClick={() => { setStockInPreview(null); setFormError(''); }} disabled={stockInSaving} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 disabled:opacity-50">ফিরে যান</button>
                   <button type="button" onClick={handleStockInConfirm} disabled={stockInSaving} className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">{stockInSaving ? 'সংরক্ষণ হচ্ছে…' : 'কনফার্ম করে সাবমিট'}</button>
+                </div>
+              </section>
+            </div>
+          )}
+
+          {stockInSaveError && (
+            <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/60 p-4" role="presentation">
+              <section role="alertdialog" aria-modal="true" aria-labelledby="stock-in-save-error-title" className="w-full max-w-md rounded-xl bg-white p-6 shadow-2xl">
+                <div className="flex items-start gap-3">
+                  <AlertTriangle className="mt-0.5 h-6 w-6 shrink-0 text-rose-600" />
+                  <div>
+                    <h3 id="stock-in-save-error-title" className="text-lg font-black text-slate-900">স্টক সংরক্ষণ করা যায়নি</h3>
+                    <p className="mt-2 text-sm text-rose-700">{stockInSaveError}</p>
+                  </div>
+                </div>
+                <div className="mt-5 flex justify-end">
+                  <button type="button" onClick={() => setStockInSaveError('')} className="rounded-lg bg-slate-800 px-4 py-2 text-sm font-bold text-white">ঠিক আছে</button>
                 </div>
               </section>
             </div>
