@@ -512,6 +512,16 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
     padding: 5mm 1mm 1mm !important;
     text-align: left !important;
   }
+  .monthly-report-stock-table th:nth-child(1),
+  .monthly-report-stock-table td:nth-child(1) {
+    min-width: 42mm !important;
+    white-space: nowrap !important;
+  }
+  .monthly-report-stock-table th:nth-child(2),
+  .monthly-report-stock-table td:nth-child(2) {
+    min-width: 25mm !important;
+    white-space: nowrap !important;
+  }
   .monthly-report-stock-table th,
   .monthly-report-stock-table td {
     padding: 1mm !important;

@@ -18,9 +18,18 @@ import { isDealerCollection, normalizePaymentType, PAYMENT_TYPES } from '../../.
 import { getPackageQuantityUnit } from '../../../shared/quantityUnits';
 import { getInvoiceCartons, getItemCartons } from '../../../shared/invoiceCartons';
 import { getInvoiceSalesAmount } from '../../../shared/invoiceTotals';
-import { INVOICE_SESSIONS, LEGACY_INVOICE_SESSION } from '../../../shared/sessions';
+import { getInvoiceSessionForDate, INVOICE_SESSIONS, LEGACY_INVOICE_SESSION } from '../../../shared/sessions';
 import SearchableRecordSelect from './SearchableRecordSelect';
 import CompanyLetterhead from './CompanyLetterhead';
+
+function getBengaliDesignation(designation = '') {
+  return String(designation)
+    .replace(/\bFSO\b/g, 'এফ.এস.ও.')
+    .replace(/\bSO\b/g, 'এস.ও.')
+    .replace(/\bTSO\b/g, 'টি.এস.ও.')
+    .replace(/\bASM\b/g, 'এ.এস.এম.')
+    .replace(/\bRSM\b/g, 'আর.এস.এম.');
+}
 
 export default function MonthlyReport() {
   const { products, invoices, stockInLogs, damageLogs, payments, officers, dealers } = useAgro();
@@ -38,6 +47,7 @@ export default function MonthlyReport() {
   const [endDate, setEndDate] = useState(todayStr);
 
   const [selectedMonth, setSelectedMonth] = useState(currentMonthStr);
+  const [selectedStockOfficerId, setSelectedStockOfficerId] = useState(officers[0]?.id || '');
   const [selectedYear, setSelectedYear] = useState(currentYearStr);
   const [selectedDealerId, setSelectedDealerId] = useState(dealers[0]?.id || '');
   const [selectedOfficerCode, setSelectedOfficerCode] = useState(officers[0]?.code || '5');
@@ -49,6 +59,10 @@ export default function MonthlyReport() {
     invoices.find((invoice) => invoice.session)?.session || INVOICE_SESSIONS[0]
   );
   const [searchTerm, setSearchTerm] = useState('');
+  const selectedStockOfficer = officers.find((officer) => officer.id === selectedStockOfficerId)
+    || officers[0]
+    || null;
+  const stockReportSession = getInvoiceSessionForDate(`${selectedMonth}-01`);
   const availableSessions = [...new Set([
     ...INVOICE_SESSIONS,
     ...invoices.map((invoice) => invoice.session || LEGACY_INVOICE_SESSION)
@@ -359,11 +373,8 @@ export default function MonthlyReport() {
     const currentPieces = variant.stock == null
       ? (Number(variant.stockCartons) || 0) * packPerBox
       : Number(variant.stock) || 0;
-    const closingPieces = Math.max(0, currentPieces - futureStockInPieces - futureInvoiceMovement);
-    const openingPieces = Math.max(
-      0,
-      closingPieces - stockInPieces + salesPieces - dealerReturnPieces + factoryReturnPieces
-    );
+    const closingPieces = currentPieces - futureStockInPieces - futureInvoiceMovement;
+    const openingPieces = closingPieces - stockInPieces + salesPieces - dealerReturnPieces + factoryReturnPieces;
     return {
       key: productKey,
       productName: product.name,
@@ -378,14 +389,15 @@ export default function MonthlyReport() {
     };
   }));
   const formatStockCartons = (cartons) => toBn(Number(cartons.toFixed(2)));
+  const positiveStockCartons = (cartons) => Math.max(0, Number(cartons) || 0);
   const stockReportTotals = stockReportRows.reduce((totals, row) => ({
-    openingCartons: totals.openingCartons + row.openingCartons,
-    stockInCartons: totals.stockInCartons + row.stockInCartons,
-    dealerReturnCartons: totals.dealerReturnCartons + row.dealerReturnCartons,
-    totalStockCartons: totals.totalStockCartons + row.totalStockCartons,
-    factoryReturnCartons: totals.factoryReturnCartons + row.factoryReturnCartons,
-    soldCartons: totals.soldCartons + row.soldCartons,
-    closingCartons: totals.closingCartons + row.closingCartons
+    openingCartons: totals.openingCartons + positiveStockCartons(row.openingCartons),
+    stockInCartons: totals.stockInCartons + positiveStockCartons(row.stockInCartons),
+    dealerReturnCartons: totals.dealerReturnCartons + positiveStockCartons(row.dealerReturnCartons),
+    totalStockCartons: totals.totalStockCartons + positiveStockCartons(row.totalStockCartons),
+    factoryReturnCartons: totals.factoryReturnCartons + positiveStockCartons(row.factoryReturnCartons),
+    soldCartons: totals.soldCartons + positiveStockCartons(row.soldCartons),
+    closingCartons: totals.closingCartons + positiveStockCartons(row.closingCartons)
   }), {
     openingCartons: 0,
     stockInCartons: 0,
@@ -466,6 +478,23 @@ export default function MonthlyReport() {
                   onChange={(e) => setSelectedMonth(e.target.value)}
                   className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 font-mono font-bold text-slate-800"
                 />
+              </div>
+            )}
+
+            {filterMode === 'stock' && (
+              <div>
+                <label className="block font-bold text-slate-700 mb-1" htmlFor="stock-report-officer">স্টক রিপোর্ট প্রস্তুতকারী অফিসার:</label>
+                <select
+                  id="stock-report-officer"
+                  value={selectedStockOfficer?.id || ''}
+                  onChange={(event) => setSelectedStockOfficerId(event.target.value)}
+                  className="w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm font-bold text-slate-800"
+                >
+                  <option value="">অফিসার নির্বাচন করুন</option>
+                  {officers.map((officer) => (
+                    <option key={officer.id} value={officer.id}>{officer.name}</option>
+                  ))}
+                </select>
               </div>
             )}
 
@@ -745,6 +774,15 @@ export default function MonthlyReport() {
             </div>
           </div>
           <p className="text-xs text-slate-600 mt-1 font-medium text-center">{reportSubtitle}</p>
+          {filterMode === 'stock' && (
+            <div className="monthly-report-stock-officer-details ml-auto mt-3 grid max-w-xl grid-cols-2 gap-x-5 gap-y-1 text-right text-xs">
+              <p><span className="font-bold">প্রস্তুতকারী:</span> {selectedStockOfficer?.name || '—'}</p>
+              <p><span className="font-bold">পদবি:</span> {getBengaliDesignation(selectedStockOfficer?.designation || '—')}</p>
+              <p><span className="font-bold">ঠিকানা / এলাকা:</span> {selectedStockOfficer?.territory || '—'}</p>
+              <p><span className="font-bold">মোবাইল:</span> {selectedStockOfficer?.phone ? toBn(selectedStockOfficer.phone) : '—'}</p>
+              <p><span className="font-bold">সেশন:</span> {stockReportSession ? toBn(stockReportSession) : '—'}</p>
+            </div>
+          )}
         </div>
 
         {/* Summary Metric Ribbon */}
@@ -856,22 +894,22 @@ export default function MonthlyReport() {
                     <th colSpan={9} className="p-2">মাসিক স্টক রিপোর্ট: {stockReportMonth}</th>
                   </tr>
                   <tr>
-                    <th className="min-w-[240px] p-2">পণ্যের নাম</th>
-                    <th className="p-2">প্যাক সাইজ</th>
-                    <th className="p-2 text-right">ওপেনিং স্টক (কার্টুন)</th>
-                    <th className="p-2 text-right">স্টক ইন (কার্টুন)</th>
-                    <th className="p-2 text-right">ডিলার ফেরত (কার্টুন)</th>
-                    <th className="p-2 text-right">টোটাল স্টক (কার্টুন)</th>
-                    <th className="p-2 text-right">ফ্যাক্টরি ফেরত (কার্টুন)</th>
-                    <th className="p-2 text-right">সেলস (কার্টুন)</th>
-                    <th className="p-2 text-right">মাসের শেষে স্টক (কার্টুন)</th>
+                    <th className="min-w-[240px] whitespace-nowrap p-2">পণ্যের নাম</th>
+                    <th className="whitespace-nowrap p-2">প্যাক সাইজ</th>
+                    <th className="p-2 text-right">ওপেনিং স্টক<br />(কার্টুন)</th>
+                    <th className="p-2 text-right">স্টক ইন<br />(কার্টুন)</th>
+                    <th className="p-2 text-right">ডিলার ফেরত<br />(কার্টুন)</th>
+                    <th className="p-2 text-right">টোটাল স্টক<br />(কার্টুন)</th>
+                    <th className="p-2 text-right">ফ্যাক্টরি ফেরত<br />(কার্টুন)</th>
+                    <th className="p-2 text-right">সেলস<br />(কার্টুন)</th>
+                    <th className="p-2 text-right">মাসের শেষে স্টক<br />(কার্টুন)</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {stockReportRows.map((row) => (
                     <tr key={row.key}>
-                      <td className="min-w-[240px] p-2 font-semibold break-words">{row.productName}</td>
-                      <td className="p-2">{row.size}</td>
+                      <td className="min-w-[240px] whitespace-nowrap p-2 font-semibold">{row.productName}</td>
+                      <td className="whitespace-nowrap p-2">{row.size}</td>
                       <td className="p-2 text-right">{formatStockCartons(row.openingCartons)}</td>
                       <td className="p-2 text-right">{formatStockCartons(row.stockInCartons)}</td>
                       <td className="p-2 text-right">{formatStockCartons(row.dealerReturnCartons)}</td>
