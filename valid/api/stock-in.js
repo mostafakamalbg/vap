@@ -3,6 +3,7 @@ import dbConnect from '../lib/mongodb.js';
 import { authorize } from '../lib/auth.js';
 import { BusinessRecord, Product } from '../lib/models.js';
 import { transactionOptions, withTransactionFallback } from '../lib/transactions.js';
+import { getStockInQuantities } from '../shared/quantityUnits.js';
 
 function isValidDate(value) {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -17,7 +18,7 @@ export default async function handler(req, res) {
   if (!user) return;
 
   const inputs = Array.isArray(req.body?.entries) ? req.body.entries : [req.body || {}];
-  if (!inputs.length || inputs.length > 50 || inputs.some((input) => (
+  if (!inputs.length || inputs.length > 200 || inputs.some((input) => (
     !input?.productId
     || !input?.sku
     || !isValidDate(input.date)
@@ -58,8 +59,18 @@ export default async function handler(req, res) {
           error.statusCode = 404;
           throw error;
         }
-        variant.stockCartons = (Number(variant.stockCartons) || 0) + entry.cartons;
-        variant.stock = (Number(variant.stock) || 0) + entry.quantityPieces;
+        const quantities = getStockInQuantities({
+          productName: product.name,
+          generic: product.generic,
+          size: variant.size,
+          packPerBox: variant.packPerBox,
+          stock: variant.stock,
+          stockCartons: variant.stockCartons
+        }, entry.cartons);
+        entry.quantityPieces = quantities.quantityPieces;
+        entry.quantityUnit = quantities.quantityUnit;
+        variant.stockCartons = quantities.stockCartons;
+        variant.stock = quantities.stock;
       }
       for (const product of products.values()) await product.save(options);
       await BusinessRecord.create(entries.map((entry) => ({

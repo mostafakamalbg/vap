@@ -3,7 +3,7 @@ import test from 'node:test';
 import { getInvoiceCartons } from './invoiceCartons.js';
 import { getInvoiceSalesAmount } from './invoiceTotals.js';
 import { applyInvoiceStockChanges } from './invoiceStock.js';
-import { getPackageQuantityUnit } from './quantityUnits.js';
+import { getPackageQuantityUnit, getStockInQuantities } from './quantityUnits.js';
 import { normalizeHotlineNumber } from './companyContact.js';
 
 test('legacy hotline values normalize to the current company number', () => {
@@ -19,7 +19,30 @@ test('invoice package units use bags for gypsum and magnesium', () => {
 
 test('invoice package units use jars for five-liter products and cartons otherwise', () => {
   assert.equal(getPackageQuantityUnit({ productName: 'Product A', size: '5 L', packPerBox: 1 }), 'জার');
+  assert.equal(getPackageQuantityUnit({ productName: 'Product A', size: '৫লিটার × ০১', packPerBox: 1 }), 'জার');
   assert.equal(getPackageQuantityUnit({ productName: 'Product B', size: '১০০ মিলি', packPerBox: 30 }), 'কার্টুন');
+});
+
+test('stock-in counts bags and jars directly while carton counts expand by pack size', () => {
+  assert.deepEqual(getStockInQuantities({
+    productName: 'মহাশক্তি প্লাস জিপসাম',
+    size: '৫কেজি × ৬',
+    packPerBox: 6,
+    stock: 480,
+    stockCartons: 80
+  }, 4), {
+    quantityUnit: 'বস্তা', cartons: 4, quantityPieces: 4, stock: 484, stockCartons: 80
+  });
+  assert.deepEqual(getStockInQuantities({
+    productName: 'Product A', size: '৫লিটার × ০১', packPerBox: 1, stock: 10, stockCartons: 10
+  }, 2), {
+    quantityUnit: 'জার', cartons: 2, quantityPieces: 2, stock: 12, stockCartons: 12
+  });
+  assert.deepEqual(getStockInQuantities({
+    productName: 'Product B', size: '১০০ মিলি × ১২', packPerBox: 12, stock: 24, stockCartons: 2
+  }, 3), {
+    quantityUnit: 'কার্টুন', cartons: 3, quantityPieces: 36, stock: 60, stockCartons: 5
+  });
 });
 
 test('invoice carton totals fall back to item quantities when the stored total is missing or zero', () => {
