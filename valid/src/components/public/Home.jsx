@@ -8,6 +8,8 @@ import {
   MapPin,
   Package,
   ArrowRight,
+  ChevronLeft,
+  ChevronRight,
   Sparkles,
   FileText,
   CheckCircle2,
@@ -86,7 +88,7 @@ export default function Home({ onNavigate }) {
       setActiveSlide((current) => (current + 1) % heroSlides.length);
     }, 5000);
     return () => window.clearInterval(timer);
-  }, []);
+  }, [activeSlide]);
 
   return (
     <div className="space-y-16 pb-16">
@@ -111,6 +113,22 @@ export default function Home({ onNavigate }) {
                   </div>
                 </div>
               ))}
+              <button
+                type="button"
+                aria-label="আগের স্লাইড"
+                onClick={() => setActiveSlide((current) => (current - 1 + heroSlides.length) % heroSlides.length)}
+                className="absolute left-3 top-1/2 z-10 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-white/60 bg-emerald-950/60 text-white shadow-lg transition hover:bg-emerald-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white sm:left-4 sm:h-11 sm:w-11"
+              >
+                <ChevronLeft className="h-5 w-5 sm:h-6 sm:w-6" aria-hidden="true" />
+              </button>
+              <button
+                type="button"
+                aria-label="পরের স্লাইড"
+                onClick={() => setActiveSlide((current) => (current + 1) % heroSlides.length)}
+                className="absolute right-3 top-1/2 z-10 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-white/60 bg-emerald-950/60 text-white shadow-lg transition hover:bg-emerald-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white sm:right-4 sm:h-11 sm:w-11"
+              >
+                <ChevronRight className="h-5 w-5 sm:h-6 sm:w-6" aria-hidden="true" />
+              </button>
               <div className="absolute bottom-3 left-4 flex gap-1.5 sm:left-6">
                 {heroSlides.map((slide, index) => (
                   <button
