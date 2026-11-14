@@ -502,7 +502,7 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
   .monthly-report-sheet > section {
     break-inside: auto;
   }
-  body.monthly-report-stock-printing .monthly-report-stock-mode > :not(.monthly-report-print-header):not(.monthly-report-stock-section) {
+  body.monthly-report-stock-printing .monthly-report-stock-mode > :not(.monthly-report-print-header):not(.monthly-report-stock-meta):not(.monthly-report-stock-section) {
     display: none !important;
   }
   .monthly-report-stock-mode {
@@ -543,6 +543,9 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
     font-weight: 700 !important;
     padding: 1mm !important;
     text-align: left !important;
+  }
+  .monthly-report-stock-continuation {
+    font-weight: 700 !important;
   }
   .monthly-report-stock-table th:nth-child(1),
   .monthly-report-stock-table td:nth-child(1) {

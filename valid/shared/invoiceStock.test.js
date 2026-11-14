@@ -5,11 +5,21 @@ import { getInvoiceSalesAmount } from './invoiceTotals.js';
 import { applyInvoiceStockChanges } from './invoiceStock.js';
 import { getPackageQuantityUnit, getStockInQuantities } from './quantityUnits.js';
 import { normalizeHotlineNumber } from './companyContact.js';
+import { normalizeProductDisplayNames, REAL_HORMONE_SHORT_NAME } from './productNames.js';
 
 test('legacy hotline values normalize to the current company number', () => {
   assert.equal(normalizeHotlineNumber('017-96791398'), '01713736320');
   assert.equal(normalizeHotlineNumber('০১৭৯৬৭৯১৩৯৮'), '01713736320');
   assert.equal(normalizeHotlineNumber('01700000000'), '01700000000');
+});
+
+test('legacy real hormone product names are shortened in product and invoice records', () => {
+  const records = normalizeProductDisplayNames([
+    { id: 'prod-25', name: 'রিয়েল হরমোন (প্যাকলোবিউট্রাজল ২৫% এসসি)' },
+    { items: [{ productName: 'রিয়েল হরমোন (প্যাকলোবিউট্রাজল ২৫% এসসি)' }] }
+  ]);
+  assert.equal(records[0].name, REAL_HORMONE_SHORT_NAME);
+  assert.equal(records[1].items[0].productName, REAL_HORMONE_SHORT_NAME);
 });
 
 test('invoice package units use bags for gypsum and magnesium', () => {

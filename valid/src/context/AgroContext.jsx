@@ -20,6 +20,7 @@ import { getInvoiceCartons } from '../../shared/invoiceCartons';
 import { getInvoiceSalesAmount } from '../../shared/invoiceTotals';
 import { getStockInQuantities } from '../../shared/quantityUnits';
 import { normalizeHotlineNumber } from '../../shared/companyContact';
+import { normalizeProductDisplayNames } from '../../shared/productNames';
 
 const AgroContext = createContext();
 
@@ -157,7 +158,7 @@ export function AgroProvider({ children }) {
   // Version 5 storage keys for continuous serial 1 to 83 dealer codes and 26 products
   const [products, setProducts] = useState(() => {
     const saved = localStorage.getItem('vap_products_v5');
-    return saved ? JSON.parse(saved) : INITIAL_PRODUCTS;
+    return normalizeProductDisplayNames(saved ? JSON.parse(saved) : INITIAL_PRODUCTS);
   });
 
   const [officers, setOfficers] = useState(() => {
@@ -172,17 +173,17 @@ export function AgroProvider({ children }) {
 
   const [invoices, setInvoices] = useState(() => {
     const saved = localStorage.getItem('vap_invoices_v5');
-    return normalizeBusinessRecords('invoices', saved ? JSON.parse(saved) : INITIAL_INVOICES);
+    return normalizeProductDisplayNames(normalizeBusinessRecords('invoices', saved ? JSON.parse(saved) : INITIAL_INVOICES));
   });
 
   const [stockInLogs, setStockInLogs] = useState(() => {
     const saved = localStorage.getItem('vap_stock_in_v5');
-    return saved ? JSON.parse(saved) : INITIAL_STOCK_IN;
+    return normalizeProductDisplayNames(saved ? JSON.parse(saved) : INITIAL_STOCK_IN);
   });
 
   const [damageLogs, setDamageLogs] = useState(() => {
     const saved = localStorage.getItem('vap_damages_v5');
-    return normalizeBusinessRecords('damageLogs', saved ? JSON.parse(saved) : INITIAL_DAMAGES);
+    return normalizeProductDisplayNames(normalizeBusinessRecords('damageLogs', saved ? JSON.parse(saved) : INITIAL_DAMAGES));
   });
   const [payments, setPayments] = useState(() => {
     const saved = localStorage.getItem('vap_payments_v5');
@@ -310,11 +311,11 @@ export function AgroProvider({ children }) {
     if (!Array.isArray(records) || !setters[type]) {
       throw new Error('সার্ভার থেকে সঠিক ডেটা পাওয়া যায়নি।');
     }
-    const normalizedRecords = normalizeBusinessRecords(
+    const normalizedRecords = normalizeProductDisplayNames(normalizeBusinessRecords(
       type,
       records,
       type === 'dealers' ? officers : []
-    );
+    ));
     setters[type](normalizedRecords);
     return normalizedRecords;
   };
@@ -359,11 +360,11 @@ export function AgroProvider({ children }) {
           const setter = setters[type];
           if (records.length > 0 || currentUser.role === 'officer' || hasSharedData) {
             if (!cancelled) {
-              setter(normalizeBusinessRecords(
+              setter(normalizeProductDisplayNames(normalizeBusinessRecords(
                 type,
                 records,
                 type === 'dealers' ? officersForAssignments : []
-              ));
+              )));
             }
           } else if (localRecords[type].length > 0 && type === 'invoices') {
             for (const invoice of localRecords[type]) {
@@ -1080,12 +1081,12 @@ export function AgroProvider({ children }) {
       body: JSON.stringify({ ...backup, password })
     });
     await readJsonResponse(response);
-    setProducts(backup.data.products);
+    setProducts(normalizeProductDisplayNames(backup.data.products));
     setOfficers(normalizeBusinessRecords('officers', backup.data.officers));
     setDealers(normalizeBusinessRecords('dealers', backup.data.dealers, backup.data.officers));
-    setInvoices(normalizeBusinessRecords('invoices', backup.data.invoices));
-    setStockInLogs(backup.data.stockInLogs);
-    setDamageLogs(normalizeBusinessRecords('damageLogs', backup.data.damageLogs));
+    setInvoices(normalizeProductDisplayNames(normalizeBusinessRecords('invoices', backup.data.invoices)));
+    setStockInLogs(normalizeProductDisplayNames(backup.data.stockInLogs));
+    setDamageLogs(normalizeProductDisplayNames(normalizeBusinessRecords('damageLogs', backup.data.damageLogs)));
     setPayments(normalizeBusinessRecords('payments', backup.data.payments));
     setSalesAgreements(normalizeBusinessRecords('salesAgreements', backup.data.salesAgreements));
   };

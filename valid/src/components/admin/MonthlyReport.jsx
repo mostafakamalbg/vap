@@ -913,7 +913,9 @@ export default function MonthlyReport() {
               <table className="monthly-report-stock-table w-full min-w-[1200px] text-left text-xs">
                 <thead className="bg-slate-100 text-slate-700">
                   <tr className="monthly-report-stock-month-row">
-                    <th colSpan={9} className="monthly-report-stock-continuation">স্টক রিপোর্টের ধারাবাহিক অংশ — {stockReportMonth}</th>
+                    <th colSpan={9} className="monthly-report-stock-continuation">
+                      স্টক রিপোর্টের ধারাবাহিক অংশ • {toBnDate(`${selectedMonth}-01`)}–{toBnDate(monthEndDate)} • {toBn(stockReportSession)} • প্রস্তুতকারী: {selectedStockOfficer?.name || '—'}
+                    </th>
                   </tr>
                   <tr>
                     <th className="p-2">পণ্যের নাম</th>
