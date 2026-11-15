@@ -4,7 +4,11 @@ import { getInvoiceCartons, getItemCartons } from './invoiceCartons.js';
 import { getInvoiceItemAmounts, getInvoiceSalesAmount } from './invoiceTotals.js';
 import { getDealerNetDue } from './dealerLedger.js';
 import { applyInvoiceStockChanges } from './invoiceStock.js';
-import { getPackageQuantityUnit, getStockInQuantities } from './quantityUnits.js';
+import {
+  getInvoiceQuantityParts,
+  getPackageQuantityUnit,
+  getStockInQuantities
+} from './quantityUnits.js';
 import { normalizeHotlineNumber } from './companyContact.js';
 import { normalizeProductDisplayNames, REAL_HORMONE_SHORT_NAME } from './productNames.js';
 
@@ -33,6 +37,32 @@ test('invoice package units use jars for five-liter products and cartons otherwi
   assert.equal(getPackageQuantityUnit({ productName: 'Product A', size: '5 L', packPerBox: 1 }), 'জার');
   assert.equal(getPackageQuantityUnit({ productName: 'Product A', size: '৫লিটার × ০১', packPerBox: 1 }), 'জার');
   assert.equal(getPackageQuantityUnit({ productName: 'Product B', size: '১০০ মিলি', packPerBox: 30 }), 'কার্টুন');
+});
+
+test('invoice print quantities omit carton and jar labels but mark piece quantities', () => {
+  assert.deepEqual(getInvoiceQuantityParts({
+    unitType: 'carton',
+    cartons: 6,
+    size: '১০০ মিলি × ৩০',
+    packPerBox: 30
+  }), [{ quantity: 6, unit: '' }]);
+  assert.deepEqual(getInvoiceQuantityParts({
+    unitType: 'carton',
+    cartons: 1,
+    size: '৫লিটার × ০১',
+    packPerBox: 1
+  }), [{ quantity: 1, unit: '' }]);
+  assert.deepEqual(getInvoiceQuantityParts({
+    unitType: 'piece',
+    cartons: 0,
+    retailPieces: 28,
+    unit: 'বোতল'
+  }), [{ quantity: 28, unit: 'পিস' }]);
+  assert.deepEqual(getInvoiceQuantityParts({
+    cartons: 0,
+    retailPieces: 28,
+    unit: 'বোতল'
+  }), [{ quantity: 28, unit: 'পিস' }]);
 });
 
 test('stock-in counts bags and jars directly while carton counts expand by pack size', () => {

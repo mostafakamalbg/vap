@@ -11,6 +11,32 @@ export function getPackageQuantityUnit(item) {
   return 'কার্টুন';
 }
 
+export function getInvoiceQuantityParts(item) {
+  const cartonCount = Number(item?.cartons ?? item?.quantity) || 0;
+  const retailPieces = Number(item?.retailPieces) || 0;
+  const quantityUnit = getPackageQuantityUnit(item);
+  const isPieceUnit = item?.unitType === 'piece'
+    || (item?.unitType == null && cartonCount === 0 && retailPieces > 0);
+
+  if (isPieceUnit) return [{ quantity: retailPieces, unit: 'পিস' }];
+
+  const parts = [];
+  if (cartonCount > 0) {
+    parts.push({
+      quantity: cartonCount,
+      unit: ['কার্টুন', 'জার'].includes(quantityUnit) ? '' : quantityUnit
+    });
+  }
+  if (retailPieces > 0) parts.push({ quantity: retailPieces, unit: 'পিস' });
+  if (parts.length === 0) {
+    parts.push({
+      quantity: 0,
+      unit: ['কার্টুন', 'জার'].includes(quantityUnit) ? '' : quantityUnit
+    });
+  }
+  return parts;
+}
+
 export function getStockInQuantities(item, packageCount) {
   const count = Number(packageCount) || 0;
   const packPerBox = Number(item?.packPerBox) || 1;

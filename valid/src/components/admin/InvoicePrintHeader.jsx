@@ -3,7 +3,7 @@ import { toBn, toBnDate } from '../../utils/bengali';
 import { formatDealerCode, formatInvoiceNumber, formatOfficerCode } from '../../../shared/codes';
 import { normalizePaymentMethod, PAYMENT_METHODS } from '../../../shared/paymentMethods';
 import { LEGACY_INVOICE_SESSION } from '../../../shared/sessions';
-import { getPackageQuantityUnit } from '../../../shared/quantityUnits';
+import { getInvoiceQuantityParts, getPackageQuantityUnit } from '../../../shared/quantityUnits';
 import { getItemCartons } from '../../../shared/invoiceCartons';
 import { getInvoiceSalesAmount } from '../../../shared/invoiceTotals';
 import { normalizeHotlineNumber } from '../../../shared/companyContact';
@@ -27,10 +27,9 @@ function getItemValues(item) {
     || cartonCount * (Number(item.cartonPrice) || 0)
       + retailPieces * piecePrice;
   const commission = tradePrice * (Number(item.commission) || 0) / 100;
-  const quantityLabel = [
-    cartonCount > 0 ? `${toBn(cartonCount)} ${quantityUnit}` : '',
-    retailPieces > 0 ? `${toBn(retailPieces)} ${item.unit || 'পিস'}` : ''
-  ].filter(Boolean).join(' + ');
+  const quantityLabel = getInvoiceQuantityParts(item)
+    .map(({ quantity, unit }) => `${toBn(quantity)}${unit ? ` ${unit}` : ''}`)
+    .join(' + ');
   return {
     cartons: getItemCartons(item),
     quantityLabel: quantityLabel || `০ ${quantityUnit}`,
