@@ -752,7 +752,7 @@ export default function DealerLedger() {
             </div>
 
             {/* Dealer Info Bar */}
-            <div className="grid grid-cols-2 gap-4 text-xs bg-slate-50 p-3 rounded-lg border border-slate-200">
+            <div className="dealer-ledger-info-box grid grid-cols-2 gap-4 text-xs bg-slate-50 p-3 rounded-lg border border-slate-200">
               <div>
                 <p><span className="font-bold">প্রতিষ্ঠান:</span> {selectedDealerForLedger.shopName}</p>
                 <p><span className="font-bold">প্রোপাইটর:</span> {selectedDealerForLedger.proprietor}</p>
@@ -775,7 +775,7 @@ export default function DealerLedger() {
               <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
                 লেনদেন বিবরণী (Ledger Transactions)
               </h4>
-              <table className="w-full text-left text-xs border border-slate-200">
+              <table className="dealer-ledger-table w-full text-left text-xs border border-slate-200">
                 <thead className="bg-slate-100 font-bold text-slate-700">
                   <tr>
                     <th className="p-2">তারিখ</th>
