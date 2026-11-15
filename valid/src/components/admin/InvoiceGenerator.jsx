@@ -7,6 +7,7 @@ import { normalizePaymentMethod, PAYMENT_METHODS } from '../../../shared/payment
 import { getInvoiceItemAmounts } from '../../../shared/invoiceTotals';
 import { getItemCartons } from '../../../shared/invoiceCartons';
 import { getPackageQuantityUnit } from '../../../shared/quantityUnits';
+import { compareInvoiceItemsByIdAndSize } from '../../../shared/invoiceSorting';
 import { toBnCurrency } from '../../utils/bengali';
 import InvoicePrintHeader from './InvoicePrintHeader';
 import SearchableRecordSelect from './SearchableRecordSelect';
@@ -188,6 +189,9 @@ export default function InvoiceGenerator({
     const amounts = getInvoiceItemAmounts(item);
     return { ...item, ...amounts, quantity: amounts.cartons };
   }), [form.items]);
+  const sortedFormItems = useMemo(() => form.items
+    .map((item, index) => ({ item, index }))
+    .sort((left, right) => compareInvoiceItemsByIdAndSize(left.item, right.item)), [form.items]);
 
   const isRegularInvoice = invoiceType === 'regular';
   const isDealerReturn = invoiceType === 'dealer_return';
@@ -618,7 +622,7 @@ export default function InvoiceGenerator({
             <button type="button" onClick={addItem} className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white">+ পণ্য যোগ করুন</button>
           </div>
           <div className="space-y-4 p-5">
-            {form.items.map((item, index) => (
+            {sortedFormItems.map(({ item, index }) => (
               <div key={`invoice-item-${index}`} className="grid gap-3 rounded-lg border border-slate-200 p-4 sm:grid-cols-2 lg:grid-cols-[minmax(190px,2fr)_minmax(105px,1fr)_minmax(90px,.8fr)_minmax(110px,1fr)_minmax(105px,.9fr)_minmax(120px,1fr)_auto_auto] lg:items-end">
                 <label className="text-sm font-semibold text-slate-700">
                   পণ্য <span className="text-rose-600">*</span>
@@ -700,7 +704,10 @@ export default function InvoiceGenerator({
                 <button type="button" onClick={addReturnAdjustment} className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white">+ ফেরত পণ্য যোগ করুন</button>
               </div>
               <div className="space-y-3 p-5">
-                {returnAdjustments.map((item, index) => (
+                {returnAdjustments
+                  .map((item, index) => ({ item, index }))
+                  .sort((left, right) => compareInvoiceItemsByIdAndSize(left.item, right.item))
+                  .map(({ item, index }) => (
                   <div key={`invoice-return-${index}`} className="grid gap-3 rounded-lg border border-slate-200 p-4 sm:grid-cols-2 lg:grid-cols-[minmax(220px,2fr)_1fr_1fr_auto] lg:items-end">
                     <label className="text-sm font-semibold text-slate-700">
                       ফেরত পণ্য ও সাইজ

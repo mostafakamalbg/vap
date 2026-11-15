@@ -6,6 +6,7 @@ import { LEGACY_INVOICE_SESSION } from '../../../shared/sessions';
 import { getInvoiceQuantityParts, getPackageQuantityUnit } from '../../../shared/quantityUnits';
 import { getItemCartons } from '../../../shared/invoiceCartons';
 import { getInvoiceSalesAmount } from '../../../shared/invoiceTotals';
+import { sortInvoiceItems } from '../../../shared/invoiceSorting';
 import { normalizeHotlineNumber } from '../../../shared/companyContact';
 import { useAgro } from '../../context/AgroContext';
 import CompanyLetterhead from './CompanyLetterhead';
@@ -17,17 +18,6 @@ const money = (value) => {
     maximumFractionDigits: 2
   })}`;
 };
-
-function compareInvoiceItemCodes(left, right) {
-  return String(left.sku || left.productCode || left.productId || '').localeCompare(
-    String(right.sku || right.productCode || right.productId || ''),
-    undefined,
-    { numeric: true, sensitivity: 'base' }
-  ) || String(left.productId || '').localeCompare(String(right.productId || ''), undefined, {
-    numeric: true,
-    sensitivity: 'base'
-  });
-}
 
 function getItemValues(item) {
   const cartonCount = Number(item.cartons ?? item.quantity) || 0;
@@ -86,8 +76,8 @@ export default function InvoicePrintHeader({ invoice }) {
     entry.id === invoice.dealerId
     || formatDealerCode(entry.code || entry.id) === invoiceDealerCode
   ));
-  const items = [...(invoice.items || [])].sort(compareInvoiceItemCodes);
-  const returns = [...(invoice.returnAdjustments || [])].sort(compareInvoiceItemCodes);
+  const items = sortInvoiceItems(invoice.items);
+  const returns = sortInvoiceItems(invoice.returnAdjustments);
   const itemTotals = items.reduce((totals, item) => {
     const values = getItemValues(item);
     totals.cartons += values.cartons;

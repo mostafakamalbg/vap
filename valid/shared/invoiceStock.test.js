@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { getInvoiceCartons, getItemCartons } from './invoiceCartons.js';
 import { getInvoiceItemAmounts, getInvoiceSalesAmount } from './invoiceTotals.js';
+import { sortInvoiceItems } from './invoiceSorting.js';
 import { getDealerLedgerTransactions, getDealerNetDue } from './dealerLedger.js';
 import { applyInvoiceStockChanges } from './invoiceStock.js';
 import {
@@ -63,6 +64,24 @@ test('invoice print quantities omit carton and jar labels but mark piece quantit
     retailPieces: 28,
     unit: 'বোতল'
   }), [{ quantity: 28, unit: 'পিস' }]);
+});
+
+test('invoice items sort by internal product ID then descending size capacity', () => {
+  const sortedItems = sortInvoiceItems([
+    { productId: 'prod-02', sku: 'B', size: '৫০০মিলি × ১০' },
+    { productId: 'prod-02', sku: 'A', size: '১লিঃ × ১২' },
+    { productId: 'prod-01', sku: 'Z', size: '৫০গ্রাম × ৪৮' },
+    { productId: 'prod-01', sku: 'A', size: '১০০গ্রাম × ২৪' },
+    { productId: 'prod-01', sku: 'B', size: '১কেজি × ১০' }
+  ]);
+
+  assert.deepEqual(sortedItems.map(({ productId, size }) => [productId, size]), [
+    ['prod-01', '১কেজি × ১০'],
+    ['prod-01', '১০০গ্রাম × ২৪'],
+    ['prod-01', '৫০গ্রাম × ৪৮'],
+    ['prod-02', '১লিঃ × ১২'],
+    ['prod-02', '৫০০মিলি × ১০']
+  ]);
 });
 
 test('stock-in counts bags and jars directly while carton counts expand by pack size', () => {
