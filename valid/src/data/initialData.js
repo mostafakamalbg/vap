@@ -49,10 +49,10 @@ export const INITIAL_PRODUCTS = [
     category: 'কীটনাশক',
     description: 'ধান, সবজি, তুলা ও পাটের পাতা মোড়ানো পোকা ও মাজরা পোকা দমনে অত্যন্ত কার্যকর।',
     variants: [
-      { sku: 'MAH-1L', size: '১লিঃ × ১২', packPerBox: 12, unit: 'বোতল', cartonPrice: 8100, tp: 675, commission: 20, stockCartons: 50, stock: 600 },
-      { sku: 'MAH-400ML', size: '৪০০মিলি × ১০', packPerBox: 10, unit: 'বোতল', cartonPrice: 2850, tp: 285, commission: 20, stockCartons: 60, stock: 600 },
-      { sku: 'MAH-100ML', size: '১০০মিলি × ৩০', packPerBox: 30, unit: 'বোতল', cartonPrice: 2325, tp: 77.5, commission: 20, stockCartons: 80, stock: 2400 },
-      { sku: 'MAH-50ML', size: '৫০মিলি × ৩০', packPerBox: 30, unit: 'বোতল', cartonPrice: 1350, tp: 45, commission: 20, stockCartons: 80, stock: 2400 },
+      { sku: 'MAH-1L', size: '১লিঃ × ১২', packPerBox: 12, unit: 'বোতল', cartonPrice: 8100, tp: 675, commission: 20 },
+      { sku: 'MAH-400ML', size: '৪০০মিলি × ১০', packPerBox: 10, unit: 'বোতল', cartonPrice: 2850, tp: 285, commission: 20 },
+      { sku: 'MAH-100ML', size: '১০০মিলি × ৩০', packPerBox: 30, unit: 'বোতল', cartonPrice: 2325, tp: 77.5, commission: 20 },
+      { sku: 'MAH-50ML', size: '৫০মিলি × ৩০', packPerBox: 30, unit: 'বোতল', cartonPrice: 1350, tp: 45, commission: 20 },
     ]
   },
   {
@@ -62,10 +62,10 @@ export const INITIAL_PRODUCTS = [
     category: 'কীটনাশক',
     description: 'মাটির নিচের পোকা যেমন উইপোকা, কাটুই পোকা এবং ফসলের চুষে খাওয়া পোকা প্রতিরোধে পরীক্ষিত।',
     variants: [
-      { sku: 'MET-1L', size: '১লিঃ × ১২', packPerBox: 12, unit: 'বোতল', cartonPrice: 10800, tp: 900, commission: 20, stockCartons: 40, stock: 480 },
-      { sku: 'MET-400ML', size: '৪০০মিলি × ১০', packPerBox: 10, unit: 'বোতল', cartonPrice: 3700, tp: 370, commission: 20, stockCartons: 50, stock: 500 },
-      { sku: 'MET-100ML', size: '১০০মিলি × ৩০', packPerBox: 30, unit: 'বোতল', cartonPrice: 2925, tp: 97.5, commission: 20, stockCartons: 70, stock: 2100 },
-      { sku: 'MET-50ML', size: '৫০মিলি × ৩০', packPerBox: 30, unit: 'বোতল', cartonPrice: 1650, tp: 55, commission: 20, stockCartons: 70, stock: 2100 },
+      { sku: 'MET-1L', size: '১লিঃ × ১২', packPerBox: 12, unit: 'বোতল', cartonPrice: 10800, tp: 900, commission: 20 },
+      { sku: 'MET-400ML', size: '৪০০মিলি × ১০', packPerBox: 10, unit: 'বোতল', cartonPrice: 3700, tp: 370, commission: 20 },
+      { sku: 'MET-100ML', size: '১০০মিলি × ৩০', packPerBox: 30, unit: 'বোতল', cartonPrice: 2925, tp: 97.5, commission: 20 },
+      { sku: 'MET-50ML', size: '৫০মিলি × ৩০', packPerBox: 30, unit: 'বোতল', cartonPrice: 1650, tp: 55, commission: 20 },
     ]
   },
   {
@@ -75,11 +75,11 @@ export const INITIAL_PRODUCTS = [
     category: 'কীটনাশক',
     description: 'দ্বৈত ক্ষমতার কম্বিনেশন কীটনাশক। বেগুন ও ফলের ডগা ও ফল ছিদ্রকারী পোকা ধ্বংস করে।',
     variants: [
-      { sku: 'REN-1L', size: '১লিঃ × ১২', packPerBox: 12, unit: 'বোতল', cartonPrice: 15375, tp: 1281.25, commission: 20, stockCartons: 35, stock: 420 },
-      { sku: 'REN-500ML', size: '৫০০মিলি × ১০', packPerBox: 10, unit: 'বোতল', cartonPrice: 6475, tp: 647.5, commission: 20, stockCartons: 45, stock: 450 },
-      { sku: 'REN-400ML', size: '৪০০মিলি × ১০', packPerBox: 10, unit: 'বোতল', cartonPrice: 5200, tp: 520, commission: 20, stockCartons: 40, stock: 400 },
-      { sku: 'REN-100ML', size: '১০০মিলি × ৩০', packPerBox: 30, unit: 'বোতল', cartonPrice: 4050, tp: 135, commission: 20, stockCartons: 60, stock: 1800 },
-      { sku: 'REN-50ML', size: '৫০মিলি × ৩০', packPerBox: 30, unit: 'বোতল', cartonPrice: 2175, tp: 72.5, commission: 20, stockCartons: 60, stock: 1800 },
+      { sku: 'REN-1L', size: '১লিঃ × ১২', packPerBox: 12, unit: 'বোতল', cartonPrice: 15375, tp: 1281.25, commission: 20 },
+      { sku: 'REN-500ML', size: '৫০০মিলি × ১০', packPerBox: 10, unit: 'বোতল', cartonPrice: 6475, tp: 647.5, commission: 20 },
+      { sku: 'REN-400ML', size: '৪০০মিলি × ১০', packPerBox: 10, unit: 'বোতল', cartonPrice: 5200, tp: 520, commission: 20 },
+      { sku: 'REN-100ML', size: '১০০মিলি × ৩০', packPerBox: 30, unit: 'বোতল', cartonPrice: 4050, tp: 135, commission: 20 },
+      { sku: 'REN-50ML', size: '৫০মিলি × ৩০', packPerBox: 30, unit: 'বোতল', cartonPrice: 2175, tp: 72.5, commission: 20 },
     ]
   },
   {
@@ -89,10 +89,10 @@ export const INITIAL_PRODUCTS = [
     category: 'কীটনাশক',
     description: 'ধানের বাদামি গাছফড়িং (কারেন্ট পোকা), জাব পোকা ও সাদা মাছি দমনে দীর্ঘস্থায়ী অন্তর্বাহী কীটনাশক।',
     variants: [
-      { sku: 'MPR-400ML', size: '৪০০মিলি × ১০', packPerBox: 10, unit: 'বোতল', cartonPrice: 6750, tp: 675, commission: 20, stockCartons: 50, stock: 500 },
-      { sku: 'MPR-100ML', size: '১০০মিলি × ৩০', packPerBox: 30, unit: 'বোতল', cartonPrice: 5250, tp: 175, commission: 20, stockCartons: 70, stock: 2100 },
-      { sku: 'MPR-50ML', size: '৫০মিলি × ৩০', packPerBox: 30, unit: 'বোতল', cartonPrice: 2775, tp: 92.5, commission: 20, stockCartons: 80, stock: 2400 },
-      { sku: 'MPR-25ML', size: '২৫মিলি × ৩০', packPerBox: 30, unit: 'বোতল', cartonPrice: 1575, tp: 52.5, commission: 20, stockCartons: 80, stock: 2400 },
+      { sku: 'MPR-400ML', size: '৪০০মিলি × ১০', packPerBox: 10, unit: 'বোতল', cartonPrice: 6750, tp: 675, commission: 20 },
+      { sku: 'MPR-100ML', size: '১০০মিলি × ৩০', packPerBox: 30, unit: 'বোতল', cartonPrice: 5250, tp: 175, commission: 20 },
+      { sku: 'MPR-50ML', size: '৫০মিলি × ৩০', packPerBox: 30, unit: 'বোতল', cartonPrice: 2775, tp: 92.5, commission: 20 },
+      { sku: 'MPR-25ML', size: '২৫মিলি × ৩০', packPerBox: 30, unit: 'বোতল', cartonPrice: 1575, tp: 52.5, commission: 20 },
     ]
   },
   {
@@ -102,7 +102,7 @@ export const INITIAL_PRODUCTS = [
     category: 'কীটনাশক',
     description: 'ডিলারদের বিশেষ অফার প্যাক।',
     variants: [
-      { sku: 'MPR-OFF-400ML', size: '৪০০মিলি × ১০', packPerBox: 10, unit: 'বোতল', cartonPrice: 6200, tp: 620, commission: 20, stockCartons: 30, stock: 300 },
+      { sku: 'MPR-OFF-400ML', size: '৪০০মিলি × ১০', packPerBox: 10, unit: 'বোতল', cartonPrice: 6200, tp: 620, commission: 20 },
     ]
   },
   {
@@ -112,11 +112,11 @@ export const INITIAL_PRODUCTS = [
     category: 'কীটনাশক',
     description: 'লাল মাকড়, হলুদ মাকড় ও লিফমাইনার দমনে আন্তর্জাতিক মানের জৈব উৎসজাত মাকড়নাশক।',
     variants: [
-      { sku: 'RIB-5L', size: '৫লিটার × ০১', packPerBox: 1, unit: 'জার', cartonPrice: 4150, tp: 4150, commission: 20, stockCartons: 25, stock: 25 },
-      { sku: 'RIB-1L', size: '১লিঃ × ১২', packPerBox: 12, unit: 'বোতল', cartonPrice: 10350, tp: 862.5, commission: 20, stockCartons: 35, stock: 420 },
-      { sku: 'RIB-400ML', size: '৪০০মিলি × ১০', packPerBox: 10, unit: 'বোতল', cartonPrice: 3650, tp: 365, commission: 20, stockCartons: 40, stock: 400 },
-      { sku: 'RIB-100ML', size: '১০০মিলি × ৩০', packPerBox: 30, unit: 'বোতল', cartonPrice: 2925, tp: 97.5, commission: 20, stockCartons: 60, stock: 1800 },
-      { sku: 'RIB-50ML', size: '৫০মিলি × ৩০', packPerBox: 30, unit: 'বোতল', cartonPrice: 1575, tp: 52.5, commission: 20, stockCartons: 60, stock: 1800 },
+      { sku: 'RIB-5L', size: '৫লিটার × ০১', packPerBox: 1, unit: 'জার', cartonPrice: 4150, tp: 4150, commission: 20 },
+      { sku: 'RIB-1L', size: '১লিঃ × ১২', packPerBox: 12, unit: 'বোতল', cartonPrice: 10350, tp: 862.5, commission: 20 },
+      { sku: 'RIB-400ML', size: '৪০০মিলি × ১০', packPerBox: 10, unit: 'বোতল', cartonPrice: 3650, tp: 365, commission: 20 },
+      { sku: 'RIB-100ML', size: '১০০মিলি × ৩০', packPerBox: 30, unit: 'বোতল', cartonPrice: 2925, tp: 97.5, commission: 20 },
+      { sku: 'RIB-50ML', size: '৫০মিলি × ৩০', packPerBox: 30, unit: 'বোতল', cartonPrice: 1575, tp: 52.5, commission: 20 },
     ]
   },
   {
@@ -126,9 +126,9 @@ export const INITIAL_PRODUCTS = [
     category: 'কীটনাশক',
     description: 'ধানের মাজরা পোকা ও পাতা মোড়ানো পোকা দমনে অত্যন্ত জনপ্রিয় দ্রবণীয় পাউডার।',
     variants: [
-      { sku: 'MAIN-100G', size: '১০০গ্রাম × ২৪', packPerBox: 24, unit: 'প্যাকেট', cartonPrice: 5250, tp: 218.75, commission: 20, stockCartons: 50, stock: 1200 },
-      { sku: 'MAIN-50G', size: '৫০গ্রাম × ৪৮', packPerBox: 48, unit: 'প্যাকেট', cartonPrice: 5460, tp: 113.75, commission: 20, stockCartons: 50, stock: 2400 },
-      { sku: 'MAIN-10G', size: '১০গ্রাম × ৫০', packPerBox: 50, unit: 'প্যাকেট', cartonPrice: 1500, tp: 30, commission: 20, stockCartons: 80, stock: 4000 },
+      { sku: 'MAIN-100G', size: '১০০গ্রাম × ২৪', packPerBox: 24, unit: 'প্যাকেট', cartonPrice: 5250, tp: 218.75, commission: 20 },
+      { sku: 'MAIN-50G', size: '৫০গ্রাম × ৪৮', packPerBox: 48, unit: 'প্যাকেট', cartonPrice: 5460, tp: 113.75, commission: 20 },
+      { sku: 'MAIN-10G', size: '১০গ্রাম × ৫০', packPerBox: 50, unit: 'প্যাকেট', cartonPrice: 1500, tp: 30, commission: 20 },
     ]
   },
   {
@@ -138,7 +138,7 @@ export const INITIAL_PRODUCTS = [
     category: 'কীটনাশক',
     description: 'ফল ও ডগা ছিদ্রকারী পোকা ও ফল আর্মিওয়ার্ম দমনে কার্যকর।',
     variants: [
-      { sku: 'DUN-10G', size: '১০গ্রাম × ৮০', packPerBox: 80, unit: 'প্যাকেট', cartonPrice: 1600, tp: 20, commission: 20, stockCartons: 90, stock: 7200 },
+      { sku: 'DUN-10G', size: '১০গ্রাম × ৮০', packPerBox: 80, unit: 'প্যাকেট', cartonPrice: 1600, tp: 20, commission: 20 },
     ]
   },
   {
@@ -148,10 +148,10 @@ export const INITIAL_PRODUCTS = [
     category: 'ছত্রাকনাশক',
     description: 'বীজ শোধন ও ব্লাস্ট, শীথ ব্লাইট ও পাতা পোড়া রোগ প্রতিরোধে শীর্ষ ছত্রাকনাশক।',
     variants: [
-      { sku: 'RIF-500G', size: '৫০০গ্রাম × ১০', packPerBox: 10, unit: 'প্যাকেট', cartonPrice: 5500, tp: 550, commission: 20, stockCartons: 40, stock: 400 },
-      { sku: 'RIF-100G', size: '১০০গ্রাম × ২৪', packPerBox: 24, unit: 'প্যাকেট', cartonPrice: 2750, tp: 114.58, commission: 20, stockCartons: 60, stock: 1440 },
-      { sku: 'RIF-50G', size: '৫০গ্রাম × ৪৮', packPerBox: 48, unit: 'প্যাকেট', cartonPrice: 3000, tp: 62.5, commission: 20, stockCartons: 60, stock: 2880 },
-      { sku: 'RIF-25G', size: '২৫গ্রাম × ৬০', packPerBox: 60, unit: 'প্যাকেট', cartonPrice: 2355, tp: 39.25, commission: 20, stockCartons: 70, stock: 4200 },
+      { sku: 'RIF-500G', size: '৫০০গ্রাম × ১০', packPerBox: 10, unit: 'প্যাকেট', cartonPrice: 5500, tp: 550, commission: 20 },
+      { sku: 'RIF-100G', size: '১০০গ্রাম × ২৪', packPerBox: 24, unit: 'প্যাকেট', cartonPrice: 2750, tp: 114.58, commission: 20 },
+      { sku: 'RIF-50G', size: '৫০গ্রাম × ৪৮', packPerBox: 48, unit: 'প্যাকেট', cartonPrice: 3000, tp: 62.5, commission: 20 },
+      { sku: 'RIF-25G', size: '২৫গ্রাম × ৬০', packPerBox: 60, unit: 'প্যাকেট', cartonPrice: 2355, tp: 39.25, commission: 20 },
     ]
   },
   {
@@ -161,9 +161,9 @@ export const INITIAL_PRODUCTS = [
     category: 'ছত্রাকনাশক',
     description: 'আলুর নাবি ধসা, আগাম ধসা ও দাগ রোগ প্রতিরোধে স্পট ছত্রাকনাশক।',
     variants: [
-      { sku: 'NET-1KG', size: '১কেজি × ১০', packPerBox: 10, unit: 'প্যাকেট', cartonPrice: 11875, tp: 1187.5, commission: 20, stockCartons: 35, stock: 350 },
-      { sku: 'NET-500G', size: '৫০০গ্রাম × ২০', packPerBox: 20, unit: 'প্যাকেট', cartonPrice: 12150, tp: 607.5, commission: 20, stockCartons: 40, stock: 800 },
-      { sku: 'NET-100G', size: '১০০গ্রাম × ৩০', packPerBox: 30, unit: 'প্যাকেট', cartonPrice: 3825, tp: 127.5, commission: 20, stockCartons: 60, stock: 1800 },
+      { sku: 'NET-1KG', size: '১কেজি × ১০', packPerBox: 10, unit: 'প্যাকেট', cartonPrice: 11875, tp: 1187.5, commission: 20 },
+      { sku: 'NET-500G', size: '৫০০গ্রাম × ২০', packPerBox: 20, unit: 'প্যাকেট', cartonPrice: 12150, tp: 607.5, commission: 20 },
+      { sku: 'NET-100G', size: '১০০গ্রাম × ৩০', packPerBox: 30, unit: 'প্যাকেট', cartonPrice: 3825, tp: 127.5, commission: 20 },
     ]
   },
   {
@@ -173,10 +173,10 @@ export const INITIAL_PRODUCTS = [
     category: 'ছত্রাকনাশক',
     description: 'ধানের শীথ ব্লাইট ও খোলপচা নিরাময়কারী সিস্টেমিক ছত্রাকনাশক।',
     variants: [
-      { sku: 'REN-ZOL-500ML', size: '৫০০মিলি × ১০', packPerBox: 10, unit: 'বোতল', cartonPrice: 7300, tp: 730, commission: 20, stockCartons: 35, stock: 350 },
-      { sku: 'REN-ZOL-400ML', size: '৪০০মিলি × ১০', packPerBox: 10, unit: 'বোতল', cartonPrice: 6000, tp: 600, commission: 20, stockCartons: 35, stock: 350 },
-      { sku: 'REN-ZOL-100ML', size: '১০০মিলি × ৩০', packPerBox: 30, unit: 'বোতল', cartonPrice: 4500, tp: 150, commission: 20, stockCartons: 50, stock: 1500 },
-      { sku: 'REN-ZOL-50ML', size: '৫০মিলি × ৩০', packPerBox: 30, unit: 'বোতল', cartonPrice: 2400, tp: 80, commission: 20, stockCartons: 60, stock: 1800 },
+      { sku: 'REN-ZOL-500ML', size: '৫০০মিলি × ১০', packPerBox: 10, unit: 'বোতল', cartonPrice: 7300, tp: 730, commission: 20 },
+      { sku: 'REN-ZOL-400ML', size: '৪০০মিলি × ১০', packPerBox: 10, unit: 'বোতল', cartonPrice: 6000, tp: 600, commission: 20 },
+      { sku: 'REN-ZOL-100ML', size: '১০০মিলি × ৩০', packPerBox: 30, unit: 'বোতল', cartonPrice: 4500, tp: 150, commission: 20 },
+      { sku: 'REN-ZOL-50ML', size: '৫০মিলি × ৩০', packPerBox: 30, unit: 'বোতল', cartonPrice: 2400, tp: 80, commission: 20 },
     ]
   },
   {
@@ -186,9 +186,9 @@ export const INITIAL_PRODUCTS = [
     category: 'ছত্রাকনাশক',
     description: 'ব্রড-স্পেকট্রাম প্রতিরোধক ও নিরাময়ক সিস্টেমিক ছত্রাকনাশক।',
     variants: [
-      { sku: 'STAR-500ML', size: '৫০০মিলি × ১০', packPerBox: 10, unit: 'বোতল', cartonPrice: 0, tp: 0, commission: 20, stockCartons: 30, stock: 300 },
-      { sku: 'STAR-100ML', size: '১০০মিলি × ৩০', packPerBox: 30, unit: 'বোতল', cartonPrice: 0, tp: 0, commission: 20, stockCartons: 50, stock: 1500 },
-      { sku: 'STAR-50ML', size: '৫০মিলি × ৩০', packPerBox: 30, unit: 'বোতল', cartonPrice: 0, tp: 0, commission: 20, stockCartons: 50, stock: 1500 },
+      { sku: 'STAR-500ML', size: '৫০০মিলি × ১০', packPerBox: 10, unit: 'বোতল', cartonPrice: 0, tp: 0, commission: 20 },
+      { sku: 'STAR-100ML', size: '১০০মিলি × ৩০', packPerBox: 30, unit: 'বোতল', cartonPrice: 0, tp: 0, commission: 20 },
+      { sku: 'STAR-50ML', size: '৫০মিলি × ৩০', packPerBox: 30, unit: 'বোতল', cartonPrice: 0, tp: 0, commission: 20 },
     ]
   },
   {
@@ -198,7 +198,7 @@ export const INITIAL_PRODUCTS = [
     category: 'সার ও অনুখাদ্য',
     description: 'ধানের খায়রা রোগ প্রতিরোধে এবং দ্রুত কুশি বৃদ্ধিতে অপরিহার্য।',
     variants: [
-      { sku: 'FOR-ZN-1KG', size: '১কেজি × ১০', packPerBox: 10, unit: 'প্যাকেট', cartonPrice: 1500, tp: 150, commission: 20, stockCartons: 80, stock: 800 },
+      { sku: 'FOR-ZN-1KG', size: '১কেজি × ১০', packPerBox: 10, unit: 'প্যাকেট', cartonPrice: 1500, tp: 150, commission: 20 },
     ]
   },
   {
@@ -208,7 +208,7 @@ export const INITIAL_PRODUCTS = [
     category: 'সার ও অনুখাদ্য',
     description: 'ফুল-ফল ঝরা বন্ধ ও পরাগায়ন বৃদ্ধিতে উচ্চ ফলনশীল বোরন।',
     variants: [
-      { sku: 'VOL-BOR-500G', size: '৫০০গ্রাম × ২০', packPerBox: 20, unit: 'প্যাকেট', cartonPrice: 1350, tp: 67.5, commission: 20, stockCartons: 70, stock: 1400 },
+      { sku: 'VOL-BOR-500G', size: '৫০০গ্রাম × ২০', packPerBox: 20, unit: 'প্যাকেট', cartonPrice: 1350, tp: 67.5, commission: 20 },
     ]
   },
   {
@@ -218,7 +218,7 @@ export const INITIAL_PRODUCTS = [
     category: 'গ্রোথ প্রমোটার',
     description: 'চারা রোপণের পর দ্রুত শিকড় গজানো ও মাটির পুষ্টি টানার গতি বহুগুণ বাড়ায়।',
     variants: [
-      { sku: 'MROOT-1KG', size: '১কেজি × ১০', packPerBox: 10, unit: 'প্যাকেট', cartonPrice: 650, tp: 65, commission: 20, stockCartons: 90, stock: 900 },
+      { sku: 'MROOT-1KG', size: '১কেজি × ১০', packPerBox: 10, unit: 'প্যাকেট', cartonPrice: 650, tp: 65, commission: 20 },
     ]
   },
   {
@@ -228,8 +228,8 @@ export const INITIAL_PRODUCTS = [
     category: 'সার ও অনুখাদ্য',
     description: 'মাটির উর্বরতা বৃদ্ধি ও ফসলের রোগ প্রতিরোধ ক্ষমতা তৈরি করে।',
     variants: [
-      { sku: 'MGP-1KG', size: '১কেজি × ১০', packPerBox: 10, unit: 'প্যাকেট', cartonPrice: 1400, tp: 140, commission: 20, stockCartons: 60, stock: 600 },
-      { sku: 'MGP-500G', size: '৫০০গ্রাম × ২০', packPerBox: 20, unit: 'প্যাকেট', cartonPrice: 1450, tp: 72.5, commission: 20, stockCartons: 60, stock: 1200 },
+      { sku: 'MGP-1KG', size: '১কেজি × ১০', packPerBox: 10, unit: 'প্যাকেট', cartonPrice: 1400, tp: 140, commission: 20 },
+      { sku: 'MGP-500G', size: '৫০০গ্রাম × ২০', packPerBox: 20, unit: 'প্যাকেট', cartonPrice: 1450, tp: 72.5, commission: 20 },
     ]
   },
   {
@@ -239,7 +239,7 @@ export const INITIAL_PRODUCTS = [
     category: 'সার ও অনুখাদ্য',
     description: 'নাইট্রোজেন ও অনুখাদ্যের বিশেষ সমন্বয়।',
     variants: [
-      { sku: 'NAP-1KG', size: '১কেজি × ১০', packPerBox: 10, unit: 'প্যাকেট', cartonPrice: 725, tp: 72.5, commission: 20, stockCartons: 70, stock: 700 },
+      { sku: 'NAP-1KG', size: '১কেজি × ১০', packPerBox: 10, unit: 'প্যাকেট', cartonPrice: 725, tp: 72.5, commission: 20 },
     ]
   },
   {
@@ -249,8 +249,8 @@ export const INITIAL_PRODUCTS = [
     category: 'সার ও অনুখাদ্য',
     description: '১০০% পানিতে দ্রবণীয় স্প্রে উপযোগী চিলেটেড জিংক।',
     variants: [
-      { sku: 'MAH-ZN-50G', size: '৫০গ্রাম × ৫০', packPerBox: 50, unit: 'প্যাকেট', cartonPrice: 2813, tp: 56.26, commission: 20, stockCartons: 60, stock: 3000 },
-      { sku: 'MAH-ZN-20G', size: '২০গ্রাম × ৫০', packPerBox: 50, unit: 'প্যাকেট', cartonPrice: 1225, tp: 24.5, commission: 20, stockCartons: 80, stock: 4000 },
+      { sku: 'MAH-ZN-50G', size: '৫০গ্রাম × ৫০', packPerBox: 50, unit: 'প্যাকেট', cartonPrice: 2813, tp: 56.26, commission: 20 },
+      { sku: 'MAH-ZN-20G', size: '২০গ্রাম × ৫০', packPerBox: 50, unit: 'প্যাকেট', cartonPrice: 1225, tp: 24.5, commission: 20 },
     ]
   },
   {
@@ -260,7 +260,7 @@ export const INITIAL_PRODUCTS = [
     category: 'সার ও অনুখাদ্য',
     description: 'গাছের ক্লোরোফিল বৃদ্ধি করে পাতা গাঢ় সবুজ করে।',
     variants: [
-      { sku: 'MAH-MAG-1KG', size: '১কেজি × ২০', packPerBox: 20, unit: 'প্যাকেট', cartonPrice: 1500, tp: 75, commission: 20, stockCartons: 70, stock: 1400 },
+      { sku: 'MAH-MAG-1KG', size: '১কেজি × ২০', packPerBox: 20, unit: 'প্যাকেট', cartonPrice: 1500, tp: 75, commission: 20 },
     ]
   },
   {
@@ -270,8 +270,8 @@ export const INITIAL_PRODUCTS = [
     category: 'সার ও অনুখাদ্য',
     description: 'মাটির ক্ষারত্ব হ্রাস করে ও মাটিকে উর্বর করে তোলে।',
     variants: [
-      { sku: 'MAH-GYP-5KG', size: '৫কেজি × ৬', packPerBox: 6, unit: 'ব্যাগ', cartonPrice: 820, tp: 136.67, commission: 20, stockCartons: 80, stock: 480 },
-      { sku: 'MAH-GYP-10KG', size: '১০কেজি', packPerBox: 1, unit: 'ব্যাগ', cartonPrice: 260, tp: 260, commission: 20, stockCartons: 100, stock: 100 },
+      { sku: 'MAH-GYP-5KG', size: '৫কেজি × ৬', packPerBox: 6, unit: 'ব্যাগ', cartonPrice: 820, tp: 136.67, commission: 20 },
+      { sku: 'MAH-GYP-10KG', size: '১০কেজি', packPerBox: 1, unit: 'ব্যাগ', cartonPrice: 260, tp: 260, commission: 20 },
     ]
   },
   {
@@ -281,7 +281,7 @@ export const INITIAL_PRODUCTS = [
     category: 'সার ও অনুখাদ্য',
     description: 'ফসলের দানা পুষ্ট ও রোগ প্রতিরোধ ক্ষমতা বৃদ্ধি করে।',
     variants: [
-      { sku: 'JAM-POT-250G', size: '২৫০গ্রাম × ৩০', packPerBox: 30, unit: 'প্যাকেট', cartonPrice: 2475, tp: 82.5, commission: 20, stockCartons: 60, stock: 1800 },
+      { sku: 'JAM-POT-250G', size: '২৫০গ্রাম × ৩০', packPerBox: 30, unit: 'প্যাকেট', cartonPrice: 2475, tp: 82.5, commission: 20 },
     ]
   },
   {
@@ -291,7 +291,7 @@ export const INITIAL_PRODUCTS = [
     category: 'গ্রোথ প্রমোটার',
     description: 'গাছের কাণ্ড ও ডগা দ্রুত লম্বা করে এবং ফলনের আকার চমৎকার বৃদ্ধি করে।',
     variants: [
-      { sku: 'MAH-BAR-10G', size: '১০গ্রাম', packPerBox: 1, unit: 'ট্যাবলেট', cartonPrice: 105, tp: 105, commission: 20, stockCartons: 500, stock: 500 },
+      { sku: 'MAH-BAR-10G', size: '১০গ্রাম', packPerBox: 1, unit: 'ট্যাবলেট', cartonPrice: 105, tp: 105, commission: 20 },
     ]
   },
   {
@@ -301,8 +301,8 @@ export const INITIAL_PRODUCTS = [
     category: 'সার ও অনুখাদ্য',
     description: 'প্রিমিয়াম বক্স প্যাকিং বোরন। ফুল ও ফল ঝরা বন্ধ করে।',
     variants: [
-      { sku: 'MAH-BOR-500G', size: '৫০০গ্রাম × ১০', packPerBox: 10, unit: 'বক্স', cartonPrice: 2100, tp: 210, commission: 20, stockCartons: 60, stock: 600 },
-      { sku: 'MAH-BOR-100G', size: '১০০গ্রাম × ৩০', packPerBox: 30, unit: 'বক্স', cartonPrice: 1390, tp: 46.33, commission: 20, stockCartons: 70, stock: 2100 },
+      { sku: 'MAH-BOR-500G', size: '৫০০গ্রাম × ১০', packPerBox: 10, unit: 'বক্স', cartonPrice: 2100, tp: 210, commission: 20 },
+      { sku: 'MAH-BOR-100G', size: '১০০গ্রাম × ৩০', packPerBox: 30, unit: 'বক্স', cartonPrice: 1390, tp: 46.33, commission: 20 },
     ]
   },
   {
@@ -312,11 +312,11 @@ export const INITIAL_PRODUCTS = [
     category: 'গ্রোথ প্রমোটার',
     description: 'কুশি, ফুল ও ফলের প্রাচুর্য এনে কাঙ্ক্ষিত সর্বোচ্চ ফলন নিশ্চিত করে।',
     variants: [
-      { sku: 'NSF-5L', size: '৫লিটার × ০১', packPerBox: 1, unit: 'জার', cartonPrice: 1750, tp: 1750, commission: 20, stockCartons: 40, stock: 40 },
-      { sku: 'NSF-1L', size: '১লিঃ × ১২', packPerBox: 12, unit: 'বোতল', cartonPrice: 4650, tp: 387.5, commission: 20, stockCartons: 50, stock: 600 },
-      { sku: 'NSF-500ML', size: '৫০০মিলি × ১২', packPerBox: 12, unit: 'বোতল', cartonPrice: 2550, tp: 212.5, commission: 20, stockCartons: 60, stock: 720 },
-      { sku: 'NSF-100ML', size: '১০০মিলি × ৩০', packPerBox: 30, unit: 'বোতল', cartonPrice: 1500, tp: 50, commission: 20, stockCartons: 70, stock: 2100 },
-      { sku: 'NSF-50ML', size: '৫০মিলি × ৩০', packPerBox: 30, unit: 'বোতল', cartonPrice: 1050, tp: 35, commission: 20, stockCartons: 70, stock: 2100 },
+      { sku: 'NSF-5L', size: '৫লিটার × ০১', packPerBox: 1, unit: 'জার', cartonPrice: 1750, tp: 1750, commission: 20 },
+      { sku: 'NSF-1L', size: '১লিঃ × ১২', packPerBox: 12, unit: 'বোতল', cartonPrice: 4650, tp: 387.5, commission: 20 },
+      { sku: 'NSF-500ML', size: '৫০০মিলি × ১২', packPerBox: 12, unit: 'বোতল', cartonPrice: 2550, tp: 212.5, commission: 20 },
+      { sku: 'NSF-100ML', size: '১০০মিলি × ৩০', packPerBox: 30, unit: 'বোতল', cartonPrice: 1500, tp: 50, commission: 20 },
+      { sku: 'NSF-50ML', size: '৫০মিলি × ৩০', packPerBox: 30, unit: 'বোতল', cartonPrice: 1050, tp: 35, commission: 20 },
     ]
   },
   {
@@ -326,9 +326,9 @@ export const INITIAL_PRODUCTS = [
     category: 'গ্রোথ প্রমোটার',
     description: 'আম, লিচু ও অন্যান্য ফল গাছে অসময়ে ও নিয়মিত ফুল-ফল আনা নিশ্চিত করে।',
     variants: [
-      { sku: 'REAL-5L', size: '৫লিটার × ০১', packPerBox: 1, unit: 'জার', cartonPrice: 6500, tp: 6500, commission: 20, stockCartons: 30, stock: 30 },
-      { sku: 'REAL-1L', size: '১লিঃ × ১২', packPerBox: 12, unit: 'বোতল', cartonPrice: 16350, tp: 1362.5, commission: 20, stockCartons: 40, stock: 480 },
-      { sku: 'REAL-500ML', size: '৫০০মিলি × ১২', packPerBox: 12, unit: 'বোতল', cartonPrice: 8400, tp: 700, commission: 20, stockCartons: 50, stock: 600 },
+      { sku: 'REAL-5L', size: '৫লিটার × ০১', packPerBox: 1, unit: 'জার', cartonPrice: 6500, tp: 6500, commission: 20 },
+      { sku: 'REAL-1L', size: '১লিঃ × ১২', packPerBox: 12, unit: 'বোতল', cartonPrice: 16350, tp: 1362.5, commission: 20 },
+      { sku: 'REAL-500ML', size: '৫০০মিলি × ১২', packPerBox: 12, unit: 'বোতল', cartonPrice: 8400, tp: 700, commission: 20 },
     ]
   },
   {
@@ -338,20 +338,13 @@ export const INITIAL_PRODUCTS = [
     category: 'গ্রোথ প্রমোটার',
     description: 'ফলের মুকুল ও কুশি অতিরিক্ত সংখ্যায় ফোটাতে এবং মুকুল ঝরা বন্ধে সহায়ক।',
     variants: [
-      { sku: 'MUKUL-5L', size: '৫লিটার × ০১', packPerBox: 1, unit: 'জার', cartonPrice: 1800, tp: 1800, commission: 20, stockCartons: 40, stock: 40 },
-      { sku: 'MUKUL-1L', size: '১লিঃ × ১২', packPerBox: 12, unit: 'বোতল', cartonPrice: 4725, tp: 393.75, commission: 20, stockCartons: 50, stock: 600 },
-      { sku: 'MUKUL-500ML', size: '৫০০মিলি × ১২', packPerBox: 12, unit: 'বোতল', cartonPrice: 2625, tp: 218.75, commission: 20, stockCartons: 60, stock: 720 },
-      { sku: 'MUKUL-100ML', size: '১০০মিলি × ২৪', packPerBox: 24, unit: 'বোতল', cartonPrice: 1260, tp: 52.5, commission: 20, stockCartons: 70, stock: 1680 },
+      { sku: 'MUKUL-5L', size: '৫লিটার × ০১', packPerBox: 1, unit: 'জার', cartonPrice: 1800, tp: 1800, commission: 20 },
+      { sku: 'MUKUL-1L', size: '১লিঃ × ১২', packPerBox: 12, unit: 'বোতল', cartonPrice: 4725, tp: 393.75, commission: 20 },
+      { sku: 'MUKUL-500ML', size: '৫০০মিলি × ১২', packPerBox: 12, unit: 'বোতল', cartonPrice: 2625, tp: 218.75, commission: 20 },
+      { sku: 'MUKUL-100ML', size: '১০০মিলি × ২৪', packPerBox: 24, unit: 'বোতল', cartonPrice: 1260, tp: 52.5, commission: 20 },
     ]
   }
 ];
-
-INITIAL_PRODUCTS.forEach((product) => {
-  product.variants.forEach((variant) => {
-    variant.stockCartons = 1;
-    variant.stock = variant.stockCartons * (Number(variant.packPerBox) || 1);
-  });
-});
 
 // All 83 Authorized Dealers as provided by client across Pirganj, Ranisankail, Birganj, Dinajpur
 export const INITIAL_DEALERS = [

@@ -77,7 +77,7 @@ export default function StockManagement() {
     unit: 'বোতল',
     tp: 200,
     mrp: 240,
-    initialStock: 100
+    initialStock: 0
   });
 
   const [statusMsg, setStatusMsg] = useState('');
@@ -238,7 +238,7 @@ export default function StockManagement() {
       unit: 'বোতল',
       tp: 200,
       mrp: 240,
-      initialStock: 100
+      initialStock: 0
     });
     setActiveTab('inventory');
   };
