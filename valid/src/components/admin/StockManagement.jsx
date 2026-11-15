@@ -28,6 +28,19 @@ function getStockInRows(products, previousRows = []) {
   }));
 }
 
+function getTotalStockCartons(products) {
+  return products.reduce((total, product) => total + (product.variants || []).reduce((productTotal, variant) => {
+    if (getPackageQuantityUnit({
+      ...variant,
+      productName: product.name,
+      generic: product.generic
+    }) !== 'কার্টুন') return productTotal;
+    const packPerBox = Number(variant.packPerBox) || 1;
+    const stockPieces = Number(variant.stock) || 0;
+    return productTotal + (Number(variant.stockCartons ?? Math.floor(stockPieces / packPerBox)) || 0);
+  }, 0), 0);
+}
+
 const createStockInForm = () => {
   const today = new Date().toISOString().slice(0, 10);
   return {
@@ -116,6 +129,11 @@ export default function StockManagement() {
       if (packageStock >= 0 && packageStock < MINIMUM_STOCK_LEVEL) lowStockCount += 1;
     });
   });
+  const currentStockCartons = getTotalStockCartons(products);
+  const incomingCartons = (stockInPreview || []).reduce(
+    (total, entry) => total + (entry.quantityUnit === 'কার্টুন' ? entry.quantity : 0),
+    0
+  );
 
   // Prepare a stock-in preview from the entered package counts.
   const handleStockInSubmit = async (e) => {
@@ -170,7 +188,6 @@ export default function StockManagement() {
         sku: entry.sku,
         size: entry.size,
         cartons: entry.quantity,
-        quantityPieces: entry.quantityPieces,
         batchNo: stockInForm.batchNo,
         mfgDate: stockInForm.mfgDate,
         expDate: stockInForm.expDate,
@@ -648,12 +665,25 @@ export default function StockManagement() {
 
           {stockInPreview && (
             <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/60 p-3 sm:p-6" role="presentation">
-              <section role="dialog" aria-modal="true" aria-labelledby="stock-in-preview-title" className="max-h-[90vh] w-full max-w-3xl overflow-hidden rounded-xl bg-white shadow-2xl">
+              <section role="dialog" aria-modal="true" aria-labelledby="stock-in-preview-title" className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
                 <div className="border-b border-slate-200 px-4 py-4 sm:px-6">
                   <h3 id="stock-in-preview-title" className="text-lg font-black text-slate-900">স্টক ইন প্রিভিউ</h3>
                   <p className="mt-1 text-xs text-slate-600">{stockInForm.date} • {stockInForm.source} • রিসিভার: {stockInForm.receivedBy}</p>
+                  <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                    {[
+                      ['বর্তমান মোট কার্টুন', currentStockCartons],
+                      ['এইবার যোগ হবে', incomingCartons],
+                      ['যোগের পর মোট কার্টুন', currentStockCartons + incomingCartons]
+                    ].map(([label, count]) => (
+                      <div key={label} className="rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2">
+                        <p className="text-xs font-semibold text-slate-600">{label}</p>
+                        <p className="mt-0.5 text-lg font-black text-emerald-800">{count.toLocaleString('bn-BD')} কার্টুন</p>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="mt-2 text-xs text-slate-500">জার ও বস্তার পরিমাণ নিচের তালিকায় আলাদা ইউনিটে দেখানো হয়েছে।</p>
                 </div>
-                <div className="max-h-[58vh] overflow-auto px-4 py-4 sm:px-6">
+                <div className="min-h-0 flex-1 overflow-auto px-4 py-4 sm:px-6">
                   <table className="w-full min-w-[520px] text-left text-sm">
                     <thead className="sticky top-0 bg-slate-100 text-xs text-slate-700">
                       <tr>
