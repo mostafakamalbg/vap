@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { getInvoiceCartons, getItemCartons } from './invoiceCartons.js';
-import { getInvoiceSalesAmount } from './invoiceTotals.js';
+import { getInvoiceItemAmounts, getInvoiceSalesAmount } from './invoiceTotals.js';
 import { applyInvoiceStockChanges } from './invoiceStock.js';
 import { getPackageQuantityUnit, getStockInQuantities } from './quantityUnits.js';
 import { normalizeHotlineNumber } from './companyContact.js';
@@ -76,6 +76,39 @@ test('retail pieces contribute to carton equivalents while retaining exact piece
 
 test('invoice sales totals fall back to totalAmount when grandTotal is zero', () => {
   assert.equal(getInvoiceSalesAmount({ grandTotal: 0, totalAmount: 125 }), 125);
+});
+
+test('carton and piece invoice lines calculate commission and net totals independently', () => {
+  assert.deepEqual(getInvoiceItemAmounts({
+    cartons: 3,
+    retailPieces: 0,
+    packPerBox: 12,
+    cartonPrice: 1200,
+    piecePrice: 100,
+    commission: 20
+  }), {
+    cartons: 3,
+    retailPieces: 0,
+    totalPieces: 36,
+    total: 3600,
+    commissionAmount: 720,
+    netTotal: 2880
+  });
+  assert.deepEqual(getInvoiceItemAmounts({
+    cartons: 0,
+    retailPieces: 5,
+    packPerBox: 12,
+    cartonPrice: 1200,
+    piecePrice: 100,
+    commission: 20
+  }), {
+    cartons: 0,
+    retailPieces: 5,
+    totalPieces: 5,
+    total: 500,
+    commissionAmount: 100,
+    netTotal: 400
+  });
 });
 
 test('invoice stock changes preserve negative carton and piece balances', () => {

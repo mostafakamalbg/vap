@@ -4,6 +4,7 @@ import { getNextInvoiceNumber, useAgro } from '../../context/AgroContext';
 import { INVOICE_SESSIONS } from '../../../shared/sessions';
 import { formatDealerCode, formatInvoiceNumber, formatOfficerCode } from '../../../shared/codes';
 import { normalizePaymentMethod, PAYMENT_METHODS } from '../../../shared/paymentMethods';
+import { getInvoiceItemAmounts } from '../../../shared/invoiceTotals';
 import { getItemCartons } from '../../../shared/invoiceCartons';
 import { getPackageQuantityUnit } from '../../../shared/quantityUnits';
 import { toBnCurrency } from '../../utils/bengali';
@@ -28,7 +29,7 @@ const emptyItem = () => ({
   stockCondition: 'good',
   retailPieces: 0,
   piecePrice: 0,
-  isRetailOnly: false
+  unitType: 'carton'
 });
 
 const emptyReturnAdjustment = () => ({
@@ -91,23 +92,36 @@ export default function InvoiceGenerator({
       price: item.price ?? item.unitPrice ?? 0
     })) || [],
     items: editInvoiceData?.items?.length
-      ? editInvoiceData.items.map((item) => ({
-          ...emptyItem(),
-          ...item,
-          productKey: `${item.productId}::${item.sku}`,
-          cartons: item.cartons ?? item.quantity ?? (Number(item.retailPieces) > 0 ? 0 : 1),
-          cartonPrice: Number(item.cartonPrice ?? (
-            Number(item.retailPieces) > 0 && Number(item.cartons ?? item.quantity) === 0
-              ? 0
-              : Number(item.unitPrice) * Number(item.packPerBox || 1)
-          )),
-          commission: Number(item.commission) || 0,
-          retailPieces: Number(item.retailPieces) || 0,
-          piecePrice: Number(item.piecePrice ?? (Number(item.retailPieces) > 0 ? item.unitPrice : 0)) || 0,
-          isRetailOnly: Boolean(item.isRetailOnly || (
-            Number(item.cartons ?? item.quantity) === 0 && Number(item.retailPieces) > 0
-          ))
-        }))
+      ? editInvoiceData.items.flatMap((item) => {
+          const cartons = Number(item.cartons ?? item.quantity) || 0;
+          const retailPieces = Number(item.retailPieces) || 0;
+          const baseItem = {
+            ...emptyItem(),
+            ...item,
+            productKey: `${item.productId}::${item.sku}`,
+            cartons: item.cartons ?? item.quantity ?? (retailPieces > 0 ? 0 : 1),
+            cartonPrice: Number(item.cartonPrice ?? (
+              retailPieces > 0 && cartons === 0
+                ? 0
+                : Number(item.unitPrice) * Number(item.packPerBox || 1)
+            )),
+            commission: Number(item.commission) || 0,
+            retailPieces,
+            piecePrice: Number(item.piecePrice ?? (retailPieces > 0 ? item.unitPrice : 0)) || 0
+          };
+          if (cartons > 0 && retailPieces > 0) {
+            return [
+              { ...baseItem, retailPieces: 0, piecePrice: 0, unitType: 'carton' },
+              { ...baseItem, cartons: 0, cartonPrice: 0, unitType: 'piece' }
+            ];
+          }
+          return [{
+            ...baseItem,
+            unitType: cartons === 0 && retailPieces > 0
+              ? 'piece'
+              : item.unitType || 'carton'
+          }];
+        })
       : [emptyItem()]
   }));
   const [invoiceType, setInvoiceType] = useState(editInvoiceData?.invoiceType || 'regular');
@@ -120,9 +134,6 @@ export default function InvoiceGenerator({
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [saving, setSaving] = useState(false);
-  const [retailFormOpen, setRetailFormOpen] = useState(false);
-  const [retailForm, setRetailForm] = useState({ productKey: '', quantity: '', price: '' });
-
   useEffect(() => {
     if (editInvoiceData || currentUser?.role !== 'admin') {
       setInvoiceNumberLoading(false);
@@ -174,19 +185,8 @@ export default function InvoiceGenerator({
   const selectedDealerPhone = selectedDealer?.phone || selectedDealer?.mobile || selectedDealer?.phoneNumber || '';
   const dealerSummary = selectedDealer ? getDealerSummary(selectedDealer.id) : null;
   const items = useMemo(() => form.items.map((item) => {
-    const cartons = Math.max(0, Number(item.cartons) || 0);
-    const retailPieces = Math.max(0, Number(item.retailPieces) || 0);
-    const lineTotal = cartons * (Number(item.cartonPrice) || 0)
-      + retailPieces * (Number(item.piecePrice) || 0);
-    const packPerBox = Number(item.packPerBox) || 1;
-    return {
-      ...item,
-      cartons,
-      quantity: cartons,
-      retailPieces,
-      totalPieces: cartons * packPerBox + retailPieces,
-      total: lineTotal
-    };
+    const amounts = getInvoiceItemAmounts(item);
+    return { ...item, ...amounts, quantity: amounts.cartons };
   }), [form.items]);
 
   const isRegularInvoice = invoiceType === 'regular';
@@ -194,10 +194,7 @@ export default function InvoiceGenerator({
   const isDepotFactoryReturn = invoiceType === 'depot_factory_return';
   const totalPieces = items.reduce((sum, item) => sum + item.totalPieces, 0);
   const subtotal = items.reduce((sum, item) => sum + item.total, 0);
-  const commissionAmount = isRegularInvoice ? items.reduce(
-    (sum, item) => sum + item.total * (Number(item.commission) || 0) / 100,
-    0
-  ) : 0;
+  const commissionAmount = items.reduce((sum, item) => sum + item.commissionAmount, 0);
   const returnAdjustments = isRegularInvoice ? form.returnAdjustments.map((item) => ({
     ...item,
     quantity: Math.max(0, Number(item.quantity) || 0),
@@ -208,7 +205,7 @@ export default function InvoiceGenerator({
   const transportCost = isRegularInvoice ? Math.max(0, Number(form.transportCost) || 0) : 0;
   const totalAmount = isRegularInvoice
     ? Math.max(0, subtotal - commissionAmount + transportCost - returnAdjustmentTotal)
-    : subtotal;
+    : Math.max(0, subtotal - commissionAmount);
   const previousDue = isRegularInvoice && editInvoiceData
     ? Number(editInvoiceData.previousDue) || 0
     : isRegularInvoice ? Number(dealerSummary?.currentDue) || 0 : 0;
@@ -266,8 +263,8 @@ export default function InvoiceGenerator({
               unitPrice: variant?.tp || 0,
               commission: variant?.commission || 0,
               retailPieces: 0,
-              piecePrice: 0,
-              isRetailOnly: false
+              piecePrice: variant?.tp || 0,
+              unitType: item.unitType || 'carton'
             }
           : item
       ))
@@ -319,46 +316,15 @@ export default function InvoiceGenerator({
   }));
 
   const addItem = () => setForm((current) => ({ ...current, items: [...current.items, emptyItem()] }));
-  const addRetailItem = () => {
-    const variant = allProductVariants.find((entry) => entry.key === retailForm.productKey);
-    const quantity = Number(retailForm.quantity);
-    const price = Number(retailForm.price);
-    if (
-      !variant
-      || !Number.isSafeInteger(quantity)
-      || quantity <= 0
-      || !String(retailForm.price).trim()
-      || !Number.isFinite(price)
-      || price <= 0
-    ) {
-      setError('খুচরা পণ্যের সাইজ, পিস সংখ্যা ও সঠিক পিস দর দিন।');
-      return;
-    }
-
-    const retailItem = {
-      ...emptyItem(),
-      productKey: variant.key,
-      productId: variant.productId,
-      productName: variant.productName,
-      sku: variant.sku,
-      size: variant.size || '',
-      cartons: 0,
-      packPerBox: variant.packPerBox || 1,
-      unit: variant.unit || 'পিস/বোতল',
-      cartonPrice: 0,
-      unitPrice: price,
-      piecePrice: price,
-      retailPieces: quantity,
-      isRetailOnly: true,
-      commission: 0
-    };
+  const updateItemUnitType = (index, unitType) => {
     setForm((current) => ({
       ...current,
-      items: [...current.items.filter((item) => item.productId), retailItem]
+      items: current.items.map((item, itemIndex) => (
+        itemIndex === index
+          ? { ...item, unitType, cartons: 0, retailPieces: 0 }
+          : item
+      ))
     }));
-    setRetailForm({ productKey: '', quantity: '', price: '' });
-    setRetailFormOpen(false);
-    setError('');
     setSavedInvoice(null);
     setSuccess('');
   };
@@ -383,6 +349,9 @@ export default function InvoiceGenerator({
       || !Number.isSafeInteger(item.retailPieces)
       || item.retailPieces < 0
       || item.cartons + item.retailPieces <= 0
+      || (item.unitType === 'carton' && item.retailPieces > 0)
+      || (item.unitType === 'piece' && item.cartons > 0)
+      || !['carton', 'piece'].includes(item.unitType)
       || (item.retailPieces > 0 && (!Number.isFinite(Number(item.piecePrice)) || Number(item.piecePrice) <= 0))
       || !Number.isFinite(item.total)
       || item.total <= 0
@@ -439,10 +408,11 @@ export default function InvoiceGenerator({
         quantity: item.cartons,
         retailPieces: item.retailPieces,
         piecePrice: Number(item.piecePrice) || 0,
-        isRetailOnly: Boolean(item.isRetailOnly),
+        isRetailOnly: item.unitType === 'piece',
+        unitType: item.unitType,
         totalPieces: item.totalPieces,
         cartonPrice: Number(item.cartonPrice) || 0,
-        unitPrice: item.isRetailOnly
+        unitPrice: item.unitType === 'piece'
           ? Number(item.piecePrice) || 0
           : Number(item.unitPrice) || 0,
         commission: Number(item.commission) || 0,
@@ -630,123 +600,59 @@ export default function InvoiceGenerator({
               <h2 className="text-lg font-bold text-slate-800">{isRegularInvoice ? 'পণ্যের তালিকা' : 'ফেরত পণ্যের তালিকা'}</h2>
               <p className="text-xs text-slate-500">
                 {isRegularInvoice
-                  ? 'প্যাক সাইজ অনুযায়ী পরিমাণ ও মূল্য গণনা হবে।'
-                  : 'পণ্যের পরিমাণ ও দর অনুযায়ী ফেরতের হিসাব হবে; ভালো/ডেমেজ অবস্থা নির্বাচন করুন।'}
+                  ? 'ইউনিট অনুযায়ী কার্টুন বা পিসের পরিমাণ, কমিশন ও নেট মূল্য গণনা হবে।'
+                  : 'ইউনিট অনুযায়ী ফেরত পরিমাণ, কমিশন ও নেট মূল্য গণনা হবে; ভালো/ডেমেজ অবস্থা নির্বাচন করুন।'}
               </p>
             </div>
-            <div className="flex flex-wrap gap-2">
-              <button type="button" onClick={addItem} className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white">+ পণ্য যোগ করুন</button>
-              <button
-                type="button"
-                onClick={() => setRetailFormOpen((open) => !open)}
-                className="rounded-lg border border-emerald-700 bg-white px-4 py-2 text-sm font-semibold text-emerald-800 hover:bg-emerald-50"
-              >
-                + খুচরা পিস বা সাইজ যুক্ত করুন
-              </button>
-            </div>
+            <button type="button" onClick={addItem} className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white">+ পণ্য যোগ করুন</button>
           </div>
-          {retailFormOpen && (
-            <div className="border-b border-emerald-100 bg-emerald-50/70 p-5">
-              <div className="grid gap-3 md:grid-cols-[minmax(220px,2fr)_1fr_1fr_auto] md:items-end">
-                <label className="text-sm font-semibold text-slate-700">
-                  পণ্য ও সাইজ <span className="text-rose-600">*</span>
-                  <select
-                    value={retailForm.productKey}
-                    onChange={(event) => {
-                      const variant = allProductVariants.find((entry) => entry.key === event.target.value);
-                      setRetailForm((current) => ({
-                        ...current,
-                        productKey: event.target.value,
-                        price: variant ? String(variant.tp || '') : ''
-                      }));
-                    }}
-                    className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2"
-                  >
-                    <option value="">পণ্য নির্বাচন করুন</option>
-                    {allProductVariants.map((variant) => (
-                      <option key={variant.key} value={variant.key}>{variant.displayText}</option>
-                    ))}
-                  </select>
-                </label>
-                <label className="text-sm font-semibold text-slate-700">
-                  খুচরা পিসের সংখ্যা <span className="text-rose-600">*</span>
-                  <input
-                    type="number"
-                    min="1"
-                    step="1"
-                    value={retailForm.quantity}
-                    onChange={(event) => setRetailForm((current) => ({ ...current, quantity: event.target.value }))}
-                    className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2"
-                  />
-                </label>
-                <label className="text-sm font-semibold text-slate-700">
-                  প্রতি পিসের দর (৳) <span className="text-rose-600">*</span>
-                  <input
-                    type="number"
-                    min="0.01"
-                    step="0.01"
-                    value={retailForm.price}
-                    onChange={(event) => setRetailForm((current) => ({ ...current, price: event.target.value }))}
-                    className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2"
-                  />
-                </label>
-                <button
-                  type="button"
-                  onClick={addRetailItem}
-                  className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-800"
-                >
-                  আইটেম যোগ করুন
-                </button>
-                <p className="text-xs font-semibold text-emerald-900 md:col-span-4">
-                  খুচরা মোট: ৳{toBnCurrency((Number(retailForm.quantity) || 0) * (Number(retailForm.price) || 0))}
-                </p>
-              </div>
-            </div>
-          )}
           <div className="space-y-4 p-5">
             {form.items.map((item, index) => (
-              <div key={`invoice-item-${index}`} className="grid gap-3 rounded-lg border border-slate-200 p-4 sm:grid-cols-2 lg:grid-cols-[minmax(220px,2fr)_repeat(4,minmax(110px,1fr))_minmax(100px,1fr)_auto] lg:items-end">
+              <div key={`invoice-item-${index}`} className="grid gap-3 rounded-lg border border-slate-200 p-4 sm:grid-cols-2 lg:grid-cols-[minmax(190px,2fr)_minmax(105px,1fr)_minmax(90px,.8fr)_minmax(110px,1fr)_minmax(105px,.9fr)_minmax(120px,1fr)_auto_auto] lg:items-end">
                 <label className="text-sm font-semibold text-slate-700">
                   পণ্য <span className="text-rose-600">*</span>
-                  <select required disabled={item.isRetailOnly} value={item.productKey} onChange={(event) => selectProduct(index, event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 disabled:bg-slate-100">
+                  <select required value={item.productKey} onChange={(event) => selectProduct(index, event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2">
                     <option value="">পণ্য নির্বাচন করুন</option>
                     {allProductVariants.map((variant) => <option key={variant.key} value={variant.key}>{variant.displayText}</option>)}
                   </select>
                 </label>
-                {item.isRetailOnly ? (
-                  <>
-                    <label className="text-sm font-semibold text-slate-700">
-                      খুচরা পিসের সংখ্যা
-                      <input type="number" min="1" step="1" required value={item.retailPieces} onChange={(event) => updateItem(index, 'retailPieces', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" />
-                    </label>
-                    <label className="text-sm font-semibold text-slate-700">
-                      প্রতি পিসের দর (৳)
-                      <input type="number" min="0.01" step="0.01" required value={item.piecePrice} onChange={(event) => updateItem(index, 'piecePrice', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" />
-                    </label>
-                  </>
-                ) : (
-                  <>
-                    <label className="text-sm font-semibold text-slate-700">
-                      {isRegularInvoice ? 'কার্টুনের সংখ্যা' : 'ফেরত কার্টুনের সংখ্যা'} ({getPackageQuantityUnit(item)})
-                      <input type="number" min="0" step="1" value={item.cartons} onChange={(event) => updateItem(index, 'cartons', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" />
-                    </label>
-                    <label className="text-sm font-semibold text-slate-700">
-                      ট্রেড প্রাইজ (৳/{getPackageQuantityUnit(item)})
-                      <input type="number" min="0" step="0.01" value={item.cartonPrice} onChange={(event) => updateItem(index, 'cartonPrice', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" />
-                    </label>
-                    <label className="text-sm font-semibold text-slate-700">
-                      খুচরা পিসের সংখ্যা
-                      <input type="number" min="0" step="1" value={item.retailPieces} onChange={(event) => updateItem(index, 'retailPieces', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" />
-                    </label>
-                    <label className="text-sm font-semibold text-slate-700">
-                      প্রতি পিসের দর (৳)
-                      <input type="number" min="0" step="0.01" value={item.piecePrice} onChange={(event) => updateItem(index, 'piecePrice', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" />
-                    </label>
-                  </>
-                )}
+                <label className="text-sm font-semibold text-slate-700">
+                  Unit Type
+                  <select value={item.unitType} onChange={(event) => updateItemUnitType(index, event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2">
+                    <option value="carton">{getPackageQuantityUnit(item)}</option>
+                    <option value="piece">{item.unit || 'পিস/বোতল'}</option>
+                  </select>
+                </label>
+                <label className="text-sm font-semibold text-slate-700">
+                  {item.unitType === 'piece' ? 'খুচরা পিসের সংখ্যা' : `${isRegularInvoice ? 'কার্টুনের' : 'ফেরত কার্টুনের'} সংখ্যা`}
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={item.unitType === 'piece' ? item.retailPieces : item.cartons}
+                    onChange={(event) => updateItem(index, item.unitType === 'piece' ? 'retailPieces' : 'cartons', event.target.value)}
+                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+                  />
+                </label>
+                <label className="text-sm font-semibold text-slate-700">
+                  {item.unitType === 'piece' ? 'প্রতি পিসের দর (৳)' : `ট্রেড প্রাইজ (৳/${getPackageQuantityUnit(item)})`}
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={item.unitType === 'piece' ? item.piecePrice : item.cartonPrice}
+                    onChange={(event) => updateItem(index, item.unitType === 'piece' ? 'piecePrice' : 'cartonPrice', event.target.value)}
+                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+                  />
+                </label>
                 <div className="text-sm font-semibold text-slate-700">
-                  মোট
-                  <p className="mt-1 rounded-lg bg-slate-50 px-3 py-2 font-bold text-slate-900">৳{toBnCurrency(items[index]?.total)}</p>
+                  কমিশন
+                  <p className="mt-1 rounded-lg bg-slate-50 px-3 py-2 font-bold text-slate-900">{toBnCurrency(item.commission)}%</p>
+                  <span className="mt-1 block text-xs text-slate-500">− ৳{toBnCurrency(items[index]?.commissionAmount)}</span>
+                </div>
+                <div className="text-sm font-semibold text-slate-700">
+                  নেট মূল্য
+                  <p className="mt-1 rounded-lg bg-slate-50 px-3 py-2 font-bold text-slate-900">৳{toBnCurrency(items[index]?.netTotal)}</p>
                   <span className="mt-1 block text-xs text-slate-500">
                     মোট পিস: {toBnCurrency(items[index]?.totalPieces)} {item.unit}
                   </span>
@@ -882,18 +788,20 @@ export default function InvoiceGenerator({
             <div className="flex justify-between border-t border-slate-300 pt-3 text-base text-rose-700"><strong>বর্তমান বকেয়া</strong><strong>৳{toBnCurrency(dueAmount)}</strong></div>
           </div>
         </section> : (
-          <section className="rounded-xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-950">
-            <div className="flex justify-between gap-4 text-base">
-              <strong>{isDealerReturn ? 'ডিলার লেজারে জমা হবে' : 'ফ্যাক্টরি/ওয়্যারহাউসে ফেরত মূল্য'}</strong>
-              <strong>৳{toBnCurrency(totalAmount)}</strong>
-            </div>
-            <p className="mt-2">মোট ফেরত পিস: {toBnCurrency(totalPieces)}</p>
-            <p className="mt-2">
-              {isDealerReturn
-                ? 'এই পরিমাণটি নির্বাচিত ডিলারের বকেয়া থেকে কমবে।'
-                : 'ডিলার লেজারে কোনো পরিবর্তন হবে না; নির্বাচিত অবস্থান অনুযায়ী ডিপোর ভালো বা ডেমেজ স্টক কমবে।'}
-            </p>
-          </section>
+            <section className="space-y-2 rounded-xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-950">
+              <div className="flex justify-between"><span>মোট ফেরত পিস</span><strong>{toBnCurrency(totalPieces)}</strong></div>
+              <div className="flex justify-between"><span>পণ্যের মোট</span><strong>৳{toBnCurrency(subtotal)}</strong></div>
+              <div className="flex justify-between"><span>কমিশন</span><strong>− ৳{toBnCurrency(commissionAmount)}</strong></div>
+              <div className="flex justify-between gap-4 border-t border-amber-300 pt-3 text-base">
+                <strong>{isDealerReturn ? 'ডিলার লেজারে জমা হবে (নেট)' : 'ফ্যাক্টরি/ওয়্যারহাউসে ফেরত নেট মূল্য'}</strong>
+                <strong>৳{toBnCurrency(totalAmount)}</strong>
+              </div>
+              <p>
+                {isDealerReturn
+                  ? 'এই নেট পরিমাণটি নির্বাচিত ডিলারের বকেয়া থেকে কমবে।'
+                  : 'ডিলার লেজারে কোনো পরিবর্তন হবে না; নির্বাচিত অবস্থান অনুযায়ী ডিপোর ভালো বা ডেমেজ স্টক কমবে।'}
+              </p>
+            </section>
         )}
 
         <div className="flex justify-end gap-3">

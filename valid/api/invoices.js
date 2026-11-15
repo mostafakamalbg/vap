@@ -52,6 +52,9 @@ function validateInvoice(body) {
       || !Number.isSafeInteger(retailPieces)
       || retailPieces < 0
       || cartons + retailPieces <= 0
+      || (item?.unitType != null && !['carton', 'piece'].includes(item.unitType))
+      || (item?.unitType === 'carton' && retailPieces > 0)
+      || (item?.unitType === 'piece' && cartons > 0)
       || !Number.isFinite(unitPrice)
       || unitPrice < 0
       || (retailPieces > 0 && (!Number.isFinite(piecePrice) || piecePrice <= 0))
