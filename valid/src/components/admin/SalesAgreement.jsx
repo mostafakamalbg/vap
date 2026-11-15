@@ -256,7 +256,9 @@ export default function SalesAgreement() {
   const currentMetrics = form.id
     ? getAgreementMetrics(form, invoices, payments)
     : { sales: 0, collection: 0, target: Number(form.annualSalesTarget) || 0, remaining: Number(form.annualSalesTarget) || 0 };
-  const agreementSessionRange = `${form.sessionStart || '____________'} থেকে ${form.sessionEnd || '____________'}`;
+  const agreementSessionRange = toBn(
+    `${form.sessionStart || '____________'} থেকে ${form.sessionEnd || '____________'}`
+  );
   const annualSalesTargetWords = amountInBengaliWords(form.annualSalesTarget);
   const benefitAmountWords = amountInBengaliWords(form.benefitAmount);
   const minimumCollectionWords = amountInBengaliWords(form.minimumCollection);

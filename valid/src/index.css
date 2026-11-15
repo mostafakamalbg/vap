@@ -338,8 +338,11 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
 
   .sales-agreement-print {
     position: static !important;
+    display: flex !important;
+    flex-direction: column !important;
     width: 100% !important;
     max-width: none !important;
+    min-height: 277mm !important;
     margin: 0 !important;
     border: 0 !important;
     padding: 0 !important;
@@ -411,7 +414,14 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
   }
   .agreement-signatures {
     gap: 5mm;
-    margin-top: 18mm;
+    margin-top: auto;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .agreement-signatures::before {
+    content: "";
+    grid-column: 1 / -1;
+    height: 76mm;
   }
   .agreement-signatures > div {
     min-height: 12mm;

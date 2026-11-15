@@ -812,10 +812,10 @@ export default function MonthlyReport() {
           <CompanyLetterhead className="monthly-report-letterhead" />
           <div className="mt-2 text-center">
             <div className="inline-block rounded bg-emerald-800 px-5 py-1 text-xs font-black uppercase tracking-wider text-white">
-              {reportTitle}
+              {toBn(reportTitle)}
             </div>
           </div>
-          <p className="text-xs text-slate-600 mt-1 font-medium text-center">{reportSubtitle}</p>
+          <p className="text-xs text-slate-600 mt-1 font-medium text-center">{toBn(reportSubtitle)}</p>
           {filterMode === 'stock' && (
             <div className="monthly-report-stock-officer-details">
               <span><b>প্রস্তুতকারী:</b> {selectedStockOfficer?.name || '—'}</span>
@@ -859,7 +859,7 @@ export default function MonthlyReport() {
             <div className="grid gap-4 lg:grid-cols-2">
               {[
                 { title: `নির্বাচিত মাসে বিক্রিত পণ্য (${selectedOfficerMonth})`, rows: officerMonthProducts },
-                { title: `নির্বাচিত সেশনে সরবরাহকৃত পণ্য (${activeOfficerSession === 'ALL' ? 'সব সেশন' : activeOfficerSession})`, rows: officerSessionProducts }
+                { title: `নির্বাচিত সেশনে সরবরাহকৃত পণ্য (${activeOfficerSession === 'ALL' ? 'সব সেশন' : toBn(activeOfficerSession)})`, rows: officerSessionProducts }
               ].map(({ title, rows }) => (
                 <div key={title} className="overflow-x-auto rounded-lg border border-slate-200">
                   <h5 className="bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-900">{title}</h5>

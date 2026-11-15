@@ -99,14 +99,25 @@ export default function InvoicePrintHeader({ invoice }) {
   const paymentMethod = PAYMENT_METHODS.find(
     (method) => method.value === normalizePaymentMethod(invoice.paymentMethod)
   )?.label || PAYMENT_METHODS[0].label;
-  const defaultComment = 'চালানের পণ্য সঠিক পরিমাণে বুঝে দেওয়া হলো।';
-  const defaultNote = 'বিক্রিত পণ্য ডিলার কর্তৃক সঠিকভাবে বুঝে নেওয়া হলো।';
+  const isDealerReturn = invoice.invoiceType === 'dealer_return';
+  const isFactoryReturn = ['depot_factory_return', 'factory_damage'].includes(invoice.invoiceType);
+  const isReturnInvoice = isDealerReturn || isFactoryReturn;
+  const defaultComment = isDealerReturn
+    ? 'ডিলারের ফেরত পণ্য সঠিকভাবে বুঝে গ্রহণ করা হলো।'
+    : isFactoryReturn
+      ? 'ডিপো থেকে ফেরত পণ্য সঠিকভাবে বুঝে গ্রহণ করা হলো।'
+      : 'চালানের পণ্য সঠিক পরিমাণে বুঝে দেওয়া হলো।';
+  const defaultNote = isDealerReturn
+    ? 'ফেরত পণ্যের মূল্য ডিলারের হিসাবে সমন্বয় করা হলো।'
+    : isFactoryReturn
+      ? 'ফেরত পণ্য ফ্যাক্টরি/ওয়্যারহাউসে প্রেরণ করা হলো।'
+      : 'বিক্রিত পণ্য ডিলার কর্তৃক সঠিকভাবে বুঝে নেওয়া হলো।';
 
   return (
     <article className="invoice-print-sheet mx-auto w-full max-w-4xl bg-white p-4 text-slate-900 sm:p-8">
       <header className="invoice-company-header">
         <CompanyLetterhead className="invoice-print-letterhead" />
-        <div className="invoice-session-badge">সেশন: {invoice.session || LEGACY_INVOICE_SESSION}</div>
+        <div className="invoice-session-badge">সেশন: {toBn(invoice.session || LEGACY_INVOICE_SESSION)}</div>
         <h2 className="invoice-title-bar">
           {invoice.invoiceType === 'depot_factory_return' || invoice.invoiceType === 'factory_damage'
             ? 'ডিপো থেকে ফ্যাক্টরি/ওয়্যারহাউসে ফেরত'
@@ -261,7 +272,7 @@ export default function InvoicePrintHeader({ invoice }) {
       </section>
 
       <footer className="invoice-signatures">
-        <div>ডিলারের স্বাক্ষর ও সীল</div>
+        <div>{isReturnInvoice ? 'ফেরত প্রদানকারী ডিলারের স্বাক্ষর ও সিল' : 'ডিলারের স্বাক্ষর ও সীল'}</div>
         <div>সেলস অফিসারের স্বাক্ষর ও তারিখ</div>
         <div>কোম্পানির পক্ষে লজিস্টিক অফিসারের স্বাক্ষর ও তারিখ</div>
       </footer>
