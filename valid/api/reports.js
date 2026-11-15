@@ -103,6 +103,7 @@ const invoiceAmountExpression = {
     { $ifNull: ['$totalAmount', 0] }
   ]
 };
+const returnAmountExpression = { $abs: invoiceAmountExpression };
 const piecesExpression = quantityExpression(
   '$items.totalPieces',
   {
@@ -323,7 +324,7 @@ async function getDealerLedger(query) {
           $sum: { $cond: [{ $not: [{ $in: ['$invoiceType', SALES_TYPES] }] }, invoiceAmountExpression, 0] }
         },
         returnAmount: {
-          $sum: { $cond: [{ $eq: ['$invoiceType', 'dealer_return'] }, invoiceAmountExpression, 0] }
+          $sum: { $cond: [{ $eq: ['$invoiceType', 'dealer_return'] }, returnAmountExpression, 0] }
         },
         invoicePayments: {
           $sum: { $cond: [{ $not: [{ $in: ['$invoiceType', SALES_TYPES] }] }, { $ifNull: ['$paidAmount', 0] }, 0] }
@@ -375,7 +376,7 @@ async function getCurrentCompanyDue() {
           $sum: { $cond: [{ $not: [{ $in: ['$invoiceType', SALES_TYPES] }] }, invoiceAmountExpression, 0] }
         },
         returns: {
-          $sum: { $cond: [{ $eq: ['$invoiceType', 'dealer_return'] }, invoiceAmountExpression, 0] }
+          $sum: { $cond: [{ $eq: ['$invoiceType', 'dealer_return'] }, returnAmountExpression, 0] }
         },
         invoicePayments: {
           $sum: { $cond: [{ $not: [{ $in: ['$invoiceType', SALES_TYPES] }] }, { $ifNull: ['$paidAmount', 0] }, 0] }
@@ -428,7 +429,7 @@ async function getCompanyReport(query) {
             $sum: { $cond: [{ $not: [{ $in: ['$invoiceType', SALES_TYPES] }] }, invoiceAmountExpression, 0] }
           },
           returns: {
-            $sum: { $cond: [{ $eq: ['$invoiceType', 'dealer_return'] }, invoiceAmountExpression, 0] }
+            $sum: { $cond: [{ $eq: ['$invoiceType', 'dealer_return'] }, returnAmountExpression, 0] }
           },
           invoiceCashCollected: {
             $sum: { $cond: [{ $not: [{ $in: ['$invoiceType', SALES_TYPES] }] }, { $ifNull: ['$paidAmount', 0] }, 0] }

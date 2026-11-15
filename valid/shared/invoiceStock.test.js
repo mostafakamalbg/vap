@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { getInvoiceCartons, getItemCartons } from './invoiceCartons.js';
 import { getInvoiceItemAmounts, getInvoiceSalesAmount } from './invoiceTotals.js';
-import { getDealerNetDue } from './dealerLedger.js';
+import { getDealerLedgerTransactions, getDealerNetDue } from './dealerLedger.js';
 import { applyInvoiceStockChanges } from './invoiceStock.js';
 import {
   getInvoiceQuantityParts,
@@ -124,6 +124,36 @@ test('dealer returns preserve negative balances as dealer advances', () => {
     totalPaidAmount: 2000,
     damageCredits: 500
   }), 5500);
+});
+
+test('dealer ledger transactions apply return and payment credits with a running balance', () => {
+  const transactions = getDealerLedgerTransactions({
+    openingDue: 100,
+    invoices: [
+      { id: 'return', date: '2026-01-03', invoiceType: 'dealer_return', grandTotal: -40 },
+      { id: 'sale', date: '2026-01-01', invoiceType: 'regular', grandTotal: 100 },
+      { id: 'credit-note', date: '2026-01-02', invoiceType: 'credit_note', grandTotal: -5 },
+      { id: 'factory-return', date: '2026-01-04', invoiceType: 'depot_factory_return', grandTotal: 15 }
+    ],
+    payments: [{ id: 'payment', date: '2026-01-02', amount: 20 }],
+    damages: [{
+      id: 'damage-credit',
+      date: '2026-01-03',
+      actionType: 'ledger_credit',
+      totalDamageValue: 10
+    }]
+  });
+
+  assert.deepEqual(transactions.map(({ sourceType, debit, credit, balance }) => (
+    { sourceType, debit, credit, balance }
+  )), [
+    { sourceType: 'opening', debit: 100, credit: 0, balance: 100 },
+    { sourceType: 'invoice', debit: 100, credit: 0, balance: 200 },
+    { sourceType: 'invoice', debit: 0, credit: 5, balance: 195 },
+    { sourceType: 'payment', debit: 0, credit: 20, balance: 175 },
+    { sourceType: 'invoice', debit: 0, credit: 40, balance: 135 },
+    { sourceType: 'damage', debit: 0, credit: 10, balance: 125 }
+  ]);
 });
 
 test('carton and piece invoice lines calculate commission and net totals independently', () => {

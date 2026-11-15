@@ -18,6 +18,17 @@ const money = (value) => {
   })}`;
 };
 
+function compareInvoiceItemCodes(left, right) {
+  return String(left.sku || left.productCode || left.productId || '').localeCompare(
+    String(right.sku || right.productCode || right.productId || ''),
+    undefined,
+    { numeric: true, sensitivity: 'base' }
+  ) || String(left.productId || '').localeCompare(String(right.productId || ''), undefined, {
+    numeric: true,
+    sensitivity: 'base'
+  });
+}
+
 function getItemValues(item) {
   const cartonCount = Number(item.cartons ?? item.quantity) || 0;
   const retailPieces = Number(item.retailPieces) || 0;
@@ -75,8 +86,8 @@ export default function InvoicePrintHeader({ invoice }) {
     entry.id === invoice.dealerId
     || formatDealerCode(entry.code || entry.id) === invoiceDealerCode
   ));
-  const items = invoice.items || [];
-  const returns = invoice.returnAdjustments || [];
+  const items = [...(invoice.items || [])].sort(compareInvoiceItemCodes);
+  const returns = [...(invoice.returnAdjustments || [])].sort(compareInvoiceItemCodes);
   const itemTotals = items.reduce((totals, item) => {
     const values = getItemValues(item);
     totals.cartons += values.cartons;

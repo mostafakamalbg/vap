@@ -28,6 +28,7 @@ import {
   normalizePaymentMethod,
   normalizePaymentType
 } from '../../../shared/paymentMethods';
+import { getDealerLedgerTransactions } from '../../../shared/dealerLedger';
 import CompanyLetterhead from './CompanyLetterhead';
 
 const createPaymentEntries = () => LEDGER_PAYMENT_TYPES.map(({ value }) => ({
@@ -52,6 +53,22 @@ function getBalanceLabel(amount) {
   if (amount < 0) return 'ডিলারের পাওনা / অগ্রিম';
   if (amount > 0) return 'ডিলারের বকেয়া';
   return 'ব্যালেন্স শূন্য';
+}
+
+function getTransactionDetails(transaction) {
+  if (transaction.sourceType !== 'payment') return transaction.description;
+  const payment = transaction.source;
+  const paymentType = PAYMENT_TYPES.find(
+    (type) => type.value === normalizePaymentType(payment.paymentType)
+  )?.label;
+  const paymentMethod = PAYMENT_METHODS.find(
+    (method) => method.value === normalizePaymentMethod(payment.paymentMethod)
+  )?.label;
+  return [
+    paymentType,
+    paymentMethod,
+    payment.receivedBy && `রিসিভার: ${payment.receivedBy}`
+  ].filter(Boolean).join(' • ');
 }
 
 export default function DealerLedger() {
@@ -98,6 +115,9 @@ export default function DealerLedger() {
 
   // Calculate summaries for all dealers
   const dealerSummaries = dealers.map((d) => getDealerSummary(d.id));
+  const ledgerTransactions = selectedDealerForLedger
+    ? getDealerLedgerTransactions(selectedDealerForLedger)
+    : [];
 
   // Totals
   const totalSalesToDealers = dealerSummaries.reduce((acc, curr) => acc + (curr?.totalPurchases || 0), 0);
@@ -750,89 +770,48 @@ export default function DealerLedger() {
               </div>
             </div>
 
-            {/* Invoices List */}
+            {/* Unified transaction ledger */}
             <div className="space-y-2">
               <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-                ১. পণ্য ক্রয়ের চালান তালিকা (Invoices)
+                লেনদেন বিবরণী (Ledger Transactions)
               </h4>
               <table className="w-full text-left text-xs border border-slate-200">
                 <thead className="bg-slate-100 font-bold text-slate-700">
                   <tr>
-                    <th className="p-2">চালান নং</th>
                     <th className="p-2">তারিখ</th>
-                    <th className="p-2">পণ্য বিবরণ</th>
-                    <th className="p-2 text-right">লেনদেন (+/-)</th>
-                    <th className="p-2 text-right">তাত্ক্ষণিক জমা</th>
-                    <th className="p-2 text-right">চালানের বাকি</th>
+                    <th className="p-2">ইনভয়েস / রেফারেন্স</th>
+                    <th className="p-2">লেনদেনের বিবরণ</th>
+                    <th className="p-2 text-right">ডেবিট</th>
+                    <th className="p-2 text-right">ক্রেডিট</th>
+                    <th className="p-2 text-right">নিট ব্যালেন্স</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
-                  {selectedDealerForLedger.invoices.map((inv) => {
-                    const isDealerReturn = inv.invoiceType === 'dealer_return';
-                    const invoiceAmount = Number(inv.totalAmount ?? inv.grandTotal) || 0;
-                    const paidAmount = Number(inv.paidAmount) || 0;
-                    const invoiceDue = Number(inv.currentDue ?? inv.dueAmount) || 0;
+                  {ledgerTransactions.map((transaction) => {
                     return (
-                      <tr key={inv.id}>
+                      <tr key={transaction.id}>
+                        <td className="p-2 font-mono">{transaction.date || '—'}</td>
                         <td className="p-2 font-mono font-bold text-emerald-800">
-                          {inv.id}
-                          {isDealerReturn && <span className="block font-sans text-[10px] text-sky-700">পণ্য ফেরত</span>}
+                          {transaction.reference}
                         </td>
-                        <td className="p-2">{inv.date}</td>
                         <td className="p-2 text-slate-600">
-                          {(inv.items || []).map((it) => `${it.productName} (${it.size})`).join(', ')}
+                          {getTransactionDetails(transaction)}
                         </td>
-                        <td className={`p-2 text-right font-mono font-semibold ${isDealerReturn ? 'text-sky-700' : ''}`}>
-                          {isDealerReturn ? '− ' : ''}৳{invoiceAmount.toLocaleString()}
+                        <td className="p-2 text-right font-mono">
+                          {transaction.debit > 0 ? formatBalanceAmount(transaction.debit) : '—'}
                         </td>
-                        <td className="p-2 text-right font-mono text-emerald-700">
-                          {isDealerReturn || paidAmount === 0 ? '—' : `৳${paidAmount.toLocaleString()}`}
+                        <td className="p-2 text-right font-mono font-semibold text-sky-700">
+                          {transaction.credit > 0 ? formatBalanceAmount(-transaction.credit) : '—'}
                         </td>
-                        <td className="p-2 text-right font-mono font-bold text-rose-700">
-                          {isDealerReturn ? '—' : `৳${invoiceDue.toLocaleString()}`}
+                        <td className={`p-2 text-right font-mono font-bold ${transaction.balance < 0 ? 'text-sky-700' : 'text-rose-700'}`}>
+                          {formatBalanceAmount(transaction.balance)}
                         </td>
                       </tr>
                     );
                   })}
-                  {selectedDealerForLedger.invoices.length === 0 && (
+                  {ledgerTransactions.length === 0 && (
                     <tr>
-                      <td colSpan={6} className="p-3 text-center text-slate-400 italic">কোনো চালানের রেকর্ড নেই</td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Payments List */}
-            <div className="space-y-2">
-              <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-                ২. টাকা জমার রশিদ তালিকা (Payment Collections)
-              </h4>
-              <table className="w-full text-left text-xs border border-slate-200">
-                <thead className="bg-slate-100 font-bold text-slate-700">
-                  <tr>
-                    <th className="p-2">তারিখ</th>
-                    <th className="p-2">পেমেন্টের ধরন</th>
-                    <th className="p-2">মাধ্যম / মেথড</th>
-                    <th className="p-2">রেফারেন্স / চেক নং</th>
-                    <th className="p-2">রিসিভার</th>
-                    <th className="p-2 text-right">জমার পরিমাণ (৳)</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-200">
-                  {selectedDealerForLedger.payments.map((p) => (
-                    <tr key={p.id}>
-                      <td className="p-2 font-mono">{p.date}</td>
-                      <td className="p-2">{PAYMENT_TYPES.find((type) => type.value === normalizePaymentType(p.paymentType))?.label}</td>
-                      <td className="p-2">{PAYMENT_METHODS.find((method) => method.value === normalizePaymentMethod(p.paymentMethod))?.label}</td>
-                      <td className="p-2 font-mono">{p.reference || '-'}</td>
-                      <td className="p-2">{p.receivedBy || '-'}</td>
-                      <td className="p-2 text-right font-mono font-bold text-emerald-700">৳{p.amount.toLocaleString()}</td>
-                    </tr>
-                  ))}
-                  {selectedDealerForLedger.payments.length === 0 && (
-                    <tr>
-                      <td colSpan={6} className="p-3 text-center text-slate-400 italic">কোনো জমার রেকর্ড নেই</td>
+                      <td colSpan={6} className="p-3 text-center text-slate-400 italic">কোনো লেনদেনের রেকর্ড নেই</td>
                     </tr>
                   )}
                 </tbody>

@@ -789,7 +789,10 @@ export function AgroProvider({ children }) {
 
     // Total returns (credit) from dealer_return invoices
     const returnInvoices = dealerInvoices.filter((inv) => inv.invoiceType === 'dealer_return');
-    const totalReturnCredits = returnInvoices.reduce((acc, curr) => acc + getInvoiceSalesAmount(curr), 0);
+    const totalReturnCredits = returnInvoices.reduce(
+      (acc, curr) => acc + Math.abs(getInvoiceSalesAmount(curr)),
+      0
+    );
 
     const dealerPays = payments.filter((p) => (
       isDealerCollection(p) && (p.dealerId === dealer.id || p.dealerName === dealer.shopName)
