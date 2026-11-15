@@ -390,27 +390,27 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
     font-size: 10pt;
   }
   .agreement-ref-row {
-    margin: 3mm 0;
+    margin: 2mm 0;
   }
   .agreement-title {
-    margin: 3mm 0;
+    margin: 2mm 0;
     font-size: 13pt;
   }
   .agreement-intro,
   .agreement-declaration {
-    margin: 2.5mm 0;
+    margin: 1.5mm 0;
   }
   .agreement-dealer-details,
   .agreement-commercial-terms {
-    margin: 2.5mm 0;
-    padding: 2mm 3mm;
+    margin: 1.5mm 0;
+    padding: 1.5mm 2mm;
   }
   .agreement-clauses-heading {
-    margin: 3mm 0 1.5mm;
+    margin: 2mm 0 1mm;
     font-size: 11pt;
   }
   .agreement-clauses {
-    gap: 1.5mm;
+    gap: 1mm;
   }
   .agreement-signatures {
     gap: 5mm;
@@ -421,7 +421,7 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
   .agreement-signatures::before {
     content: "";
     grid-column: 1 / -1;
-    height: 76mm;
+    height: 24mm;
   }
   .agreement-signatures > div {
     min-height: 12mm;
