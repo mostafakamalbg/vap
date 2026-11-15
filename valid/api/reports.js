@@ -8,6 +8,7 @@ import { authorize } from '../lib/auth.js';
 import { INVOICE_SESSIONS } from '../shared/sessions.js';
 import { normalizeOfficerCode } from '../shared/codes.js';
 import { isDealerCollection } from '../shared/paymentMethods.js';
+import { getDealerNetDue } from '../shared/dealerLedger.js';
 
 const SALES_TYPES = ['dealer_return', 'factory_damage', 'depot_factory_return'];
 
@@ -354,7 +355,13 @@ async function getDealerLedger(query) {
       totalReturnAmount,
       totalPaidAmount,
       damageCredits,
-      currentNetDue: openingDue + totalBillAmount - totalReturnAmount - totalPaidAmount - damageCredits
+      currentNetDue: getDealerNetDue({
+        openingDue,
+        totalBillAmount,
+        totalReturnAmount,
+        totalPaidAmount,
+        damageCredits
+      })
     }
   };
 }
@@ -387,12 +394,13 @@ async function getCurrentCompanyDue() {
   const damageCredits = creditRecords
     .map((record) => record.data)
     .reduce((total, credit) => total + money(credit.totalDamageValue), 0);
-  return money(dealerTotals.openingDue)
-    + money(invoiceTotals.bills)
-    - money(invoiceTotals.returns)
-    - money(invoiceTotals.invoicePayments)
-    - manualPayments
-    - damageCredits;
+  return getDealerNetDue({
+    openingDue: money(dealerTotals.openingDue),
+    totalBillAmount: money(invoiceTotals.bills),
+    totalReturnAmount: money(invoiceTotals.returns),
+    totalPaidAmount: money(invoiceTotals.invoicePayments) + manualPayments,
+    damageCredits
+  });
 }
 
 function companyPeriod(period) {

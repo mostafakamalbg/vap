@@ -18,6 +18,7 @@ import { isDealerCollection, normalizePaymentMethod } from '../../shared/payment
 import { applyInvoiceStockChanges } from '../../shared/invoiceStock';
 import { getInvoiceCartons, getItemCartons } from '../../shared/invoiceCartons';
 import { getInvoiceSalesAmount } from '../../shared/invoiceTotals';
+import { getDealerNetDue } from '../../shared/dealerLedger';
 import { getStockInQuantities } from '../../shared/quantityUnits';
 import { normalizeHotlineNumber } from '../../shared/companyContact';
 import { normalizeProductDisplayNames } from '../../shared/productNames';
@@ -495,6 +496,7 @@ export function AgroProvider({ children }) {
     })),
     ...(invoice.items || [])
       .filter((item) => item.stockCondition === 'damaged')
+      .filter((item) => item.unitType !== 'piece' && (Number(item.cartons ?? item.quantity) || 0) > 0)
       .map((item) => ({
         productId: item.productId,
         productName: item.productName,
@@ -799,7 +801,13 @@ export function AgroProvider({ children }) {
       .filter((d) => (d.dealerId === dealer.id || d.dealerName === dealer.shopName) && d.actionType === 'ledger_credit' && !d.invoiceRef)
       .reduce((acc, curr) => acc + (Number(curr.totalDamageValue) || 0), 0);
 
-    const currentDue = openingDue + totalPurchases - totalReturnCredits - totalPaid - damageCredits;
+    const currentDue = getDealerNetDue({
+      openingDue,
+      totalBillAmount: totalPurchases,
+      totalReturnAmount: totalReturnCredits,
+      totalPaidAmount: totalPaid,
+      damageCredits
+    });
 
     return {
       ...dealer,
@@ -808,7 +816,7 @@ export function AgroProvider({ children }) {
       totalReturnCredits,
       totalPaid,
       damageCredits,
-      currentDue: Math.max(0, currentDue),
+      currentDue,
       invoices: dealerInvoices,
       payments: dealerPays,
       damages: damageLogs.filter((d) => d.dealerId === dealer.id || d.dealerName === dealer.shopName)

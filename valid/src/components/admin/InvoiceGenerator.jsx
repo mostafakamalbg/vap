@@ -511,7 +511,18 @@ export default function InvoiceGenerator({
                   checked={invoiceType === type.value}
                   onChange={() => {
                     setInvoiceType(type.value);
-                    setForm((current) => ({ ...current, dealerId: '', officerId: '' }));
+                    setForm((current) => ({
+                      ...current,
+                      dealerId: '',
+                      officerId: '',
+                      ...(type.value === 'regular' ? {
+                        items: current.items.map((item) => ({
+                          ...item,
+                          unitType: 'carton',
+                          retailPieces: 0
+                        }))
+                      } : {})
+                    }));
                     setSavedInvoice(null);
                     setSuccess('');
                   }}
@@ -617,10 +628,10 @@ export default function InvoiceGenerator({
                   </select>
                 </label>
                 <label className="text-sm font-semibold text-slate-700">
-                  Unit Type
+                  ইউনিট টাইপ / একক
                   <select value={item.unitType} onChange={(event) => updateItemUnitType(index, event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2">
-                    <option value="carton">{getPackageQuantityUnit(item)}</option>
-                    <option value="piece">{item.unit || 'পিস/বোতল'}</option>
+                    <option value="carton">{getPackageQuantityUnit(item)} (Carton)</option>
+                    <option value="piece">পিস ({item.unit || 'পিস/বোতল'})</option>
                   </select>
                 </label>
                 <label className="text-sm font-semibold text-slate-700">

@@ -1,5 +1,3 @@
-import { getItemCartons } from './invoiceCartons.js';
-
 function getInvoiceStockMovements(invoice) {
   const movements = new Map();
   const isDealerReturn = invoice.invoiceType === 'dealer_return';
@@ -8,11 +6,20 @@ function getInvoiceStockMovements(invoice) {
   (invoice.items || []).forEach((item) => {
     if (!item.productId || !item.sku) return;
 
+    if (item.unitType === 'piece') return;
+
+    const cartons = Number(item.cartons ?? item.quantity) || 0;
+    if (cartons <= 0) return;
+
     const key = `${item.productId}\u0000${item.sku}`;
-    const cartons = getItemCartons(item);
-    const pieces = item.totalPieces != null
-      ? Number(item.totalPieces) || 0
-      : cartons * (Number(item.packPerBox) || 0);
+    const packPerBox = Number(item.packPerBox);
+    const totalPieces = Number(item.totalPieces);
+    const retailPieces = Number(item.retailPieces) || 0;
+    const pieces = Number.isFinite(packPerBox) && packPerBox > 0
+      ? cartons * packPerBox
+      : Number.isFinite(totalPieces)
+        ? Math.max(0, totalPieces - retailPieces)
+        : cartons;
     const movement = movements.get(key) || {
       productId: item.productId,
       sku: item.sku,

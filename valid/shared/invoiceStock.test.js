@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { getInvoiceCartons, getItemCartons } from './invoiceCartons.js';
 import { getInvoiceItemAmounts, getInvoiceSalesAmount } from './invoiceTotals.js';
+import { getDealerNetDue } from './dealerLedger.js';
 import { applyInvoiceStockChanges } from './invoiceStock.js';
 import { getPackageQuantityUnit, getStockInQuantities } from './quantityUnits.js';
 import { normalizeHotlineNumber } from './companyContact.js';
@@ -78,6 +79,23 @@ test('invoice sales totals fall back to totalAmount when grandTotal is zero', ()
   assert.equal(getInvoiceSalesAmount({ grandTotal: 0, totalAmount: 125 }), 125);
 });
 
+test('dealer returns preserve negative balances as dealer advances', () => {
+  assert.equal(getDealerNetDue({
+    openingDue: 0,
+    totalBillAmount: 0,
+    totalReturnAmount: 5000,
+    totalPaidAmount: 0,
+    damageCredits: 0
+  }), -5000);
+  assert.equal(getDealerNetDue({
+    openingDue: 10000,
+    totalBillAmount: 3000,
+    totalReturnAmount: 5000,
+    totalPaidAmount: 2000,
+    damageCredits: 500
+  }), 5500);
+});
+
 test('carton and piece invoice lines calculate commission and net totals independently', () => {
   assert.deepEqual(getInvoiceItemAmounts({
     cartons: 3,
@@ -122,6 +140,7 @@ test('invoice stock changes preserve negative carton and piece balances', () => 
       productId: 'product-1',
       sku: 'sku-1',
       cartons: 2,
+      unitType: 'carton',
       totalPieces: 24
     }]
   });
@@ -130,26 +149,37 @@ test('invoice stock changes preserve negative carton and piece balances', () => 
   assert.equal(updated[0].variants[0].stock, -18);
 });
 
-test('retail-only invoice lines subtract exact pieces and fractional carton equivalents', () => {
+test('piece-only invoice lines do not change stock for any invoice type', () => {
   const products = [{
     id: 'product-1',
-    variants: [{ sku: 'sku-1', stockCartons: 2, stock: 24, packPerBox: 12 }]
+    variants: [{ sku: 'sku-1', stockCartons: 2, stock: 24, damageStock: 5, packPerBox: 12 }]
   }];
-  const updated = applyInvoiceStockChanges(products, null, {
-    invoiceType: 'regular',
-    items: [{
-      productId: 'product-1',
-      sku: 'sku-1',
-      cartons: 0,
-      quantity: 0,
-      retailPieces: 3,
-      totalPieces: 3,
-      packPerBox: 12
-    }]
-  });
+  ['regular', 'dealer_return', 'depot_factory_return'].forEach((invoiceType) => {
+    const updated = applyInvoiceStockChanges(products, null, {
+      invoiceType,
+      items: [{
+        productId: 'product-1',
+        sku: 'sku-1',
+        cartons: 0,
+        quantity: 0,
+        retailPieces: 3,
+        totalPieces: 3,
+        unitType: 'piece',
+        packPerBox: 12,
+        stockCondition: 'damaged'
+      }, {
+        productId: 'product-1',
+        sku: 'sku-1',
+        cartons: 0,
+        retailPieces: 2,
+        totalPieces: 2,
+        packPerBox: 12,
+        stockCondition: 'damaged'
+      }]
+    });
 
-  assert.equal(updated[0].variants[0].stockCartons, 1.75);
-  assert.equal(updated[0].variants[0].stock, 21);
+    assert.deepEqual(updated, products);
+  });
 });
 
 test('dealer returns add good goods to depot stock and damaged goods to damage stock', () => {
@@ -160,14 +190,30 @@ test('dealer returns add good goods to depot stock and damaged goods to damage s
   const updated = applyInvoiceStockChanges(products, null, {
     invoiceType: 'dealer_return',
     items: [
-      { productId: 'product-1', sku: 'sku-1', cartons: 2, totalPieces: 24, stockCondition: 'good' },
-      { productId: 'product-1', sku: 'sku-1', cartons: 1, totalPieces: 12, stockCondition: 'damaged' }
+      { productId: 'product-1', sku: 'sku-1', cartons: 2, totalPieces: 24, unitType: 'carton', stockCondition: 'good' },
+      { productId: 'product-1', sku: 'sku-1', cartons: 1, totalPieces: 12, unitType: 'carton', stockCondition: 'damaged' }
     ]
   });
 
   assert.equal(updated[0].variants[0].stockCartons, 12);
   assert.equal(updated[0].variants[0].stock, 144);
   assert.equal(updated[0].variants[0].damageStock, 15);
+});
+
+test('piece dealer returns do not change physical stock', () => {
+  const products = [{
+    id: 'product-1',
+    variants: [{ sku: 'sku-1', stockCartons: 1, stock: 12, damageStock: 2, packPerBox: 12 }]
+  }];
+  const updated = applyInvoiceStockChanges(products, null, {
+    invoiceType: 'dealer_return',
+    items: [
+      { productId: 'product-1', sku: 'sku-1', cartons: 0, retailPieces: 3, totalPieces: 3, unitType: 'piece', packPerBox: 12, stockCondition: 'good' },
+      { productId: 'product-1', sku: 'sku-1', cartons: 0, retailPieces: 2, totalPieces: 2, unitType: 'piece', packPerBox: 12, stockCondition: 'damaged' }
+    ]
+  });
+
+  assert.deepEqual(updated, products);
 });
 
 test('depot factory returns subtract good and damaged goods from their respective stocks', () => {

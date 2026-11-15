@@ -43,6 +43,17 @@ function findDealerOfficer(dealer, officers) {
   ));
 }
 
+function formatBalanceAmount(amount) {
+  const balance = Number(amount) || 0;
+  return `${balance < 0 ? '− ' : ''}৳${Math.abs(balance).toLocaleString()}`;
+}
+
+function getBalanceLabel(amount) {
+  if (amount < 0) return 'ডিলারের পাওনা / অগ্রিম';
+  if (amount > 0) return 'ডিলারের বকেয়া';
+  return 'ব্যালেন্স শূন্য';
+}
+
 export default function DealerLedger() {
   const {
     dealers,
@@ -257,8 +268,11 @@ export default function DealerLedger() {
 
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
           <div>
-            <p className="text-xs font-semibold text-slate-500 uppercase">ডিলারদের নিকট মোট বকেয়া (বাকি)</p>
-            <p className="text-2xl font-black text-rose-600 mt-1">৳{totalOutstandingDue.toLocaleString()}</p>
+            <p className="text-xs font-semibold text-slate-500 uppercase">ডিলারদের মোট নিট বকেয়া / পাওনা</p>
+            <p className={`mt-1 text-2xl font-black ${totalOutstandingDue < 0 ? 'text-emerald-700' : totalOutstandingDue > 0 ? 'text-rose-600' : 'text-slate-700'}`}>
+              {formatBalanceAmount(totalOutstandingDue)}
+            </p>
+            <p className="mt-1 text-xs text-slate-500">{getBalanceLabel(totalOutstandingDue)}</p>
           </div>
           <div className="w-10 h-10 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center">
             <TrendingDown className="w-5 h-5" />
@@ -292,7 +306,7 @@ export default function DealerLedger() {
                 <th className="py-3 px-3 text-right">মোট ক্রয় (৳)</th>
                 <th className="py-3 px-3 text-right">মোট পরিশোধ (৳)</th>
                 <th className="py-3 px-3 text-right">ডেমেজ সমন্বয় (৳)</th>
-                <th className="py-3 px-3 text-right">অবশিষ্ট বকেয়া (৳)</th>
+                <th className="py-3 px-3 text-right">বকেয়া / পাওনা (৳)</th>
                 <th className="py-3 px-3 text-center">অ্যাকশন</th>
               </tr>
             </thead>
@@ -300,6 +314,7 @@ export default function DealerLedger() {
               {filteredSummaries.map((d) => {
                 const assignedOfficer = findDealerOfficer(d, officers);
                 const hasDue = d.currentDue > 0;
+                const hasAdvance = d.currentDue < 0;
 
                 return (
                   <tr key={d.id} className="hover:bg-slate-50 transition">
@@ -339,11 +354,16 @@ export default function DealerLedger() {
                     <td className="py-3 px-3 text-right font-mono">
                       <span
                         className={`inline-block px-2.5 py-1 rounded-md font-extrabold text-sm ${
-                          hasDue ? 'bg-rose-100 text-rose-800' : 'bg-emerald-100 text-emerald-800'
+                          hasDue
+                            ? 'bg-rose-100 text-rose-800'
+                            : hasAdvance
+                              ? 'bg-sky-100 text-sky-800'
+                              : 'bg-emerald-100 text-emerald-800'
                         }`}
                       >
-                        ৳{d.currentDue.toLocaleString()}
+                        {formatBalanceAmount(d.currentDue)}
                       </span>
+                      <span className="mt-1 block text-[10px] text-slate-500">{getBalanceLabel(d.currentDue)}</span>
                     </td>
 
                     <td className="py-3 px-3 text-center">
@@ -723,8 +743,9 @@ export default function DealerLedger() {
                 <p><span className="font-bold">ডিলার কোড:</span> {formatDealerCode(selectedDealerForLedger.code)}</p>
                 <p><span className="font-bold">প্রারম্ভিক বাকি:</span> ৳{selectedDealerForLedger.openingDue.toLocaleString()}</p>
                 <p><span className="font-bold text-emerald-700">মোট পরিশোধ:</span> ৳{selectedDealerForLedger.totalPaid.toLocaleString()}</p>
-                <p className="text-sm font-extrabold text-rose-700 mt-1">
-                  বর্তমান অবশিষ্ট বকেয়া: ৳{selectedDealerForLedger.currentDue.toLocaleString()}
+                <p><span className="font-bold text-sky-700">মোট রিটার্ন ক্রেডিট:</span> − ৳{selectedDealerForLedger.totalReturnCredits.toLocaleString()}</p>
+                <p className={`mt-1 text-sm font-extrabold ${selectedDealerForLedger.currentDue < 0 ? 'text-sky-700' : 'text-rose-700'}`}>
+                  {getBalanceLabel(selectedDealerForLedger.currentDue)}: {formatBalanceAmount(selectedDealerForLedger.currentDue)}
                 </p>
               </div>
             </div>
@@ -740,24 +761,39 @@ export default function DealerLedger() {
                     <th className="p-2">চালান নং</th>
                     <th className="p-2">তারিখ</th>
                     <th className="p-2">পণ্য বিবরণ</th>
-                    <th className="p-2 text-right">চালান মূল্য</th>
+                    <th className="p-2 text-right">লেনদেন (+/-)</th>
                     <th className="p-2 text-right">তাত্ক্ষণিক জমা</th>
-                    <th className="p-2 text-right">বাকি</th>
+                    <th className="p-2 text-right">চালানের বাকি</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
-                  {selectedDealerForLedger.invoices.map((inv) => (
-                    <tr key={inv.id}>
-                      <td className="p-2 font-mono font-bold text-emerald-800">{inv.id}</td>
-                      <td className="p-2">{inv.date}</td>
-                      <td className="p-2 text-slate-600">
-                        {inv.items.map(it => `${it.productName} (${it.size})`).join(', ')}
-                      </td>
-                      <td className="p-2 text-right font-mono font-semibold">৳{inv.grandTotal.toLocaleString()}</td>
-                      <td className="p-2 text-right font-mono text-emerald-700">৳{inv.paidAmount.toLocaleString()}</td>
-                      <td className="p-2 text-right font-mono font-bold text-rose-700">৳{inv.currentDue.toLocaleString()}</td>
-                    </tr>
-                  ))}
+                  {selectedDealerForLedger.invoices.map((inv) => {
+                    const isDealerReturn = inv.invoiceType === 'dealer_return';
+                    const invoiceAmount = Number(inv.totalAmount ?? inv.grandTotal) || 0;
+                    const paidAmount = Number(inv.paidAmount) || 0;
+                    const invoiceDue = Number(inv.currentDue ?? inv.dueAmount) || 0;
+                    return (
+                      <tr key={inv.id}>
+                        <td className="p-2 font-mono font-bold text-emerald-800">
+                          {inv.id}
+                          {isDealerReturn && <span className="block font-sans text-[10px] text-sky-700">পণ্য ফেরত</span>}
+                        </td>
+                        <td className="p-2">{inv.date}</td>
+                        <td className="p-2 text-slate-600">
+                          {(inv.items || []).map((it) => `${it.productName} (${it.size})`).join(', ')}
+                        </td>
+                        <td className={`p-2 text-right font-mono font-semibold ${isDealerReturn ? 'text-sky-700' : ''}`}>
+                          {isDealerReturn ? '− ' : ''}৳{invoiceAmount.toLocaleString()}
+                        </td>
+                        <td className="p-2 text-right font-mono text-emerald-700">
+                          {isDealerReturn || paidAmount === 0 ? '—' : `৳${paidAmount.toLocaleString()}`}
+                        </td>
+                        <td className="p-2 text-right font-mono font-bold text-rose-700">
+                          {isDealerReturn ? '—' : `৳${invoiceDue.toLocaleString()}`}
+                        </td>
+                      </tr>
+                    );
+                  })}
                   {selectedDealerForLedger.invoices.length === 0 && (
                     <tr>
                       <td colSpan={6} className="p-3 text-center text-slate-400 italic">কোনো চালানের রেকর্ড নেই</td>
