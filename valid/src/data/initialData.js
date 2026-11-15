@@ -412,7 +412,7 @@ export const INITIAL_DEALERS = [
   {
     id: 'DLR-6',
     code: '6',
-    shopName: 'মেসার্স কৃষক বন্ধু ট্রেডার্স',
+    shopName: 'মেসার্স কৃষক বন্ধ ট্রেডার্স',
     proprietor: 'মো: ইমান আলী',
     address: 'গোগর বাজার, রাণীশংকৈল,ঠাকুরগাঁও।',
     phone: '০১৭৩৮ ৬৩৭১২৭',
