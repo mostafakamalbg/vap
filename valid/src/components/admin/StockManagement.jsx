@@ -628,35 +628,49 @@ export default function StockManagement() {
                   <p className="mt-0.5 text-xs text-slate-500">যে প্যাকেজগুলো এসেছে শুধু সেগুলোর সংখ্যা লিখুন; ফাঁকা ও শূন্য পরিমাণ বাদ যাবে।</p>
                 </div>
               </div>
-              <div className="max-h-[52vh] space-y-2 overflow-y-auto pr-1">
-                {stockInItems.map((item, index) => {
-                  const product = products.find((entry) => entry.id === item.productId);
-                  const variant = product?.variants.find((entry) => entry.sku === item.sku);
-                  const quantityUnit = getPackageQuantityUnit({ ...variant, productName: product?.name });
-                  return (
-                    <div key={`${item.productId}-${item.sku}`} className="grid grid-cols-[minmax(0,1fr)_104px] items-center gap-2 rounded-lg border border-emerald-100 bg-white p-2 sm:grid-cols-[minmax(0,1fr)_minmax(130px,180px)]">
-                      <div className="min-w-0">
-                        <p className="break-words text-xs font-bold text-slate-800">{product?.name || 'পণ্য'}</p>
-                        <p className="mt-0.5 text-[11px] text-slate-500">{variant?.size} <span className="text-slate-400">• {variant?.packPerBox} {variant?.unit} / {quantityUnit}</span></p>
-                      </div>
-                      <label className="text-xs font-semibold text-slate-700">
-                        পরিমাণ ({quantityUnit})
-                        <input
-                          type="number"
-                          min="0"
-                          step="1"
-                          inputMode="numeric"
-                          placeholder="০"
-                          value={item.quantity}
-                          onChange={(event) => setStockInItems((previous) => previous.map((row, rowIndex) => (
-                            rowIndex === index ? { ...row, quantity: event.target.value } : row
-                          )))}
-                          className="mt-0.5 w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-center text-sm font-bold text-emerald-800"
-                        />
-                      </label>
-                    </div>
-                  );
-                })}
+              <div className="max-h-[52vh] overflow-auto rounded-lg border border-emerald-100">
+                <table className="w-full min-w-[480px] text-left text-xs">
+                  <thead className="sticky top-0 bg-slate-100 text-slate-700">
+                    <tr>
+                      <th className="px-2 py-1.5">পণ্য</th>
+                      <th className="px-2 py-1.5">প্যাক সাইজ</th>
+                      <th className="px-2 py-1.5 text-right">পরিমাণ</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200">
+                    {stockInItems.map((item, index) => {
+                      const product = products.find((entry) => entry.id === item.productId);
+                      const variant = product?.variants.find((entry) => entry.sku === item.sku);
+                      const quantityUnit = getPackageQuantityUnit({ ...variant, productName: product?.name });
+                      return (
+                        <tr key={`${item.productId}-${item.sku}`} className="bg-white hover:bg-slate-50">
+                          <td className="px-2 py-1.5 font-semibold text-slate-800">{product?.name || 'পণ্য'}</td>
+                          <td className="px-2 py-1.5 text-slate-600">
+                            {variant?.size}
+                            <span className="ml-1 text-[10px] text-slate-400">• {variant?.packPerBox} {variant?.unit} / {quantityUnit}</span>
+                          </td>
+                          <td className="px-2 py-1.5 text-right">
+                            <label className="inline-flex items-center gap-2 font-semibold text-slate-700">
+                              <span>{quantityUnit}</span>
+                              <input
+                                type="number"
+                                min="0"
+                                step="1"
+                                inputMode="numeric"
+                                placeholder="০"
+                                value={item.quantity}
+                                onChange={(event) => setStockInItems((previous) => previous.map((row, rowIndex) => (
+                                  rowIndex === index ? { ...row, quantity: event.target.value } : row
+                                )))}
+                                className="w-20 rounded border border-slate-300 bg-white px-2 py-1 text-center text-sm font-bold text-emerald-800"
+                              />
+                            </label>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             </section>
             {formError && <p role="alert" className="rounded-lg bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">{formError}</p>}

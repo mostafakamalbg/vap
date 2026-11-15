@@ -5,6 +5,7 @@ import { getInvoiceItemAmounts, getInvoiceSalesAmount } from './invoiceTotals.js
 import { sortInvoiceItems } from './invoiceSorting.js';
 import { getDealerLedgerTransactions, getDealerNetDue } from './dealerLedger.js';
 import { applyInvoiceStockChanges } from './invoiceStock.js';
+import { buildStockLedger } from './stockLedger.js';
 import {
   getInvoiceQuantityParts,
   getPackageQuantityUnit,
@@ -153,6 +154,27 @@ test('stock-in report quantities preserve jar and bag units and expand cartons b
   assert.equal(getStockInPieceQuantity({
     cartons: 3, quantityUnit: 'বস্তা', quantityPieces: 4, packPerBox: 6
   }), 4);
+});
+
+test('stock ledger orders events by date and reconciles selected balances with future movements', () => {
+  const events = [
+    { date: '2026-03-03', type: 'future-in', changeCartons: 10 },
+    { date: '2026-03-02', type: 'sale', changeCartons: -5 },
+    { date: '2026-03-01', type: 'stock-in', changeCartons: 20 }
+  ];
+  const ledger = buildStockLedger(events, '2026-03-01', '2026-03-03', 50);
+
+  assert.equal(ledger.openingBalance, 25);
+  assert.deepEqual(ledger.rows.map(({ type, runningTotal }) => [type, runningTotal]), [
+    ['stock-in', 45],
+    ['sale', 40],
+    ['future-in', 50]
+  ]);
+  const singleDayLedger = buildStockLedger(events, '2026-03-02', '2026-03-02', 50);
+  assert.equal(singleDayLedger.openingBalance, 45);
+  assert.deepEqual(singleDayLedger.rows.map(({ type, runningTotal }) => [type, runningTotal]), [
+    ['sale', 40]
+  ]);
 });
 
 test('invoice carton totals fall back to item quantities when the stored total is missing or zero', () => {

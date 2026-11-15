@@ -17,6 +17,8 @@ import { formatDealerCode, formatOfficerCode, normalizeOfficerCode } from '../..
 import { isDealerCollection, normalizePaymentType, PAYMENT_TYPES } from '../../../shared/paymentMethods';
 import { getPackageQuantityUnit, getStockInPieceQuantity } from '../../../shared/quantityUnits';
 import { getInvoiceCartons, getItemCartons } from '../../../shared/invoiceCartons';
+import { getInvoiceStockChanges } from '../../../shared/invoiceStock';
+import { buildStockLedger } from '../../../shared/stockLedger';
 import { getInvoiceSalesAmount } from '../../../shared/invoiceTotals';
 import { getInvoiceSessionForDate, INVOICE_SESSIONS, LEGACY_INVOICE_SESSION } from '../../../shared/sessions';
 import SearchableRecordSelect from './SearchableRecordSelect';
@@ -50,10 +52,21 @@ export default function MonthlyReport() {
   const todayStr = new Date().toISOString().slice(0, 10);
   const currentMonthStr = new Date().toISOString().slice(0, 7);
   const currentYearStr = new Date().getFullYear().toString();
+  const stockTransactionDates = [...invoices, ...stockInLogs]
+    .map((entry) => String(entry.date || ''))
+    .filter((date) => /^\d{4}-\d{2}-\d{2}$/.test(date))
+    .sort();
+  const earliestStockDate = stockTransactionDates[0] || `${currentYearStr}-01-01`;
+  const latestStockDate = stockTransactionDates[stockTransactionDates.length - 1] || todayStr;
 
   // Date Range for Dealer & Officer filtering
   const [startDate, setStartDate] = useState('2026-01-01');
   const [endDate, setEndDate] = useState(todayStr);
+  const [stockStartDate, setStockStartDate] = useState('');
+  const [stockEndDate, setStockEndDate] = useState('');
+  const activeStockStartDate = stockStartDate || earliestStockDate;
+  const activeStockEndDate = stockEndDate || (latestStockDate > todayStr ? latestStockDate : todayStr);
+  const validStockDateRange = activeStockStartDate <= activeStockEndDate;
 
   const [selectedMonth, setSelectedMonth] = useState(currentMonthStr);
   const [selectedStockOfficerId, setSelectedStockOfficerId] = useState(officers[0]?.id || '');
@@ -93,11 +106,6 @@ export default function MonthlyReport() {
     ...invoices.map((invoice) => invoice.date?.slice(0, 4)),
     ...damageLogs.map((entry) => entry.date?.slice(0, 4))
   ].filter(Boolean))].sort((a, b) => b.localeCompare(a));
-  const stockReportMonth = selectedMonth
-    ? new Intl.DateTimeFormat('bn-BD', { month: 'long', year: 'numeric', timeZone: 'UTC' })
-      .format(new Date(`${selectedMonth}-01T00:00:00.000Z`))
-    : '';
-
   // Date Preset Handlers
   const handlePresetDate = (months) => {
     const end = new Date();
@@ -175,10 +183,14 @@ export default function MonthlyReport() {
     reportTitle = 'সেশনভিত্তিক সেলস ও রিটার্ন রিপোর্ট';
     reportSubtitle = `নির্বাচিত সেশন: ${activeSession}`;
   } else if (filterMode === 'stock') {
-    filteredInvoices = invoices.filter((invoice) => invoice.date?.startsWith(selectedMonth));
-    filteredDamages = damageLogs.filter((entry) => entry.date?.startsWith(selectedMonth));
-    reportTitle = `মাসশেষ ইনভেন্টরি স্টক রিপোর্ট (${stockReportMonth})`;
-    reportSubtitle = 'মাসের শেষ দিনের অবশিষ্ট স্টক, স্টক ইন, বিক্রয়, ফেরত ও ড্যামেজ';
+    filteredInvoices = invoices.filter((invoice) => (
+      invoice.date >= activeStockStartDate && invoice.date <= activeStockEndDate
+    ));
+    filteredDamages = damageLogs.filter((entry) => (
+      entry.date >= activeStockStartDate && entry.date <= activeStockEndDate
+    ));
+    reportTitle = 'তারিখভিত্তিক স্টক লেজার';
+    reportSubtitle = `${toBnDate(activeStockStartDate)} হতে ${toBnDate(activeStockEndDate)} • স্টক ইন, আউট ও রানিং ব্যালান্স`;
   }
 
   // Search filter
@@ -259,8 +271,11 @@ export default function MonthlyReport() {
   ));
   const officerCollectionTransactions = monthlyOfficerPayments.filter(isDealerCollection);
   const reportPaymentTransactions = payments.filter((payment) => {
-    if (filterMode === 'month' || filterMode === 'stock') {
+    if (filterMode === 'month') {
       return String(payment.date || '').startsWith(selectedMonth);
+    }
+    if (filterMode === 'stock') {
+      return payment.date >= activeStockStartDate && payment.date <= activeStockEndDate;
     }
     if (filterMode === 'year') return String(payment.date || '').startsWith(selectedYear);
     if (filterMode === 'dealer') {
@@ -332,69 +347,53 @@ export default function MonthlyReport() {
   const officerMonthProducts = filterMode === 'officer' ? summarizeProducts(officerSalesInvoices) : [];
   const officerSessionProducts = summarizeProducts(sessionSalesInvoices);
 
-  const monthEnd = selectedMonth ? new Date(`${selectedMonth}-01T00:00:00.000Z`) : new Date();
-  monthEnd.setUTCMonth(monthEnd.getUTCMonth() + 1, 0);
-  const monthEndDate = monthEnd.toISOString().slice(0, 10);
-  const stockReportRows = products.flatMap((product) => (product.variants || []).map((variant) => {
+  const stockVariantByKey = new Map(products.flatMap((product) => (product.variants || []).map((variant) => [
+    `${product.id}::${variant.sku}`,
+    { ...variant, productName: product.name }
+  ])));
+  const stockReportRows = validStockDateRange ? products.flatMap((product) => (product.variants || []).map((variant) => {
     const productKey = `${product.id}::${variant.sku}`;
     const packPerBox = Number(variant.packPerBox) || 1;
-    const itemPieces = (item) => Number(item.totalPieces)
-      || getItemCartons(item) * (Number(item.packPerBox) || packPerBox);
     const invoiceMovementPieces = (invoice) => {
-      const direction = invoice.invoiceType === 'dealer_return' ? 1 : -1;
-      const itemMovement = (invoice.items || [])
-        .filter((item) => item.productId === product.id && item.sku === variant.sku)
-        .reduce((sum, item) => {
-          if (item.stockCondition === 'damaged'
-            && ['dealer_return', 'depot_factory_return'].includes(invoice.invoiceType)) return sum;
-          return sum + itemPieces(item) * direction;
-        }, 0);
-      const adjustedReturn = (invoice.returnAdjustments || [])
-        .filter((item) => item.productId === product.id && item.sku === variant.sku)
-        .reduce((sum, item) => sum + (Number(item.quantity ?? item.quantityPieces) || 0), 0);
-      return itemMovement - adjustedReturn;
+      return [...getInvoiceStockChanges(null, invoice).values()]
+        .filter((change) => change.productId === product.id && change.sku === variant.sku)
+        .reduce((sum, change) => sum + change.pieces, 0);
     };
-    const periodInvoices = invoices.filter((invoice) => invoice.date?.startsWith(selectedMonth));
+    const periodInvoices = invoices.filter((invoice) => (
+      invoice.date >= activeStockStartDate && invoice.date <= activeStockEndDate
+    ));
     const stockInsInRange = stockInLogs.filter((entry) => (
       entry.productId === product.id && entry.sku === variant.sku
-      && entry.date >= `${selectedMonth}-01` && entry.date <= monthEndDate
+      && entry.date >= activeStockStartDate && entry.date <= activeStockEndDate
     ));
     const stockInPieces = stockInsInRange.reduce(
       (sum, entry) => sum + getStockInPieceQuantity(entry, packPerBox),
       0
     );
+    const periodInvoiceMovement = periodInvoices.reduce(
+      (sum, invoice) => sum + invoiceMovementPieces(invoice),
+      0
+    );
     const salesPieces = periodInvoices
       .filter((invoice) => !['dealer_return', 'factory_damage', 'depot_factory_return'].includes(invoice.invoiceType))
-      .flatMap((invoice) => invoice.items || [])
-      .filter((item) => item.productId === product.id && item.sku === variant.sku)
-      .reduce((sum, item) => sum + itemPieces(item), 0);
+      .reduce((sum, invoice) => sum + Math.max(0, -invoiceMovementPieces(invoice)), 0);
     const dealerReturnPieces = periodInvoices
       .filter((invoice) => invoice.invoiceType === 'dealer_return')
-      .flatMap((invoice) => invoice.items || [])
-      .filter((item) => item.productId === product.id && item.sku === variant.sku)
-      .reduce((sum, item) => sum + itemPieces(item), 0);
-    const factoryReturnPieces = periodInvoices.reduce((sum, invoice) => {
-      const damagedItems = ['factory_damage', 'depot_factory_return'].includes(invoice.invoiceType)
-        ? (invoice.items || [])
-          .filter((item) => item.productId === product.id && item.sku === variant.sku)
-          .reduce((itemSum, item) => itemSum + itemPieces(item), 0)
-        : 0;
-      const adjustedReturns = (invoice.returnAdjustments || [])
-        .filter((item) => item.productId === product.id && item.sku === variant.sku)
-        .reduce((itemSum, item) => itemSum + (Number(item.quantity ?? item.quantityPieces) || 0), 0);
-      return sum + damagedItems + adjustedReturns;
-    }, 0);
+      .reduce((sum, invoice) => sum + Math.max(0, invoiceMovementPieces(invoice)), 0);
+    const factoryReturnPieces = periodInvoices
+      .filter((invoice) => ['factory_damage', 'depot_factory_return'].includes(invoice.invoiceType))
+      .reduce((sum, invoice) => sum + Math.max(0, -invoiceMovementPieces(invoice)), 0);
     const futureStockInPieces = stockInLogs
-      .filter((entry) => entry.productId === product.id && entry.sku === variant.sku && entry.date > monthEndDate)
+      .filter((entry) => entry.productId === product.id && entry.sku === variant.sku && entry.date > activeStockEndDate)
       .reduce((sum, entry) => sum + getStockInPieceQuantity(entry, packPerBox), 0);
     const futureInvoiceMovement = invoices
-      .filter((invoice) => invoice.date > monthEndDate)
+      .filter((invoice) => invoice.date > activeStockEndDate)
       .reduce((sum, invoice) => sum + invoiceMovementPieces(invoice), 0);
     const currentPieces = variant.stock == null
       ? (Number(variant.stockCartons) || 0) * packPerBox
       : Number(variant.stock) || 0;
     const closingPieces = currentPieces - futureStockInPieces - futureInvoiceMovement;
-    const openingPieces = closingPieces - stockInPieces + salesPieces - dealerReturnPieces + factoryReturnPieces;
+    const openingPieces = closingPieces - stockInPieces - periodInvoiceMovement;
     return {
       key: productKey,
       productName: product.name,
@@ -407,7 +406,7 @@ export default function MonthlyReport() {
       soldCartons: salesPieces / packPerBox,
       closingCartons: closingPieces / packPerBox
     };
-  }));
+  })) : [];
   const formatStockCartons = (cartons) => toBn(Number(cartons.toFixed(2)));
   const stockReportTotals = stockReportRows.reduce((totals, row) => ({
     openingCartons: totals.openingCartons + row.openingCartons,
@@ -426,6 +425,67 @@ export default function MonthlyReport() {
     soldCartons: 0,
     closingCartons: 0
   });
+  const stockLedgerAllEvents = [
+    ...stockInLogs.map((entry) => {
+      const variant = stockVariantByKey.get(`${entry.productId}::${entry.sku}`);
+      const packPerBox = Number(entry.packPerBox ?? variant?.packPerBox) || 1;
+      const pieces = getStockInPieceQuantity(entry, packPerBox);
+      return {
+        date: String(entry.date || ''),
+        type: 'স্টক ইন',
+        reference: entry.batchNo || entry.id || '—',
+        productName: `${entry.productName || variant?.productName || 'পণ্য'}${entry.size ? ` • ${entry.size}` : ''}`,
+        changeCartons: pieces / packPerBox
+      };
+    }),
+    ...invoices.flatMap((invoice) => [...getInvoiceStockChanges(null, invoice).values()].map((change) => {
+      const variant = stockVariantByKey.get(`${change.productId}::${change.sku}`);
+      const packPerBox = Number(variant?.packPerBox) || 1;
+      const pieces = Number(change.pieces) || 0;
+      const type = invoice.invoiceType === 'dealer_return'
+        ? 'ডিলার ফেরত'
+        : invoice.invoiceType === 'depot_factory_return'
+          ? 'ফ্যাক্টরি ফেরত'
+          : invoice.invoiceType === 'factory_damage'
+            ? 'ড্যামেজ / ফেরত'
+            : 'বিক্রয়';
+      return {
+        date: String(invoice.date || ''),
+        type,
+        reference: invoice.invoiceNo || invoice.id || '—',
+        productName: `${variant?.productName || change.productId} • ${variant?.size || change.sku}`,
+        changeCartons: pieces / packPerBox
+      };
+    }))
+  ].filter((entry) => (
+    /^\d{4}-\d{2}-\d{2}$/.test(entry.date)
+    && Number.isFinite(entry.changeCartons)
+    && entry.changeCartons !== 0
+  ));
+  const currentStockCartons = products.reduce((total, product) => total + (product.variants || []).reduce((productTotal, variant) => {
+    const packPerBox = Number(variant.packPerBox) || 1;
+    const pieces = variant.stock == null
+      ? (Number(variant.stockCartons) || 0) * packPerBox
+      : Number(variant.stock) || 0;
+    return productTotal + pieces / packPerBox;
+  }, 0), 0);
+  const { openingBalance: stockLedgerOpeningBalance, rows: ledgerRows } = buildStockLedger(
+    stockLedgerAllEvents,
+    activeStockStartDate,
+    activeStockEndDate,
+    currentStockCartons
+  );
+  const stockLedgerRows = ledgerRows.map((entry, index) => ({
+    ...entry,
+    id: `${entry.date}-${entry.reference}-${index}`
+  }));
+  const stockLedgerTotals = stockLedgerRows.reduce((totals, entry) => ({
+    stockIn: totals.stockIn + Math.max(0, entry.changeCartons),
+    stockOut: totals.stockOut + Math.max(0, -entry.changeCartons)
+  }), { stockIn: 0, stockOut: 0 });
+  const stockLedgerClosingBalance = stockLedgerRows.length
+    ? stockLedgerRows[stockLedgerRows.length - 1].runningTotal
+    : stockLedgerOpeningBalance;
 
   const printReport = () => {
     const printClass = 'monthly-report-printing';
@@ -482,8 +542,8 @@ export default function MonthlyReport() {
               <option value="year">বার্ষিক হিসাব (Yearly / Annual)</option>
               <option value="dealer">ডিলারভিত্তিক রিপোর্ট (By Dealer)</option>
               <option value="officer">অফিসারভিত্তিক রিপোর্ট (By Officer)</option>
-                <option value="session">সেশনভিত্তিক রিপোর্ট</option>
-                <option value="stock">মাসশেষ স্টক রিপোর্ট</option>
+              <option value="session">সেশনভিত্তিক রিপোর্ট</option>
+              <option value="stock">তারিখভিত্তিক স্টক লেজার</option>
             </select>
           </label>
         </div>
@@ -491,7 +551,7 @@ export default function MonthlyReport() {
         {/* Dynamic Controls based on selected mode */}
         <div className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 items-center text-xs">
-            {(filterMode === 'month' || filterMode === 'stock') && (
+            {filterMode === 'month' && (
               <div>
                 <label className="block font-bold text-slate-700 mb-1">মাস নির্বাচন করুন:</label>
                 <input
@@ -582,12 +642,12 @@ export default function MonthlyReport() {
             {(filterMode === 'month' || filterMode === 'stock') && (
               <section className="space-y-3 rounded-lg border border-slate-200 p-4">
                 <div className="grid gap-3 sm:grid-cols-3">
-                  <div><span className="text-xs font-semibold text-slate-500">মাসের মোট কালেকশন / আয়</span><p className="mt-1 text-lg font-black text-emerald-800">৳{toBn(reportCollection)}</p></div>
-                  <div><span className="text-xs font-semibold text-slate-500">মাসের মোট খরচ</span><p className="mt-1 text-lg font-black text-rose-700">৳{toBn(reportExpenses)}</p></div>
+                  <div><span className="text-xs font-semibold text-slate-500">{filterMode === 'stock' ? 'নির্বাচিত সময়ের মোট কালেকশন / আয়' : 'মাসের মোট কালেকশন / আয়'}</span><p className="mt-1 text-lg font-black text-emerald-800">৳{toBn(reportCollection)}</p></div>
+                  <div><span className="text-xs font-semibold text-slate-500">{filterMode === 'stock' ? 'নির্বাচিত সময়ের মোট খরচ' : 'মাসের মোট খরচ'}</span><p className="mt-1 text-lg font-black text-rose-700">৳{toBn(reportExpenses)}</p></div>
                   <div><span className="text-xs font-semibold text-slate-500">নিট নগদ প্রবাহ</span><p className="mt-1 text-lg font-black text-slate-900">৳{toBn(reportCollection - reportExpenses)}</p></div>
                 </div>
                 <div className="overflow-x-auto rounded-lg border border-slate-200">
-                  <h5 className="bg-slate-100 px-3 py-2 text-xs font-bold text-slate-800">কোম্পানির মাসিক আয়-ব্যয়ের পোস্টিং</h5>
+                  <h5 className="bg-slate-100 px-3 py-2 text-xs font-bold text-slate-800">{filterMode === 'stock' ? 'নির্বাচিত সময়ের কোম্পানি আয়-ব্যয়ের পোস্টিং' : 'কোম্পানির মাসিক আয়-ব্যয়ের পোস্টিং'}</h5>
                   <table className="w-full text-left text-xs">
                     <thead className="bg-slate-50 text-slate-700">
                       <tr><th className="p-2">তারিখ</th><th className="p-2">ধরন</th><th className="p-2">ডিলার / অফিসার</th><th className="p-2">রেফারেন্স</th><th className="p-2 text-right">আয়</th><th className="p-2 text-right">ব্যয়</th></tr>
@@ -607,7 +667,7 @@ export default function MonthlyReport() {
                           </tr>
                         );
                       })}
-                      {!reportPaymentTransactions.length && <tr><td colSpan={6} className="p-3 text-center text-slate-500">এই মাসে কোনো পেমেন্ট বা খরচ পোস্টিং নেই।</td></tr>}
+                      {!reportPaymentTransactions.length && <tr><td colSpan={6} className="p-3 text-center text-slate-500">{filterMode === 'stock' ? 'এই সময়ে কোনো পেমেন্ট বা খরচ পোস্টিং নেই।' : 'এই মাসে কোনো পেমেন্ট বা খরচ পোস্টিং নেই।'}</td></tr>}
                     </tbody>
                   </table>
                 </div>
@@ -670,6 +730,46 @@ export default function MonthlyReport() {
               </div>
             )}
           </div>
+
+          {filterMode === 'stock' && (
+            <div className="flex flex-col gap-3 rounded-xl border border-emerald-100 bg-emerald-50/60 p-3 text-xs sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <p className="mb-2 flex items-center gap-1 font-bold text-slate-700">
+                  <Clock className="h-3.5 w-3.5 text-emerald-700" />
+                  স্টক লেজারের তারিখ পরিসর
+                </p>
+                <div className="flex flex-wrap items-end gap-2">
+                  <label className="font-semibold text-slate-600">
+                    তারিখ থেকে
+                    <input
+                      type="date"
+                      value={activeStockStartDate}
+                      max={activeStockEndDate}
+                      onChange={(event) => setStockStartDate(event.target.value)}
+                      className="mt-1 block rounded border border-slate-300 bg-white px-2.5 py-1.5 font-mono text-xs"
+                    />
+                  </label>
+                  <label className="font-semibold text-slate-600">
+                    তারিখ পর্যন্ত
+                    <input
+                      type="date"
+                      value={activeStockEndDate}
+                      min={activeStockStartDate}
+                      onChange={(event) => setStockEndDate(event.target.value)}
+                      className="mt-1 block rounded border border-slate-300 bg-white px-2.5 py-1.5 font-mono text-xs"
+                    />
+                  </label>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setStockStartDate(''); setStockEndDate(''); }}
+                className="self-start rounded border border-emerald-200 bg-white px-3 py-1.5 font-bold text-emerald-800 hover:bg-emerald-100 sm:self-auto"
+              >
+                কোম্পানি শুরু থেকে
+              </button>
+            </div>
+          )}
 
           {/* Date Range Selector for Dealer and Officer Modes */}
           {filterMode === 'dealer' && (
@@ -921,6 +1021,66 @@ export default function MonthlyReport() {
 
         {filterMode === 'stock' && (
           <section className="monthly-report-stock-section space-y-3">
+            {!validStockDateRange && (
+              <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm font-semibold text-rose-700">
+                স্টক রিপোর্টের শুরুর তারিখ শেষ তারিখের আগে বা সমান হতে হবে।
+              </p>
+            )}
+            {validStockDateRange && (
+              <>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  {[
+                    ['শুরুর ব্যালান্স', stockLedgerOpeningBalance],
+                    ['সময়ের মোট স্টক ইন', stockLedgerTotals.stockIn],
+                    ['সময়ের মোট স্টক আউট', stockLedgerTotals.stockOut],
+                    ['শেষ তারিখের ব্যালান্স', stockLedgerClosingBalance]
+                  ].map(([label, amount]) => (
+                    <div key={label} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                      <p className="text-xs font-semibold text-slate-500">{label}</p>
+                      <p className={`mt-1 text-lg font-black ${amount < 0 ? 'text-rose-700' : 'text-emerald-800'}`}>
+                        {formatStockCartons(amount)} কার্টুন
+                      </p>
+                    </div>
+                  ))}
+                </div>
+                <div className="overflow-x-auto rounded-lg border border-slate-200">
+                  <h4 className="bg-emerald-50 px-3 py-2 text-sm font-black text-emerald-900">
+                    তারিখভিত্তিক কিউমুলেটিভ স্টক লেজার
+                  </h4>
+                  <table className="w-full min-w-[900px] text-left text-xs">
+                    <thead className="bg-slate-100 text-slate-700">
+                      <tr>
+                        <th className="p-2">তারিখ</th>
+                        <th className="p-2">লেনদেন</th>
+                        <th className="p-2">রেফারেন্স</th>
+                        <th className="p-2">পণ্য / প্যাক সাইজ</th>
+                        <th className="p-2 text-right">স্টক পরিবর্তন</th>
+                        <th className="p-2 text-right">রানিং মোট</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {stockLedgerRows.map((row) => (
+                        <tr key={row.id}>
+                          <td className="p-2 whitespace-nowrap">{toBnDate(row.date)}</td>
+                          <td className="p-2 font-semibold">{row.type}</td>
+                          <td className="p-2">{row.reference}</td>
+                          <td className="p-2">{row.productName}</td>
+                          <td className={`p-2 text-right font-semibold ${row.changeCartons < 0 ? 'text-rose-700' : 'text-emerald-800'}`}>
+                            {row.changeCartons > 0 ? '+' : ''}{formatStockCartons(row.changeCartons)}
+                          </td>
+                          <td className={`p-2 text-right font-bold ${row.runningTotal < 0 ? 'text-rose-700' : 'text-slate-900'}`}>
+                            {formatStockCartons(row.runningTotal)}
+                          </td>
+                        </tr>
+                      ))}
+                      {!stockLedgerRows.length && (
+                        <tr><td colSpan={6} className="p-4 text-center text-slate-500">নির্বাচিত সময়ে কোনো স্টক লেনদেন নেই।</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
             <div className="overflow-x-auto rounded-lg border border-slate-200">
               <table className="monthly-report-stock-table w-full min-w-[1200px] text-left text-xs">
                 <thead className="bg-slate-100 text-slate-700">
