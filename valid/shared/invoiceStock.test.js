@@ -9,7 +9,9 @@ import {
   getInvoiceQuantityParts,
   getPackageQuantityUnit,
   getStockInQuantities,
-  getStockCartonEquivalent
+  getStockInPieceQuantity,
+  getStockCartonEquivalent,
+  isValidStockInQuantities
 } from './quantityUnits.js';
 import { normalizeHotlineNumber } from './companyContact.js';
 import { normalizeProductDisplayNames, REAL_HORMONE_SHORT_NAME } from './productNames.js';
@@ -120,6 +122,37 @@ test('stock-in preview converts jar and bag quantities to carton equivalents', (
 
   assert.equal(currentCartons + incomingJars, 483);
   assert.equal(incomingBags, 4 / 6);
+});
+
+test('stock-in accepts valid entries when existing carton or bag balances are negative', () => {
+  const cartonQuantities = getStockInQuantities({
+    productName: 'Product B', size: '১০০ মিলি × ১২', packPerBox: 12, stock: -36, stockCartons: -3
+  }, 1);
+  const bagQuantities = getStockInQuantities({
+    productName: 'জিপসাম', size: '৫কেজি × ৬', packPerBox: 6, stock: -8
+  }, 3);
+
+  assert.equal(cartonQuantities.stock, -24);
+  assert.equal(cartonQuantities.stockCartons, -2);
+  assert.equal(bagQuantities.stock, -5);
+  assert.equal(bagQuantities.stockCartons, -1);
+  assert.equal(isValidStockInQuantities(cartonQuantities), true);
+  assert.equal(isValidStockInQuantities(bagQuantities), true);
+});
+
+test('stock-in report quantities preserve jar and bag units and expand cartons by pack size', () => {
+  assert.equal(getStockInPieceQuantity({
+    cartons: 3, quantityUnit: 'কার্টুন', packPerBox: 12
+  }), 36);
+  assert.equal(getStockInPieceQuantity({
+    cartons: 3, quantityUnit: 'বস্তা', packPerBox: 6
+  }), 3);
+  assert.equal(getStockInPieceQuantity({
+    cartons: 2, quantityUnit: 'জার', packPerBox: 1
+  }), 2);
+  assert.equal(getStockInPieceQuantity({
+    cartons: 3, quantityUnit: 'বস্তা', quantityPieces: 4, packPerBox: 6
+  }), 4);
 });
 
 test('invoice carton totals fall back to item quantities when the stored total is missing or zero', () => {

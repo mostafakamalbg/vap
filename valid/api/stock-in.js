@@ -3,7 +3,7 @@ import dbConnect from '../lib/mongodb.js';
 import { authorize } from '../lib/auth.js';
 import { BusinessRecord, Product } from '../lib/models.js';
 import { transactionOptions, withTransactionFallback } from '../lib/transactions.js';
-import { getStockInQuantities } from '../shared/quantityUnits.js';
+import { getStockInQuantities, isValidStockInQuantities } from '../shared/quantityUnits.js';
 
 function isValidDate(value) {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -87,23 +87,14 @@ export default async function handler(req, res) {
           stock: variant.stock,
           stockCartons: variant.stockCartons
         }, entry.cartons);
-        if (
-          !Number.isFinite(quantities.quantityPieces)
-          || !Number.isInteger(quantities.quantityPieces)
-          || quantities.quantityPieces <= 0
-          || !Number.isFinite(quantities.stock)
-          || !Number.isInteger(quantities.stock)
-          || quantities.stock < 0
-          || !Number.isFinite(quantities.stockCartons)
-          || !Number.isInteger(quantities.stockCartons)
-          || quantities.stockCartons < 0
-        ) {
+        if (!isValidStockInQuantities(quantities)) {
           const error = new Error('স্টক পরিমাণ সঠিকভাবে হিসাব করা যায়নি; প্যাক ও মজুত তথ্য যাচাই করুন।');
           error.statusCode = 400;
           throw error;
         }
         entry.quantityPieces = quantities.quantityPieces;
         entry.quantityUnit = quantities.quantityUnit;
+        entry.packPerBox = packPerBox;
         variant.stockCartons = quantities.stockCartons;
         variant.stock = quantities.stock;
       }

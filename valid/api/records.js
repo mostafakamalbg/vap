@@ -100,7 +100,11 @@ export default async function handler(req, res) {
           filter = { type, ...(ownerConditions.length ? { $or: ownerConditions } : { recordId: '__no_records__' }) };
         }
       }
-      const records = await BusinessRecord.find(filter).lean();
+      const recordsQuery = BusinessRecord.find(filter);
+      if (type === 'stockInLogs') {
+        recordsQuery.sort({ 'data.date': -1, createdAt: -1 });
+      }
+      const records = await recordsQuery.lean();
       return res.status(200).json(records.map((record) => record.data));
     }
 

@@ -135,6 +135,9 @@ export default function StockManagement() {
     (total, entry) => total + entry.cartonEquivalent,
     0
   );
+  const recentStockInLogs = [...stockInLogs]
+    .sort((left, right) => String(right.date || '').localeCompare(String(left.date || '')))
+    .slice(0, 8);
 
   // Prepare a stock-in preview from the entered package counts.
   const handleStockInSubmit = async (e) => {
@@ -761,7 +764,7 @@ export default function StockManagement() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
-                  {stockInLogs.slice(0, 8).map((log) => (
+                  {recentStockInLogs.map((log) => (
                     <tr key={log.id} className="hover:bg-slate-50">
                       <td className="py-2 px-3 font-mono">{log.date}</td>
                       <td className="py-2 px-3 font-medium text-slate-800">{log.productName}</td>

@@ -3,12 +3,13 @@ import path from 'node:path';
 import ExcelJS from 'exceljs';
 import PDFDocument from 'pdfkit';
 import dbConnect from '../lib/mongodb.js';
-import { BusinessRecord, Dealer, Invoice } from '../lib/models.js';
+import { BusinessRecord, Dealer, Invoice, Product } from '../lib/models.js';
 import { authorize } from '../lib/auth.js';
 import { INVOICE_SESSIONS } from '../shared/sessions.js';
 import { normalizeOfficerCode } from '../shared/codes.js';
 import { isDealerCollection } from '../shared/paymentMethods.js';
 import { getDealerNetDue } from '../shared/dealerLedger.js';
+import { getStockInPieceQuantity } from '../shared/quantityUnits.js';
 
 const SALES_TYPES = ['dealer_return', 'factory_damage', 'depot_factory_return'];
 
@@ -419,7 +420,7 @@ async function getCompanyReport(query) {
   const period = companyPeriod(query.period || '6m');
   const dateRange = { $gte: period.startDate, $lte: period.endDate };
   const invoiceMatch = dateMatch(dateRange);
-  const [summaries, movements, paymentRecords, stockEntries] = await Promise.all([
+  const [summaries, movements, paymentRecords, stockEntries, products] = await Promise.all([
     Invoice.aggregate([
       { $match: invoiceMatch },
       {
@@ -488,8 +489,15 @@ async function getCompanyReport(query) {
     BusinessRecord.find({
       type: 'stockInLogs',
       'data.date': dateRange
-    }).select('data').lean()
+    }).select('data').lean(),
+    Product.find({}).select('id variants').lean()
   ]);
+  const packPerBoxByVariant = new Map(
+    products.flatMap((product) => (product.variants || []).map((variant) => [
+      `${product.id}\u0000${variant.sku}`,
+      money(variant.packPerBox) || 1
+    ]))
+  );
   const sessions = new Map();
   for (const summary of summaries) {
     sessions.set(String(summary._id), {
@@ -560,9 +568,11 @@ async function getCompanyReport(query) {
       };
       sessionReport.itemStockMovements.push(itemMovement);
     }
-    const cartonsReceived = money(entry.cartons);
-    const piecesReceived = money(entry.quantityPieces)
-      || cartonsReceived * (money(entry.packPerBox) || 1);
+    const packPerBox = money(entry.packPerBox)
+      || packPerBoxByVariant.get(`${entry.productId}\u0000${entry.sku}`)
+      || 1;
+    const piecesReceived = getStockInPieceQuantity(entry, packPerBox);
+    const cartonsReceived = piecesReceived / packPerBox;
     itemMovement.cartonsReceived += cartonsReceived;
     itemMovement.piecesReceived += piecesReceived;
     itemMovement.netStockChangePieces += piecesReceived;

@@ -58,6 +58,27 @@ export function getStockInQuantities(item, packageCount) {
   };
 }
 
+export function isValidStockInQuantities(quantities) {
+  return Number.isFinite(quantities?.quantityPieces)
+    && Number.isInteger(quantities.quantityPieces)
+    && quantities.quantityPieces > 0
+    && Number.isFinite(quantities.stock)
+    && Number.isInteger(quantities.stock)
+    && Number.isFinite(quantities.stockCartons)
+    && Number.isInteger(quantities.stockCartons);
+}
+
+export function getStockInPieceQuantity(entry, fallbackPackPerBox = 1) {
+  const quantityPieces = Number(entry?.quantityPieces);
+  if (Number.isFinite(quantityPieces) && quantityPieces > 0) return quantityPieces;
+
+  const packageCount = Number(entry?.cartons ?? entry?.quantity) || 0;
+  const quantityUnit = entry?.quantityUnit || getPackageQuantityUnit(entry);
+  const entryPackPerBox = Number(entry?.packPerBox ?? fallbackPackPerBox);
+  const packPerBox = Number.isFinite(entryPackPerBox) && entryPackPerBox > 0 ? entryPackPerBox : 1;
+  return packageCount * (quantityUnit === 'কার্টুন' ? packPerBox : 1);
+}
+
 export function getStockCartonEquivalent(item, packageCount) {
   const quantityUnit = getPackageQuantityUnit(item);
   const packPerBox = Number(item?.packPerBox);

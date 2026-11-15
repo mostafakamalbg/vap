@@ -15,7 +15,7 @@ import { useAgro } from '../../context/AgroContext';
 import { toBn, toBnDate } from '../../utils/bengali';
 import { formatDealerCode, formatOfficerCode, normalizeOfficerCode } from '../../../shared/codes';
 import { isDealerCollection, normalizePaymentType, PAYMENT_TYPES } from '../../../shared/paymentMethods';
-import { getPackageQuantityUnit } from '../../../shared/quantityUnits';
+import { getPackageQuantityUnit, getStockInPieceQuantity } from '../../../shared/quantityUnits';
 import { getInvoiceCartons, getItemCartons } from '../../../shared/invoiceCartons';
 import { getInvoiceSalesAmount } from '../../../shared/invoiceTotals';
 import { getInvoiceSessionForDate, INVOICE_SESSIONS, LEGACY_INVOICE_SESSION } from '../../../shared/sessions';
@@ -360,7 +360,7 @@ export default function MonthlyReport() {
       && entry.date >= `${selectedMonth}-01` && entry.date <= monthEndDate
     ));
     const stockInPieces = stockInsInRange.reduce(
-      (sum, entry) => sum + (Number(entry.quantityPieces) || 0),
+      (sum, entry) => sum + getStockInPieceQuantity(entry, packPerBox),
       0
     );
     const salesPieces = periodInvoices
@@ -386,7 +386,7 @@ export default function MonthlyReport() {
     }, 0);
     const futureStockInPieces = stockInLogs
       .filter((entry) => entry.productId === product.id && entry.sku === variant.sku && entry.date > monthEndDate)
-      .reduce((sum, entry) => sum + (Number(entry.quantityPieces) || 0), 0);
+      .reduce((sum, entry) => sum + getStockInPieceQuantity(entry, packPerBox), 0);
     const futureInvoiceMovement = invoices
       .filter((invoice) => invoice.date > monthEndDate)
       .reduce((sum, invoice) => sum + invoiceMovementPieces(invoice), 0);
