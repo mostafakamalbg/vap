@@ -19,7 +19,7 @@ const emptyItem = () => ({
   productName: '',
   sku: '',
   size: '',
-  cartons: 1,
+  cartons: 0,
   packPerBox: 1,
   unit: 'পিস/বোতল',
   cartonPrice: 0,
@@ -383,6 +383,7 @@ export default function InvoiceGenerator({
       || !Number.isSafeInteger(item.retailPieces)
       || item.retailPieces < 0
       || item.cartons + item.retailPieces <= 0
+      || (item.retailPieces > 0 && (!Number.isFinite(Number(item.piecePrice)) || Number(item.piecePrice) <= 0))
       || !Number.isFinite(item.total)
       || item.total <= 0
     ));
@@ -704,7 +705,7 @@ export default function InvoiceGenerator({
           )}
           <div className="space-y-4 p-5">
             {form.items.map((item, index) => (
-              <div key={`invoice-item-${index}`} className="grid gap-3 rounded-lg border border-slate-200 p-4 sm:grid-cols-2 lg:grid-cols-[minmax(220px,2fr)_1fr_1fr_1fr_auto] lg:items-end">
+              <div key={`invoice-item-${index}`} className="grid gap-3 rounded-lg border border-slate-200 p-4 sm:grid-cols-2 lg:grid-cols-[minmax(220px,2fr)_repeat(4,minmax(110px,1fr))_minmax(100px,1fr)_auto] lg:items-end">
                 <label className="text-sm font-semibold text-slate-700">
                   পণ্য <span className="text-rose-600">*</span>
                   <select required disabled={item.isRetailOnly} value={item.productKey} onChange={(event) => selectProduct(index, event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 disabled:bg-slate-100">
@@ -726,12 +727,20 @@ export default function InvoiceGenerator({
                 ) : (
                   <>
                     <label className="text-sm font-semibold text-slate-700">
-                      {isRegularInvoice ? 'পরিমাণ' : 'ফেরত পরিমাণ'} ({getPackageQuantityUnit(item)}) <span className="text-rose-600">*</span>
-                      <input type="number" min="1" step="1" required value={item.cartons} onChange={(event) => updateItem(index, 'cartons', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" />
+                      {isRegularInvoice ? 'কার্টুনের সংখ্যা' : 'ফেরত কার্টুনের সংখ্যা'} ({getPackageQuantityUnit(item)})
+                      <input type="number" min="0" step="1" value={item.cartons} onChange={(event) => updateItem(index, 'cartons', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" />
                     </label>
                     <label className="text-sm font-semibold text-slate-700">
                       ট্রেড প্রাইজ (৳/{getPackageQuantityUnit(item)})
-                      <input type="number" min="0" step="0.01" required value={item.cartonPrice} onChange={(event) => updateItem(index, 'cartonPrice', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" />
+                      <input type="number" min="0" step="0.01" value={item.cartonPrice} onChange={(event) => updateItem(index, 'cartonPrice', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" />
+                    </label>
+                    <label className="text-sm font-semibold text-slate-700">
+                      খুচরা পিসের সংখ্যা
+                      <input type="number" min="0" step="1" value={item.retailPieces} onChange={(event) => updateItem(index, 'retailPieces', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" />
+                    </label>
+                    <label className="text-sm font-semibold text-slate-700">
+                      প্রতি পিসের দর (৳)
+                      <input type="number" min="0" step="0.01" value={item.piecePrice} onChange={(event) => updateItem(index, 'piecePrice', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" />
                     </label>
                   </>
                 )}

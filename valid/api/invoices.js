@@ -41,7 +41,7 @@ function validateInvoice(body) {
     return 'ফেরত পণ্যের সঠিক পরিমাণ ও দর দিন।';
   }
   const invalidItem = body.items.some((item) => {
-    const cartons = Number(item?.cartons ?? item?.quantity);
+    const cartons = Number(item?.cartons ?? item?.quantity ?? 0);
     const retailPieces = Number(item?.retailPieces ?? 0);
     const piecePrice = Number(item?.piecePrice ?? item?.unitPrice);
     const unitPrice = Number(item?.unitPrice ?? item?.piecePrice);
@@ -54,7 +54,7 @@ function validateInvoice(body) {
       || cartons + retailPieces <= 0
       || !Number.isFinite(unitPrice)
       || unitPrice < 0
-      || (retailPieces > 0 && (!Number.isFinite(piecePrice) || piecePrice < 0))
+      || (retailPieces > 0 && (!Number.isFinite(piecePrice) || piecePrice <= 0))
       || (item.stockCondition != null && !['good', 'damaged'].includes(item.stockCondition));
   });
   if (invalidItem) return 'প্রতিটি পণ্যের সঠিক পরিমাণ ও একক মূল্য দিন।';
@@ -69,8 +69,8 @@ function validateInvoice(body) {
 function invoiceValues(body) {
   const items = body.items.map((item) => ({
     ...item,
-    cartons: Number(item.cartons ?? item.quantity),
-    quantity: Number(item.quantity ?? item.cartons),
+    cartons: Number(item.cartons ?? item.quantity ?? 0),
+    quantity: Number(item.quantity ?? item.cartons ?? 0),
     retailPieces: Number(item.retailPieces) || 0,
     piecePrice: Number(item.piecePrice ?? item.unitPrice) || 0,
     totalPieces: Number(item.totalPieces)
