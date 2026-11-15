@@ -24,7 +24,7 @@ import { HOTLINE_NUMBER } from '../../shared/companyContact';
 export default function Navbar({ activeTab, setActiveTab }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [backupMenuOpen, setBackupMenuOpen] = useState(false);
-  const { currentUser, logout, exportBackup, resetToFactoryData } = useAgro();
+  const { currentUser, logout, exportBackup } = useAgro();
   const { theme, setTheme, language, setLanguage, t } = useUiPreferences();
 
   const publicItems = [
@@ -43,7 +43,8 @@ export default function Navbar({ activeTab, setActiveTab }) {
     { id: 'sales-agreements', label: 'সেলস ও কালেকশন চুক্তি', icon: FileText },
     { id: 'officer-tracking', label: t('nav.officerTracking'), icon: UserCheck },
     { id: 'monthly-reports', label: t('nav.reports'), icon: BarChart3 },
-    { id: 'data-management', label: 'ডেটা এক্সপোর্ট/ইমপোর্ট', icon: Download }
+    { id: 'data-management', label: 'ডেটা এক্সপোর্ট/ইমপোর্ট', icon: Download },
+    { id: 'factory-reset', label: 'ফ্যাক্টরি ডেটা রিসেট', icon: RotateCw }
   ];
   const navItems = currentUser?.role === 'admin'
     ? [...publicItems, ...adminItems]
@@ -133,15 +134,6 @@ export default function Navbar({ activeTab, setActiveTab }) {
                   </div>
                 )}
               </div>
-            )}
-            {currentUser?.role === 'admin' && (
-              <button
-                onClick={() => resetToFactoryData().catch((error) => window.alert(error.message))}
-                title="ফ্যাক্টরি ডেটা রিসেট"
-                className="hidden items-center gap-1 rounded px-2 py-0.5 text-emerald-300 transition hover:bg-emerald-800 hover:text-white lg:flex"
-              >
-                <RotateCw className="h-3 w-3" /><span>ফ্যাক্টরি রিসেট</span>
-              </button>
             )}
           </div>
         </div>
@@ -260,9 +252,6 @@ export default function Navbar({ activeTab, setActiveTab }) {
                 <button onClick={() => { exportBackup('google-docs'); setMobileMenuOpen(false); }} className="flex items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold text-emerald-800 hover:bg-emerald-50"><Download className="h-4 w-4" />Google Docs</button>
                 <button onClick={() => { exportBackup('word'); setMobileMenuOpen(false); }} className="flex items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold text-emerald-800 hover:bg-emerald-50"><Download className="h-4 w-4" />Microsoft Word</button>
               </div>
-              <button onClick={() => resetToFactoryData().catch((error) => window.alert(error.message))} className="mt-1 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold text-rose-600 hover:bg-rose-50">
-                <RotateCw className="h-4 w-4" />ফ্যাক্টরি ডেটা রিসেট
-              </button>
             </div>
           )}
           {currentUser && (

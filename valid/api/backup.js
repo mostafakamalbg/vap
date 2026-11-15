@@ -86,27 +86,6 @@ async function restoreFactoryData() {
   await replaceWithTransaction(data, { clearOrders: true });
 }
 
-async function clearSalesAndStock(setStage) {
-  await withTransactionFallback(async (session) => {
-    const options = transactionOptions(session);
-    setStage('ইনভয়েস, অর্ডার ও হিসাবের রেকর্ড মুছে ফেলা');
-    await Invoice.deleteMany({}, options);
-    await Order.deleteMany({}, options);
-    await BusinessRecord.deleteMany({
-      type: { $in: ['invoices', 'damageLogs', 'stockInLogs', 'payments', 'salesAgreements'] }
-    }, options);
-    setStage('ডিলারের বকেয়া শূন্য করা');
-    await Dealer.updateMany({}, { $set: { openingDue: 0 } }, options);
-    setStage('পণ্যের স্টক শূন্য করা');
-    await Product.updateMany({ variants: { $type: 'array' } }, {
-      $set: {
-        'variants.$[].stock': 0,
-        'variants.$[].stockCartons': 0
-      }
-    }, options);
-  });
-}
-
 async function clearStockAndLogs() {
   let matchedProducts = 0;
   let deletedStockInLogs = 0;
@@ -143,13 +122,10 @@ export default async function handler(req, res) {
   }
 
   if (req.method === 'POST') {
-    if (!['factory-reset', 'clear-sales-stock', 'clear-stock-only'].includes(req.body?.action)) {
+    if (!['factory-reset', 'clear-stock-only'].includes(req.body?.action)) {
       return res.status(400).json({ error: 'Invalid reset request.' });
     }
-    if (
-      ['factory-reset', 'clear-stock-only'].includes(req.body.action)
-      && req.body.confirmationText !== 'RESET'
-    ) {
+    if (req.body.confirmationText !== 'RESET') {
       return res.status(400).json({ error: 'রিসেট নিশ্চিত করতে RESET লিখুন।' });
     }
     let stage = 'ডেটাবেসের রেকর্ড';
@@ -162,43 +138,14 @@ export default async function handler(req, res) {
           ...cleared
         });
       }
-      if (req.body.action === 'clear-sales-stock') {
-        const [invoiceCount, orderCount, damageCount, stockInCount, paymentCount, agreementCount] = await Promise.all([
-          Invoice.countDocuments({}),
-          Order.countDocuments({}),
-          BusinessRecord.countDocuments({ type: 'damageLogs' }),
-          BusinessRecord.countDocuments({ type: 'stockInLogs' }),
-          BusinessRecord.countDocuments({ type: 'payments' }),
-          BusinessRecord.countDocuments({ type: 'salesAgreements' })
-        ]);
-
-        await clearSalesAndStock((nextStage) => {
-          stage = nextStage;
-        });
-
-        const deletedCounts = {
-          invoices: invoiceCount,
-          orders: orderCount,
-          damages: damageCount,
-          stockInLogs: stockInCount,
-          payments: paymentCount,
-          salesAgreements: agreementCount
-        };
-        return res.status(200).json({
-          message: 'ইনভয়েস, অর্ডার, ড্যামেজ, স্টক-ইন, পেমেন্ট ও সেলস চুক্তি মুছে বকেয়া এবং পণ্যের স্টক শূন্য করা হয়েছে।',
-          deleted: deletedCounts
-        });
-      }
       stage = 'ফ্যাক্টরি ডেটা পুনরুদ্ধার';
       await restoreFactoryData();
       return res.status(200).json({ message: 'ফ্যাক্টরি ডেটা পুনরুদ্ধার হয়েছে।' });
     } catch (error) {
       console.error('Data reset failed:', { action: req.body.action, stage, error });
-      const errorMessage = req.body.action === 'clear-sales-stock'
-        ? `ডেটা মুছতে ব্যর্থ হয়েছে (${stage} ধাপ)। অনুগ্রহ করে আবার চেষ্টা করুন।`
-        : req.body.action === 'clear-stock-only'
-          ? `স্টক রিসেট করা যায়নি (${stage} ধাপ)। অনুগ্রহ করে আবার চেষ্টা করুন।`
-          : 'ফ্যাক্টরি ডেটা পুনরুদ্ধার করা যায়নি।';
+      const errorMessage = req.body.action === 'clear-stock-only'
+        ? `স্টক রিসেট করা যায়নি (${stage} ধাপ)। অনুগ্রহ করে আবার চেষ্টা করুন।`
+        : 'ফ্যাক্টরি ডেটা পুনরুদ্ধার করা যায়নি।';
       return res.status(500).json({ error: errorMessage });
     }
   }

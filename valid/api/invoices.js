@@ -298,8 +298,26 @@ export default async function handler(req, res) {
     if (input.dealerId && !dealer) {
       return res.status(400).json({ error: 'নির্বাচিত ডিলার ডেটাবেজে পাওয়া যায়নি।' });
     }
+    const officerRecord = input.officerId
+      ? await BusinessRecord.findOne({
+        type: 'officers',
+        $or: [
+          { recordId: String(input.officerId) },
+          { 'data.id': String(input.officerId) },
+          { 'data.officerId': String(input.officerId) }
+        ]
+      }).select('data').lean()
+      : null;
+    if (input.officerId && !officerRecord) {
+      return res.status(400).json({ error: 'নির্বাচিত সেলস অফিসার ডেটাবেজে পাওয়া যায়নি।' });
+    }
+    const officer = officerRecord?.data;
     const values = invoiceValues({
       ...input,
+      officerId: officer?.id || officer?.officerId || input.officerId,
+      officerCode: officer?.code || input.officerCode,
+      officerName: officer?.name || input.officerName,
+      officerDesignation: officer?.designation || input.officerDesignation,
       dealerCode: dealer?.code || input.dealerCode,
       dealerName: dealer?.shopName || dealer?.name || input.dealerName,
       dealerProprietor: dealer?.proprietor || input.dealerProprietor || '',

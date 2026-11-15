@@ -914,55 +914,6 @@ export function AgroProvider({ children }) {
     return true;
   };
 
-  const clearSalesStockData = async (password) => {
-    if (currentUser?.role !== 'admin') {
-      throw new Error('এই রিসেট ব্যবহারের অনুমতি নেই।');
-    }
-    if (typeof password !== 'string' || !password) {
-      throw new Error('রিসেট করতে অ্যাডমিন পাসওয়ার্ড দিন।');
-    }
-    const response = await fetch('/api/backup', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'clear-sales-stock', password })
-    });
-    const result = await readJsonResponse(response);
-    const clearedProducts = products.map((product) => ({
-      ...product,
-      variants: (product.variants || []).map((variant) => ({
-        ...variant,
-        stock: 0,
-        stockCartons: 0
-      }))
-    }));
-    const clearedDealers = dealers.map((dealer) => ({ ...dealer, openingDue: 0 }));
-    localStorage.removeItem('vap_invoices_v5');
-    localStorage.removeItem('vap_stock_in_v5');
-    localStorage.removeItem('vap_damages_v5');
-    localStorage.removeItem('vap_payments_v5');
-    localStorage.removeItem('vap_sales_agreements_v1');
-    localRecordsRef.current = {
-      ...localRecordsRef.current,
-      products: clearedProducts,
-      dealers: clearedDealers,
-      invoices: [],
-      stockInLogs: [],
-      damageLogs: [],
-      payments: [],
-      salesAgreements: []
-    };
-    setInvoices([]);
-    setStockInLogs([]);
-    setDamageLogs([]);
-    setPayments([]);
-    setSalesAgreements([]);
-    setProducts(clearedProducts);
-    setDealers(clearedDealers);
-    syncErrorsRef.current.clear();
-    setCloudError('');
-    return result;
-  };
-
   const clearStockOnly = async (password, confirmationText) => {
     if (currentUser?.role !== 'admin') {
       throw new Error('এই রিসেট ব্যবহারের অনুমতি নেই।');
@@ -1172,7 +1123,6 @@ export function AgroProvider({ children }) {
         getDealerSummary,
         getOfficerSummary,
         resetToFactoryData,
-        clearSalesStockData,
         clearStockOnly,
         exportBackupExcel,
         exportBackup,

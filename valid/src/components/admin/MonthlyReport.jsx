@@ -21,7 +21,6 @@ import { getInvoiceSalesAmount } from '../../../shared/invoiceTotals';
 import { getInvoiceSessionForDate, INVOICE_SESSIONS, LEGACY_INVOICE_SESSION } from '../../../shared/sessions';
 import SearchableRecordSelect from './SearchableRecordSelect';
 import CompanyLetterhead from './CompanyLetterhead';
-import StockResetButton from './StockResetButton';
 
 function getBengaliDesignation(designation = '') {
   return String(designation)
@@ -458,9 +457,6 @@ export default function MonthlyReport() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {currentUser?.role === 'admin' && (
-            <StockResetButton className="rounded-lg bg-rose-700 px-4 py-2 text-xs font-bold text-white shadow transition hover:bg-rose-800 disabled:cursor-not-allowed disabled:opacity-50" />
-          )}
           <button
             type="button"
             onClick={printReport}

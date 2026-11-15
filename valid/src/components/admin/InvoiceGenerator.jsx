@@ -2,7 +2,12 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, Printer, Save, Trash2 } from 'lucide-react';
 import { getNextInvoiceNumber, useAgro } from '../../context/AgroContext';
 import { INVOICE_SESSIONS } from '../../../shared/sessions';
-import { formatDealerCode, formatInvoiceNumber, formatOfficerCode } from '../../../shared/codes';
+import {
+  formatDealerCode,
+  formatInvoiceNumber,
+  formatOfficerCode,
+  normalizeOfficerCode
+} from '../../../shared/codes';
 import { normalizePaymentMethod, PAYMENT_METHODS } from '../../../shared/paymentMethods';
 import { getInvoiceItemAmounts } from '../../../shared/invoiceTotals';
 import { getItemCartons } from '../../../shared/invoiceCartons';
@@ -53,6 +58,23 @@ const INVOICE_TYPES = [
   { value: 'depot_factory_return', label: 'ডিপো থেকে ফ্যাক্টরি/ওয়্যারহাউসে ফেরত' }
 ];
 
+function getDealerOfficerId(dealer, officers) {
+  if (!dealer) return '';
+  const assignedId = String(dealer.assignedOfficerId || dealer.officerId || '');
+  const officerById = officers.find((officer) => (
+    String(officer.id || officer.officerId || '') === assignedId
+  ));
+  if (officerById) return officerById.id || officerById.officerId;
+
+  const assignedCode = normalizeOfficerCode(
+    dealer.officerCode || dealer.assignedOfficerCode
+  );
+  return officers.find((officer) => (
+    assignedCode
+    && normalizeOfficerCode(officer.code, officer.designation) === assignedCode
+  ))?.id || '';
+}
+
 export default function InvoiceGenerator({
   onViewInvoices,
   onInvoiceCreated,
@@ -76,7 +98,9 @@ export default function InvoiceGenerator({
     session: INVOICE_SESSIONS.includes(editInvoiceData?.session)
       ? editInvoiceData.session
       : INVOICE_SESSIONS[0],
-    officerId: editInvoiceData ? editInvoiceData.officerId || '' : officers[0]?.id || '',
+    officerId: editInvoiceData
+      ? editInvoiceData.officerId || ''
+      : getDealerOfficerId(dealers[0], officers) || officers[0]?.id || '',
     dealerId: editInvoiceData ? editInvoiceData.dealerId || '' : dealers[0]?.id || '',
     paidAmount: String(editInvoiceData?.paidAmount ?? ''),
     transportCost: String(editInvoiceData?.transportCost ?? ''),
@@ -135,6 +159,7 @@ export default function InvoiceGenerator({
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [saving, setSaving] = useState(false);
+  const [previewInvoice, setPreviewInvoice] = useState(null);
   useEffect(() => {
     if (editInvoiceData || currentUser?.role !== 'admin') {
       setInvoiceNumberLoading(false);
@@ -232,6 +257,17 @@ export default function InvoiceGenerator({
       ...(key === 'paymentMethod' && normalizePaymentMethod(value) === 'credit'
         ? { paidAmount: '0' }
         : {})
+    }));
+    setSavedInvoice(null);
+    setSuccess('');
+  };
+
+  const selectDealer = (dealerId) => {
+    const dealer = dealers.find((entry) => entry.id === dealerId);
+    setForm((current) => ({
+      ...current,
+      dealerId,
+      officerId: getDealerOfficerId(dealer, officers)
     }));
     setSavedInvoice(null);
     setSuccess('');
@@ -456,13 +492,19 @@ export default function InvoiceGenerator({
       ...(isDepotFactoryReturn ? { returnReason: 'ডিপো থেকে ফ্যাক্টরি/ওয়্যারহাউসে ফেরত' } : {})
     };
 
+    setPreviewInvoice(invoice);
+  };
+
+  const handleFinalSave = async () => {
+    if (!previewInvoice) return;
     setSaving(true);
     try {
       const saved = editInvoiceData
-        ? await updateInvoice(invoice)
-        : await createInvoice(invoice);
+        ? await updateInvoice(previewInvoice)
+        : await createInvoice(previewInvoice);
       setSavedInvoice(saved);
       setSuccess(editInvoiceData ? 'ইনভয়েস আপডেট হয়েছে।' : 'ইনভয়েস তৈরি হয়েছে।');
+      setPreviewInvoice(null);
       if (!editInvoiceData) {
         window.alert('ইনভয়েস সফলভাবে সংরক্ষণ করা হয়েছে!');
         onInvoiceCreated?.();
@@ -582,12 +624,13 @@ export default function InvoiceGenerator({
             label={`ডিলার${isRegularInvoice || isDealerReturn ? ' *' : ' (ঐচ্ছিক)'}`}
             items={dealers}
             value={form.dealerId}
-            onChange={(value) => updateForm('dealerId', value)}
+            onChange={selectDealer}
             placeholder="ডিলার নির্বাচন করুন"
             searchPlaceholder="ডিলার কোড বা নাম দিয়ে খুঁজুন"
             optionLabel={(dealer) => `${formatDealerCode(dealer.code)} • ${dealer.shopName}`}
             searchText={(dealer) => `${formatDealerCode(dealer.code)} ${dealer.shopName || ''} ${dealer.proprietor || ''}`}
             required={isRegularInvoice || isDealerReturn}
+            resultsPlacement="top"
           />
           {selectedDealer && (
             <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-950 sm:col-span-2 lg:col-span-4">
@@ -824,10 +867,52 @@ export default function InvoiceGenerator({
 
         <div className="flex justify-end gap-3">
           <button type="submit" disabled={saving || invoiceNumberLoading || Boolean(invoiceNumberError)} className="rounded-lg bg-emerald-700 px-5 py-3 font-bold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-60">
-            <Save className="mr-2 inline h-4 w-4" /> {saving ? 'সংরক্ষণ হচ্ছে...' : editInvoiceData ? 'আপডেট করুন' : 'ইনভয়েস সংরক্ষণ করুন'}
+            <Printer className="mr-2 inline h-4 w-4" /> প্রিভিউ দেখুন
           </button>
         </div>
       </form>
+
+      {previewInvoice && (
+        <div className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto bg-slate-950/60 p-3 sm:p-6">
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="invoice-preview-title"
+            className="my-auto w-full max-w-5xl rounded-2xl bg-slate-100 p-3 shadow-2xl sm:p-6"
+          >
+            <div className="no-print mb-4 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 id="invoice-preview-title" className="text-xl font-black text-slate-900">সংরক্ষণের আগে ইনভয়েস প্রিভিউ</h2>
+                <p className="text-sm text-slate-600">তথ্য যাচাই করে চূড়ান্তভাবে সংরক্ষণ করুন, অথবা সম্পাদনায় ফিরে যান।</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={() => {
+                    setPreviewInvoice(null);
+                    setError('');
+                  }}
+                  className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-700 disabled:opacity-60"
+                >
+                  সম্পাদনায় ফিরে যান
+                </button>
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={handleFinalSave}
+                  className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <Save className="mr-2 inline h-4 w-4" />
+                  {saving ? 'সংরক্ষণ হচ্ছে…' : editInvoiceData ? 'চূড়ান্তভাবে আপডেট করুন' : 'চূড়ান্তভাবে সংরক্ষণ করুন'}
+                </button>
+              </div>
+            </div>
+            {error && <p role="alert" className="no-print mb-3 rounded-lg bg-rose-50 p-3 text-sm font-semibold text-rose-700">{error}</p>}
+            <InvoicePrintHeader invoice={previewInvoice} />
+          </section>
+        </div>
+      )}
 
       {savedInvoice && (
         <section className="space-y-4">
