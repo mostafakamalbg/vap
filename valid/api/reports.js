@@ -63,19 +63,34 @@ function quantityExpression(field, fallback) {
 }
 
 const cartonsExpression = {
-  $cond: [
-    { $gt: [{ $ifNull: ['$items.cartons', 0] }, 0] },
-    '$items.cartons',
+  $add: [
     {
       $cond: [
-        { $gt: [{ $ifNull: ['$items.quantity', 0] }, 0] },
-        '$items.quantity',
+        { $gt: [{ $ifNull: ['$items.cartons', 0] }, 0] },
+        '$items.cartons',
         {
-          $divide: [
-            { $ifNull: ['$items.totalPieces', 0] },
-            { $max: [{ $ifNull: ['$items.packPerBox', 1] }, 1] }
+          $cond: [
+            { $gt: [{ $ifNull: ['$items.quantity', 0] }, 0] },
+            '$items.quantity',
+            {
+              $divide: [
+                {
+                  $subtract: [
+                    { $ifNull: ['$items.totalPieces', 0] },
+                    { $ifNull: ['$items.retailPieces', 0] }
+                  ]
+                },
+                { $max: [{ $ifNull: ['$items.packPerBox', 1] }, 1] }
+              ]
+            }
           ]
         }
+      ]
+    },
+    {
+      $divide: [
+        { $ifNull: ['$items.retailPieces', 0] },
+        { $max: [{ $ifNull: ['$items.packPerBox', 1] }, 1] }
       ]
     }
   ]

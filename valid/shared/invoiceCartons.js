@@ -1,4 +1,17 @@
 export function getItemCartons(item) {
+  const cartonCount = Number(item?.cartons ?? item?.quantity);
+  const retailPieces = Number(item?.retailPieces) || 0;
+  const packPerBox = Number(item?.packPerBox);
+  if (
+    Number.isFinite(cartonCount)
+    && cartonCount >= 0
+    && Number.isSafeInteger(retailPieces)
+    && retailPieces >= 0
+    && (cartonCount > 0 || retailPieces > 0)
+  ) {
+    return cartonCount + retailPieces / (Number.isFinite(packPerBox) && packPerBox > 0 ? packPerBox : 1);
+  }
+
   const cartons = Number(item?.cartons);
   if (Number.isFinite(cartons) && cartons > 0) return cartons;
 
@@ -6,7 +19,6 @@ export function getItemCartons(item) {
   if (Number.isFinite(quantity) && quantity > 0) return quantity;
 
   const pieces = Number(item?.totalPieces);
-  const packPerBox = Number(item?.packPerBox);
   return Number.isFinite(pieces) && pieces > 0
     ? pieces / (Number.isFinite(packPerBox) && packPerBox > 0 ? packPerBox : 1)
     : 0;

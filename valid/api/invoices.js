@@ -3,6 +3,7 @@ import { BusinessRecord, Dealer, Invoice, Order, Product, User } from '../lib/mo
 import { authorize, verifyPassword } from '../lib/auth.js';
 import { normalizePaymentMethod } from '../shared/paymentMethods.js';
 import { getInvoiceStockChanges } from '../shared/invoiceStock.js';
+import { getItemCartons } from '../shared/invoiceCartons.js';
 import { transactionOptions, withTransactionFallback } from '../lib/transactions.js';
 
 const isValidDate = (value) => {
@@ -39,15 +40,23 @@ function validateInvoice(body) {
   )) {
     return 'ফেরত পণ্যের সঠিক পরিমাণ ও দর দিন।';
   }
-  const invalidItem = body.items.some((item) => (
-    !item?.productId
-    || !item?.sku
-    || !Number.isSafeInteger(Number(item.cartons ?? item.quantity))
-    || Number(item.cartons ?? item.quantity) <= 0
-    || !Number.isFinite(Number(item.unitPrice))
-    || Number(item.unitPrice) < 0
-    || (item.stockCondition != null && !['good', 'damaged'].includes(item.stockCondition))
-  ));
+  const invalidItem = body.items.some((item) => {
+    const cartons = Number(item?.cartons ?? item?.quantity);
+    const retailPieces = Number(item?.retailPieces ?? 0);
+    const piecePrice = Number(item?.piecePrice ?? item?.unitPrice);
+    const unitPrice = Number(item?.unitPrice ?? item?.piecePrice);
+    return !item?.productId
+      || !item?.sku
+      || !Number.isSafeInteger(cartons)
+      || cartons < 0
+      || !Number.isSafeInteger(retailPieces)
+      || retailPieces < 0
+      || cartons + retailPieces <= 0
+      || !Number.isFinite(unitPrice)
+      || unitPrice < 0
+      || (retailPieces > 0 && (!Number.isFinite(piecePrice) || piecePrice < 0))
+      || (item.stockCondition != null && !['good', 'damaged'].includes(item.stockCondition));
+  });
   if (invalidItem) return 'প্রতিটি পণ্যের সঠিক পরিমাণ ও একক মূল্য দিন।';
   for (const field of ['totalAmount', 'grandTotal', 'paidAmount', 'dueAmount', 'currentDue']) {
     if (body[field] != null && (!Number.isFinite(Number(body[field])) || Number(body[field]) < 0)) {
@@ -62,8 +71,16 @@ function invoiceValues(body) {
     ...item,
     cartons: Number(item.cartons ?? item.quantity),
     quantity: Number(item.quantity ?? item.cartons),
-    unitPrice: Number(item.unitPrice),
-    total: Number(item.total ?? Number(item.unitPrice) * Number(item.cartons ?? item.quantity))
+    retailPieces: Number(item.retailPieces) || 0,
+    piecePrice: Number(item.piecePrice ?? item.unitPrice) || 0,
+    totalPieces: Number(item.totalPieces)
+      || (Number(item.cartons ?? item.quantity) || 0) * (Number(item.packPerBox) || 1)
+        + (Number(item.retailPieces) || 0),
+    unitPrice: Number(item.unitPrice ?? item.piecePrice) || 0,
+    total: Number(item.total ?? (
+      Number(item.unitPrice) * Number(item.cartons ?? item.quantity)
+      + (Number(item.piecePrice ?? 0) || 0) * (Number(item.retailPieces) || 0)
+    ))
   }));
   const totalAmount = Number(body.totalAmount ?? body.grandTotal ?? 0);
   const isReturn = ['dealer_return', 'depot_factory_return', 'factory_damage'].includes(body.invoiceType);
@@ -101,6 +118,7 @@ function invoiceValues(body) {
     dealerAddress: String(body.dealerAddress || ''),
     dealerPhone: String(body.dealerPhone || ''),
     items,
+    totalCartons: items.reduce((sum, item) => sum + getItemCartons(item), 0),
     subtotal: Number(body.subtotal ?? totalAmount),
     grandTotal: Number(body.grandTotal ?? totalAmount),
     totalAmount,

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { getInvoiceCartons } from './invoiceCartons.js';
+import { getInvoiceCartons, getItemCartons } from './invoiceCartons.js';
 import { getInvoiceSalesAmount } from './invoiceTotals.js';
 import { applyInvoiceStockChanges } from './invoiceStock.js';
 import { getPackageQuantityUnit, getStockInQuantities } from './quantityUnits.js';
@@ -67,6 +67,13 @@ test('invoice carton totals fall back to item quantities when the stored total i
   }), 7);
 });
 
+test('retail pieces contribute to carton equivalents while retaining exact piece quantity', () => {
+  assert.equal(getItemCartons({ cartons: 2, retailPieces: 3, packPerBox: 12 }), 2.25);
+  assert.equal(getInvoiceCartons({
+    items: [{ cartons: 0, quantity: 0, retailPieces: 6, packPerBox: 12 }]
+  }), 0.5);
+});
+
 test('invoice sales totals fall back to totalAmount when grandTotal is zero', () => {
   assert.equal(getInvoiceSalesAmount({ grandTotal: 0, totalAmount: 125 }), 125);
 });
@@ -88,6 +95,28 @@ test('invoice stock changes preserve negative carton and piece balances', () => 
 
   assert.equal(updated[0].variants[0].stockCartons, -2);
   assert.equal(updated[0].variants[0].stock, -18);
+});
+
+test('retail-only invoice lines subtract exact pieces and fractional carton equivalents', () => {
+  const products = [{
+    id: 'product-1',
+    variants: [{ sku: 'sku-1', stockCartons: 2, stock: 24, packPerBox: 12 }]
+  }];
+  const updated = applyInvoiceStockChanges(products, null, {
+    invoiceType: 'regular',
+    items: [{
+      productId: 'product-1',
+      sku: 'sku-1',
+      cartons: 0,
+      quantity: 0,
+      retailPieces: 3,
+      totalPieces: 3,
+      packPerBox: 12
+    }]
+  });
+
+  assert.equal(updated[0].variants[0].stockCartons, 1.75);
+  assert.equal(updated[0].variants[0].stock, 21);
 });
 
 test('dealer returns add good goods to depot stock and damaged goods to damage stock', () => {

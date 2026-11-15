@@ -16,7 +16,7 @@ import {
 } from '../../shared/codes';
 import { isDealerCollection, normalizePaymentMethod } from '../../shared/paymentMethods';
 import { applyInvoiceStockChanges } from '../../shared/invoiceStock';
-import { getInvoiceCartons } from '../../shared/invoiceCartons';
+import { getInvoiceCartons, getItemCartons } from '../../shared/invoiceCartons';
 import { getInvoiceSalesAmount } from '../../shared/invoiceTotals';
 import { getStockInQuantities } from '../../shared/quantityUnits';
 import { normalizeHotlineNumber } from '../../shared/companyContact';
@@ -541,7 +541,7 @@ export function AgroProvider({ children }) {
     }
 
     const calculatedTotalCartons = (newInvoice.items || []).reduce(
-      (sum, it) => sum + (Number(it.cartons) || 0),
+      (sum, it) => sum + getItemCartons(it),
       0
     );
 
@@ -580,7 +580,7 @@ export function AgroProvider({ children }) {
   // Update existing invoice (Edit capability)
   const updateInvoice = async (updatedInvoice) => {
     const calculatedTotalCartons = (updatedInvoice.items || []).reduce(
-      (sum, it) => sum + (Number(it.cartons) || 0),
+      (sum, it) => sum + getItemCartons(it),
       0
     );
 

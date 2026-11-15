@@ -4,6 +4,7 @@ import { getNextInvoiceNumber, useAgro } from '../../context/AgroContext';
 import { INVOICE_SESSIONS } from '../../../shared/sessions';
 import { formatDealerCode, formatInvoiceNumber, formatOfficerCode } from '../../../shared/codes';
 import { normalizePaymentMethod, PAYMENT_METHODS } from '../../../shared/paymentMethods';
+import { getItemCartons } from '../../../shared/invoiceCartons';
 import { getPackageQuantityUnit } from '../../../shared/quantityUnits';
 import { toBnCurrency } from '../../utils/bengali';
 import InvoicePrintHeader from './InvoicePrintHeader';
@@ -24,7 +25,10 @@ const emptyItem = () => ({
   cartonPrice: 0,
   unitPrice: 0,
   commission: 0,
-  stockCondition: 'good'
+  stockCondition: 'good',
+  retailPieces: 0,
+  piecePrice: 0,
+  isRetailOnly: false
 });
 
 const emptyReturnAdjustment = () => ({
@@ -91,9 +95,18 @@ export default function InvoiceGenerator({
           ...emptyItem(),
           ...item,
           productKey: `${item.productId}::${item.sku}`,
-          cartons: item.cartons ?? item.quantity ?? 1,
-          cartonPrice: Number(item.cartonPrice ?? (Number(item.unitPrice) * Number(item.packPerBox || 1))),
-          commission: Number(item.commission) || 0
+          cartons: item.cartons ?? item.quantity ?? (Number(item.retailPieces) > 0 ? 0 : 1),
+          cartonPrice: Number(item.cartonPrice ?? (
+            Number(item.retailPieces) > 0 && Number(item.cartons ?? item.quantity) === 0
+              ? 0
+              : Number(item.unitPrice) * Number(item.packPerBox || 1)
+          )),
+          commission: Number(item.commission) || 0,
+          retailPieces: Number(item.retailPieces) || 0,
+          piecePrice: Number(item.piecePrice ?? (Number(item.retailPieces) > 0 ? item.unitPrice : 0)) || 0,
+          isRetailOnly: Boolean(item.isRetailOnly || (
+            Number(item.cartons ?? item.quantity) === 0 && Number(item.retailPieces) > 0
+          ))
         }))
       : [emptyItem()]
   }));
@@ -107,6 +120,8 @@ export default function InvoiceGenerator({
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [saving, setSaving] = useState(false);
+  const [retailFormOpen, setRetailFormOpen] = useState(false);
+  const [retailForm, setRetailForm] = useState({ productKey: '', quantity: '', price: '' });
 
   useEffect(() => {
     if (editInvoiceData || currentUser?.role !== 'admin') {
@@ -159,14 +174,25 @@ export default function InvoiceGenerator({
   const selectedDealerPhone = selectedDealer?.phone || selectedDealer?.mobile || selectedDealer?.phoneNumber || '';
   const dealerSummary = selectedDealer ? getDealerSummary(selectedDealer.id) : null;
   const items = useMemo(() => form.items.map((item) => {
-    const quantity = Math.max(0, Number(item.cartons) || 0);
-    const lineTotal = quantity * (Number(item.cartonPrice) || 0);
-    return { ...item, cartons: quantity, quantity, total: lineTotal };
+    const cartons = Math.max(0, Number(item.cartons) || 0);
+    const retailPieces = Math.max(0, Number(item.retailPieces) || 0);
+    const lineTotal = cartons * (Number(item.cartonPrice) || 0)
+      + retailPieces * (Number(item.piecePrice) || 0);
+    const packPerBox = Number(item.packPerBox) || 1;
+    return {
+      ...item,
+      cartons,
+      quantity: cartons,
+      retailPieces,
+      totalPieces: cartons * packPerBox + retailPieces,
+      total: lineTotal
+    };
   }), [form.items]);
 
   const isRegularInvoice = invoiceType === 'regular';
   const isDealerReturn = invoiceType === 'dealer_return';
   const isDepotFactoryReturn = invoiceType === 'depot_factory_return';
+  const totalPieces = items.reduce((sum, item) => sum + item.totalPieces, 0);
   const subtotal = items.reduce((sum, item) => sum + item.total, 0);
   const commissionAmount = isRegularInvoice ? items.reduce(
     (sum, item) => sum + item.total * (Number(item.commission) || 0) / 100,
@@ -238,7 +264,10 @@ export default function InvoiceGenerator({
               unit: variant?.unit || 'পিস/বোতল',
               cartonPrice: variant?.cartonPrice || 0,
               unitPrice: variant?.tp || 0,
-              commission: variant?.commission || 0
+              commission: variant?.commission || 0,
+              retailPieces: 0,
+              piecePrice: 0,
+              isRetailOnly: false
             }
           : item
       ))
@@ -290,6 +319,49 @@ export default function InvoiceGenerator({
   }));
 
   const addItem = () => setForm((current) => ({ ...current, items: [...current.items, emptyItem()] }));
+  const addRetailItem = () => {
+    const variant = allProductVariants.find((entry) => entry.key === retailForm.productKey);
+    const quantity = Number(retailForm.quantity);
+    const price = Number(retailForm.price);
+    if (
+      !variant
+      || !Number.isSafeInteger(quantity)
+      || quantity <= 0
+      || !String(retailForm.price).trim()
+      || !Number.isFinite(price)
+      || price <= 0
+    ) {
+      setError('খুচরা পণ্যের সাইজ, পিস সংখ্যা ও সঠিক পিস দর দিন।');
+      return;
+    }
+
+    const retailItem = {
+      ...emptyItem(),
+      productKey: variant.key,
+      productId: variant.productId,
+      productName: variant.productName,
+      sku: variant.sku,
+      size: variant.size || '',
+      cartons: 0,
+      packPerBox: variant.packPerBox || 1,
+      unit: variant.unit || 'পিস/বোতল',
+      cartonPrice: 0,
+      unitPrice: price,
+      piecePrice: price,
+      retailPieces: quantity,
+      isRetailOnly: true,
+      commission: 0
+    };
+    setForm((current) => ({
+      ...current,
+      items: [...current.items.filter((item) => item.productId), retailItem]
+    }));
+    setRetailForm({ productKey: '', quantity: '', price: '' });
+    setRetailFormOpen(false);
+    setError('');
+    setSavedInvoice(null);
+    setSuccess('');
+  };
   const removeItem = (index) => setForm((current) => ({
     ...current,
     items: current.items.length === 1
@@ -307,7 +379,10 @@ export default function InvoiceGenerator({
     const invalidItem = items.some((item) => (
       !item.productId
       || !Number.isSafeInteger(item.cartons)
-      || item.cartons <= 0
+      || item.cartons < 0
+      || !Number.isSafeInteger(item.retailPieces)
+      || item.retailPieces < 0
+      || item.cartons + item.retailPieces <= 0
       || !Number.isFinite(item.total)
       || item.total <= 0
     ));
@@ -361,9 +436,14 @@ export default function InvoiceGenerator({
         packPerBox: Number(item.packPerBox) || 1,
         cartons: item.cartons,
         quantity: item.cartons,
-        totalPieces: item.cartons * (Number(item.packPerBox) || 1),
+        retailPieces: item.retailPieces,
+        piecePrice: Number(item.piecePrice) || 0,
+        isRetailOnly: Boolean(item.isRetailOnly),
+        totalPieces: item.totalPieces,
         cartonPrice: Number(item.cartonPrice) || 0,
-        unitPrice: Number(item.unitPrice) || 0,
+        unitPrice: item.isRetailOnly
+          ? Number(item.piecePrice) || 0
+          : Number(item.unitPrice) || 0,
         commission: Number(item.commission) || 0,
         stockCondition: !isRegularInvoice && item.stockCondition === 'damaged' ? 'damaged' : 'good',
         total: item.total
@@ -383,7 +463,7 @@ export default function InvoiceGenerator({
         reason: item.reason
       })),
       returnAdjustmentTotal,
-      totalCartons: items.reduce((sum, item) => sum + item.cartons, 0),
+      totalCartons: items.reduce((sum, item) => sum + getItemCartons(item), 0),
       subtotal,
       commissionAmount,
       transportCost,
@@ -553,29 +633,114 @@ export default function InvoiceGenerator({
                   : 'পণ্যের পরিমাণ ও দর অনুযায়ী ফেরতের হিসাব হবে; ভালো/ডেমেজ অবস্থা নির্বাচন করুন।'}
               </p>
             </div>
-            <button type="button" onClick={addItem} className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white">+ পণ্য যোগ করুন</button>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" onClick={addItem} className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white">+ পণ্য যোগ করুন</button>
+              <button
+                type="button"
+                onClick={() => setRetailFormOpen((open) => !open)}
+                className="rounded-lg border border-emerald-700 bg-white px-4 py-2 text-sm font-semibold text-emerald-800 hover:bg-emerald-50"
+              >
+                + খুচরা পিস বা সাইজ যুক্ত করুন
+              </button>
+            </div>
           </div>
+          {retailFormOpen && (
+            <div className="border-b border-emerald-100 bg-emerald-50/70 p-5">
+              <div className="grid gap-3 md:grid-cols-[minmax(220px,2fr)_1fr_1fr_auto] md:items-end">
+                <label className="text-sm font-semibold text-slate-700">
+                  পণ্য ও সাইজ <span className="text-rose-600">*</span>
+                  <select
+                    value={retailForm.productKey}
+                    onChange={(event) => {
+                      const variant = allProductVariants.find((entry) => entry.key === event.target.value);
+                      setRetailForm((current) => ({
+                        ...current,
+                        productKey: event.target.value,
+                        price: variant ? String(variant.tp || '') : ''
+                      }));
+                    }}
+                    className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2"
+                  >
+                    <option value="">পণ্য নির্বাচন করুন</option>
+                    {allProductVariants.map((variant) => (
+                      <option key={variant.key} value={variant.key}>{variant.displayText}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="text-sm font-semibold text-slate-700">
+                  খুচরা পিসের সংখ্যা <span className="text-rose-600">*</span>
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={retailForm.quantity}
+                    onChange={(event) => setRetailForm((current) => ({ ...current, quantity: event.target.value }))}
+                    className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2"
+                  />
+                </label>
+                <label className="text-sm font-semibold text-slate-700">
+                  প্রতি পিসের দর (৳) <span className="text-rose-600">*</span>
+                  <input
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    value={retailForm.price}
+                    onChange={(event) => setRetailForm((current) => ({ ...current, price: event.target.value }))}
+                    className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2"
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={addRetailItem}
+                  className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-800"
+                >
+                  আইটেম যোগ করুন
+                </button>
+                <p className="text-xs font-semibold text-emerald-900 md:col-span-4">
+                  খুচরা মোট: ৳{toBnCurrency((Number(retailForm.quantity) || 0) * (Number(retailForm.price) || 0))}
+                </p>
+              </div>
+            </div>
+          )}
           <div className="space-y-4 p-5">
             {form.items.map((item, index) => (
               <div key={`invoice-item-${index}`} className="grid gap-3 rounded-lg border border-slate-200 p-4 sm:grid-cols-2 lg:grid-cols-[minmax(220px,2fr)_1fr_1fr_1fr_auto] lg:items-end">
                 <label className="text-sm font-semibold text-slate-700">
                   পণ্য <span className="text-rose-600">*</span>
-                  <select required value={item.productKey} onChange={(event) => selectProduct(index, event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2">
+                  <select required disabled={item.isRetailOnly} value={item.productKey} onChange={(event) => selectProduct(index, event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 disabled:bg-slate-100">
                     <option value="">পণ্য নির্বাচন করুন</option>
                     {allProductVariants.map((variant) => <option key={variant.key} value={variant.key}>{variant.displayText}</option>)}
                   </select>
                 </label>
-                <label className="text-sm font-semibold text-slate-700">
-                  {isRegularInvoice ? 'পরিমাণ' : 'ফেরত পরিমাণ'} ({getPackageQuantityUnit(item)}) <span className="text-rose-600">*</span>
-                  <input type="number" min="1" step="1" required value={item.cartons} onChange={(event) => updateItem(index, 'cartons', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" />
-                </label>
-                <label className="text-sm font-semibold text-slate-700">
-                  ট্রেড প্রাইজ (৳/{getPackageQuantityUnit(item)})
-                  <input type="number" min="0" step="0.01" required value={item.cartonPrice} onChange={(event) => updateItem(index, 'cartonPrice', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" />
-                </label>
+                {item.isRetailOnly ? (
+                  <>
+                    <label className="text-sm font-semibold text-slate-700">
+                      খুচরা পিসের সংখ্যা
+                      <input type="number" min="1" step="1" required value={item.retailPieces} onChange={(event) => updateItem(index, 'retailPieces', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" />
+                    </label>
+                    <label className="text-sm font-semibold text-slate-700">
+                      প্রতি পিসের দর (৳)
+                      <input type="number" min="0.01" step="0.01" required value={item.piecePrice} onChange={(event) => updateItem(index, 'piecePrice', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" />
+                    </label>
+                  </>
+                ) : (
+                  <>
+                    <label className="text-sm font-semibold text-slate-700">
+                      {isRegularInvoice ? 'পরিমাণ' : 'ফেরত পরিমাণ'} ({getPackageQuantityUnit(item)}) <span className="text-rose-600">*</span>
+                      <input type="number" min="1" step="1" required value={item.cartons} onChange={(event) => updateItem(index, 'cartons', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" />
+                    </label>
+                    <label className="text-sm font-semibold text-slate-700">
+                      ট্রেড প্রাইজ (৳/{getPackageQuantityUnit(item)})
+                      <input type="number" min="0" step="0.01" required value={item.cartonPrice} onChange={(event) => updateItem(index, 'cartonPrice', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" />
+                    </label>
+                  </>
+                )}
                 <div className="text-sm font-semibold text-slate-700">
                   মোট
                   <p className="mt-1 rounded-lg bg-slate-50 px-3 py-2 font-bold text-slate-900">৳{toBnCurrency(items[index]?.total)}</p>
+                  <span className="mt-1 block text-xs text-slate-500">
+                    মোট পিস: {toBnCurrency(items[index]?.totalPieces)} {item.unit}
+                  </span>
                 </div>
                 {!isRegularInvoice && (
                   <label className="text-sm font-semibold text-slate-700">
@@ -697,6 +862,7 @@ export default function InvoiceGenerator({
             </label>
           </div>
           <div className="space-y-3 rounded-lg bg-slate-50 p-5 text-sm">
+            <div className="flex justify-between"><span>মোট পিস</span><strong>{toBnCurrency(totalPieces)}</strong></div>
             <div className="flex justify-between"><span>পণ্যের মোট</span><strong>৳{toBnCurrency(subtotal)}</strong></div>
             <div className="flex justify-between"><span>কমিশন</span><strong>− ৳{toBnCurrency(commissionAmount)}</strong></div>
             {returnAdjustments.length > 0 && <div className="flex justify-between"><span>ফেরত পণ্য কর্তন</span><strong>− ৳{toBnCurrency(returnAdjustmentTotal)}</strong></div>}
@@ -712,6 +878,7 @@ export default function InvoiceGenerator({
               <strong>{isDealerReturn ? 'ডিলার লেজারে জমা হবে' : 'ফ্যাক্টরি/ওয়্যারহাউসে ফেরত মূল্য'}</strong>
               <strong>৳{toBnCurrency(totalAmount)}</strong>
             </div>
+            <p className="mt-2">মোট ফেরত পিস: {toBnCurrency(totalPieces)}</p>
             <p className="mt-2">
               {isDealerReturn
                 ? 'এই পরিমাণটি নির্বাচিত ডিলারের বকেয়া থেকে কমবে।'

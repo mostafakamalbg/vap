@@ -9,6 +9,7 @@ import {
   normalizeOfficerCode
 } from '../../shared/codes';
 import { getPackageQuantityUnit } from '../../shared/quantityUnits';
+import { getItemCartons, getInvoiceCartons } from '../../shared/invoiceCartons';
 
 async function requestJson(url, options) {
   const response = await fetch(url, options);
@@ -95,7 +96,7 @@ export default function OfficerDashboard() {
           pieces: 0,
           amount: 0
         };
-        const cartons = Number(item.cartons ?? item.quantity) || 0;
+        const cartons = getItemCartons(item);
         const pieces = item.totalPieces != null
           ? Number(item.totalPieces) || 0
           : cartons * (Number(item.packPerBox) || 1);
@@ -202,7 +203,7 @@ export default function OfficerDashboard() {
                       <td className="px-4 py-3 font-bold text-emerald-800">{invoice.id}</td>
                       <td className="px-4 py-3">{invoice.date}<p className="text-[10px] text-slate-500">{invoice.session}</p></td>
                       <td className="px-4 py-3">{invoice.dealerName || '—'}</td>
-                      <td className="px-4 py-3 text-right">{(invoice.items || []).reduce((sum, item) => sum + (Number(item.cartons ?? item.quantity) || 0), 0).toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')} প্যাক</td>
+                      <td className="px-4 py-3 text-right">{getInvoiceCartons(invoice).toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')} প্যাক</td>
                       <td className="px-4 py-3 text-right font-bold">৳{(Number(invoice.totalAmount ?? invoice.grandTotal) || 0).toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}</td>
                       <td className="px-4 py-3 text-right font-semibold text-rose-700">৳{(Number(invoice.dueAmount ?? invoice.currentDue) || 0).toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}</td>
                     </tr>
