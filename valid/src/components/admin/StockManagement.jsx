@@ -13,7 +13,11 @@ import {
   Sparkles
 } from 'lucide-react';
 import { useAgro } from '../../context/AgroContext';
-import { getPackageQuantityUnit, getStockInQuantities } from '../../../shared/quantityUnits';
+import {
+  getPackageQuantityUnit,
+  getStockInQuantities,
+  getStockCartonEquivalent
+} from '../../../shared/quantityUnits';
 
 const MINIMUM_STOCK_LEVEL = 20;
 
@@ -28,17 +32,14 @@ function getStockInRows(products, previousRows = []) {
   }));
 }
 
-function getTotalStockCartons(products) {
-  return products.reduce((total, product) => total + (product.variants || []).reduce((productTotal, variant) => {
-    if (getPackageQuantityUnit({
+function getTotalStockCartonEquivalents(products) {
+  return products.reduce((total, product) => total + (product.variants || []).reduce((productTotal, variant) => (
+    productTotal + getStockCartonEquivalent({
       ...variant,
       productName: product.name,
       generic: product.generic
-    }) !== 'কার্টুন') return productTotal;
-    const packPerBox = Number(variant.packPerBox) || 1;
-    const stockPieces = Number(variant.stock) || 0;
-    return productTotal + (Number(variant.stockCartons ?? Math.floor(stockPieces / packPerBox)) || 0);
-  }, 0), 0);
+    })
+  ), 0), 0);
 }
 
 const createStockInForm = () => {
@@ -129,9 +130,9 @@ export default function StockManagement() {
       if (packageStock >= 0 && packageStock <= MINIMUM_STOCK_LEVEL) lowStockCount += 1;
     });
   });
-  const currentStockCartons = getTotalStockCartons(products);
-  const incomingCartons = (stockInPreview || []).reduce(
-    (total, entry) => total + (entry.quantityUnit === 'কার্টুন' ? entry.quantity : 0),
+  const currentStockCartonEquivalents = getTotalStockCartonEquivalents(products);
+  const incomingCartonEquivalents = (stockInPreview || []).reduce(
+    (total, entry) => total + entry.cartonEquivalent,
     0
   );
 
@@ -163,6 +164,11 @@ export default function StockManagement() {
         quantityUnit: quantities.quantityUnit,
         quantity: count,
         quantityPieces,
+        cartonEquivalent: getStockCartonEquivalent({
+          ...variant,
+          productName: product.name,
+          generic: product.generic
+        }, count),
         itemUnit: variant.unit || 'পিস'
       });
     }
@@ -676,17 +682,17 @@ export default function StockManagement() {
                   <p className="mt-1 text-xs text-slate-600">{stockInForm.date} • {stockInForm.source} • রিসিভার: {stockInForm.receivedBy}</p>
                   <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
                     {[
-                      ['বর্তমান মোট কার্টুন', currentStockCartons],
-                      ['এইবার যোগ হবে', incomingCartons],
-                      ['যোগের পর মোট কার্টুন', currentStockCartons + incomingCartons]
+                      ['বর্তমান মোট কার্টুন-সমতুল্য', currentStockCartonEquivalents],
+                      ['এইবার যোগ হবে', incomingCartonEquivalents],
+                      ['যোগের পর মোট কার্টুন-সমতুল্য', currentStockCartonEquivalents + incomingCartonEquivalents]
                     ].map(([label, count]) => (
                       <div key={label} className="rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2">
                         <p className="text-xs font-semibold text-slate-600">{label}</p>
-                        <p className="mt-0.5 text-lg font-black text-emerald-800">{count.toLocaleString('bn-BD')} কার্টুন</p>
+                        <p className="mt-0.5 text-lg font-black text-emerald-800">{count.toLocaleString('bn-BD', { maximumFractionDigits: 2 })} কার্টুন</p>
                       </div>
                     ))}
                   </div>
-                  <p className="mt-2 text-xs text-slate-500">জার ও বস্তার পরিমাণ নিচের তালিকায় আলাদা ইউনিটে দেখানো হয়েছে।</p>
+                  <p className="mt-2 text-xs text-slate-500">জার ও বস্তার পরিমাণ তাদের প্যাক-রেট অনুযায়ী কার্টুন-সমতুল্যে রূপান্তরিত হয়েছে।</p>
                 </div>
                 <div className="min-h-0 flex-1 overflow-auto px-4 py-4 sm:px-6">
                   <table className="w-full min-w-[520px] text-left text-sm">

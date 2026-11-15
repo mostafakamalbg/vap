@@ -88,14 +88,17 @@ export default async function handler(req, res) {
           stockCartons: variant.stockCartons
         }, entry.cartons);
         if (
-          !Number.isSafeInteger(quantities.quantityPieces)
+          !Number.isFinite(quantities.quantityPieces)
+          || !Number.isInteger(quantities.quantityPieces)
           || quantities.quantityPieces <= 0
-          || !Number.isSafeInteger(quantities.stock)
+          || !Number.isFinite(quantities.stock)
+          || !Number.isInteger(quantities.stock)
           || quantities.stock < 0
-          || !Number.isSafeInteger(quantities.stockCartons)
+          || !Number.isFinite(quantities.stockCartons)
+          || !Number.isInteger(quantities.stockCartons)
           || quantities.stockCartons < 0
         ) {
-          const error = new Error('স্টক পরিমাণ নিরাপদ সীমার বাইরে।');
+          const error = new Error('স্টক পরিমাণ সঠিকভাবে হিসাব করা যায়নি; প্যাক ও মজুত তথ্য যাচাই করুন।');
           error.statusCode = 400;
           throw error;
         }

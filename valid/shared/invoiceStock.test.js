@@ -8,7 +8,8 @@ import { applyInvoiceStockChanges } from './invoiceStock.js';
 import {
   getInvoiceQuantityParts,
   getPackageQuantityUnit,
-  getStockInQuantities
+  getStockInQuantities,
+  getStockCartonEquivalent
 } from './quantityUnits.js';
 import { normalizeHotlineNumber } from './companyContact.js';
 import { normalizeProductDisplayNames, REAL_HORMONE_SHORT_NAME } from './productNames.js';
@@ -104,6 +105,21 @@ test('stock-in counts bags and jars directly while carton counts expand by pack 
   }, 3), {
     quantityUnit: 'কার্টুন', cartons: 3, quantityPieces: 36, stock: 60, stockCartons: 5
   });
+});
+
+test('stock-in preview converts jar and bag quantities to carton equivalents', () => {
+  const currentCartons = getStockCartonEquivalent({
+    productName: 'Product B', size: '১০০ মিলি × ১২', packPerBox: 12, stock: 5676, stockCartons: 473
+  });
+  const incomingJars = getStockCartonEquivalent({
+    productName: 'Product A', size: '৫লিটার × ০১', packPerBox: 1
+  }, 10);
+  const incomingBags = getStockCartonEquivalent({
+    productName: 'জিপসাম', size: '৫কেজি × ৬', packPerBox: 6
+  }, 4);
+
+  assert.equal(currentCartons + incomingJars, 483);
+  assert.equal(incomingBags, 4 / 6);
 });
 
 test('invoice carton totals fall back to item quantities when the stored total is missing or zero', () => {

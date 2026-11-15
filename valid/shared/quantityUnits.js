@@ -57,3 +57,16 @@ export function getStockInQuantities(item, packageCount) {
       : Math.floor(stock / packPerBox)
   };
 }
+
+export function getStockCartonEquivalent(item, packageCount) {
+  const quantityUnit = getPackageQuantityUnit(item);
+  const packPerBox = Number(item?.packPerBox);
+  const conversionRate = Number.isFinite(packPerBox) && packPerBox > 0 ? packPerBox : 1;
+  const stock = Number(item?.stock) || 0;
+  const count = packageCount == null
+    ? quantityUnit === 'কার্টুন'
+      ? Number(item?.stockCartons ?? Math.floor(stock / conversionRate)) || 0
+      : stock
+    : Number(packageCount) || 0;
+  return quantityUnit === 'কার্টুন' ? count : count / conversionRate;
+}
