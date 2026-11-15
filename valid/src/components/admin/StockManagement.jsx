@@ -15,7 +15,7 @@ import {
 import { useAgro } from '../../context/AgroContext';
 import { getPackageQuantityUnit, getStockInQuantities } from '../../../shared/quantityUnits';
 
-const MINIMUM_STOCK_LEVEL = 50;
+const MINIMUM_STOCK_LEVEL = 20;
 
 function getStockInRows(products, previousRows = []) {
   return products.flatMap((product) => (product.variants || []).map((variant) => {
@@ -126,7 +126,7 @@ export default function StockManagement() {
         : stockPieces;
       totalStockPackages += packageStock;
       totalStockValue += stockPieces * (Number(v.tp) || 0);
-      if (packageStock >= 0 && packageStock < MINIMUM_STOCK_LEVEL) lowStockCount += 1;
+      if (packageStock >= 0 && packageStock <= MINIMUM_STOCK_LEVEL) lowStockCount += 1;
     });
   });
   const currentStockCartons = getTotalStockCartons(products);
@@ -356,7 +356,7 @@ export default function StockManagement() {
 
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
           <div>
-            <p className="text-xs font-semibold text-slate-500 uppercase">স্বল্প স্টক সতর্কতা (&lt;৫০)</p>
+            <p className="text-xs font-semibold text-slate-500 uppercase">স্বল্প স্টক সতর্কতা (২০ বা কম)</p>
             <p className="text-2xl font-black text-amber-600 mt-1">{lowStockCount} টি আইটেম</p>
           </div>
           <div className="w-10 h-10 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center">
@@ -399,7 +399,7 @@ export default function StockManagement() {
           </div>
           <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs font-semibold text-slate-600" aria-label="স্টকের রঙের অর্থ">
             <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />পর্যাপ্ত স্টক</span>
-            <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-amber-400" />সর্বনিম্ন স্টক (৫০-এর কম)</span>
+            <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-amber-400" />সর্বনিম্ন স্টক (২০ বা কম)</span>
             <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-rose-500" />স্টক শেষ / ঘাটতি</span>
           </div>
 
@@ -442,7 +442,7 @@ export default function StockManagement() {
                       ? Number(v.stockCartons ?? cartonEquivalent) || 0
                       : stockPcs;
                     const isShortStock = packageStock < 0 || stockPcs <= 0;
-                    const isLowStock = !isShortStock && packageStock < MINIMUM_STOCK_LEVEL;
+                    const isLowStock = !isShortStock && packageStock <= MINIMUM_STOCK_LEVEL;
                     const stockColor = isShortStock
                       ? 'bg-rose-100 text-rose-900'
                       : isLowStock
