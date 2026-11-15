@@ -1,5 +1,5 @@
 import dbConnect from '../lib/mongodb.js';
-import { BusinessRecord, Dealer, Invoice, Product, User } from '../lib/models.js';
+import { BusinessRecord, Dealer, Invoice, Order, Product, User } from '../lib/models.js';
 import { authorize, verifyPassword } from '../lib/auth.js';
 import { normalizePaymentMethod } from '../shared/paymentMethods.js';
 import { getInvoiceStockChanges } from '../shared/invoiceStock.js';
@@ -15,7 +15,14 @@ function validateInvoice(body) {
   if (!body?.id || !isValidDate(body.date) || !String(body.session || '').trim() || String(body.session).length > 100) {
     return 'ইনভয়েস নম্বর, সঠিক তারিখ ও সেশন নির্বাচন করুন।';
   }
-  if (!body.officerId || !body.dealerId) return 'সেলস অফিসার ও ডিলার নির্বাচন করুন।';
+  const invoiceType = String(body.invoiceType || 'regular');
+  if (!['regular', 'dealer_return', 'depot_factory_return', 'factory_damage'].includes(invoiceType)) {
+    return 'ইনভয়েসের ধরন সঠিক নয়।';
+  }
+  if (invoiceType === 'regular' && (!body.officerId || !body.dealerId)) {
+    return 'সেলস অফিসার ও ডিলার নির্বাচন করুন।';
+  }
+  if (invoiceType === 'dealer_return' && !body.dealerId) return 'ডিলার নির্বাচন করুন।';
   if (!Array.isArray(body.items) || body.items.length < 1 || body.items.length > 50) {
     return 'ইনভয়েসে ১ থেকে ৫০টি পণ্য থাকতে হবে।';
   }
@@ -39,6 +46,7 @@ function validateInvoice(body) {
     || Number(item.cartons ?? item.quantity) <= 0
     || !Number.isFinite(Number(item.unitPrice))
     || Number(item.unitPrice) < 0
+    || (item.stockCondition != null && !['good', 'damaged'].includes(item.stockCondition))
   ));
   if (invalidItem) return 'প্রতিটি পণ্যের সঠিক পরিমাণ ও একক মূল্য দিন।';
   for (const field of ['totalAmount', 'grandTotal', 'paidAmount', 'dueAmount', 'currentDue']) {
@@ -58,11 +66,14 @@ function invoiceValues(body) {
     total: Number(item.total ?? Number(item.unitPrice) * Number(item.cartons ?? item.quantity))
   }));
   const totalAmount = Number(body.totalAmount ?? body.grandTotal ?? 0);
-  const previousDue = Number(body.previousDue) || 0;
-  const netPayable = totalAmount + previousDue;
+  const isReturn = ['dealer_return', 'depot_factory_return', 'factory_damage'].includes(body.invoiceType);
+  const previousDue = isReturn ? 0 : Number(body.previousDue) || 0;
+  const netPayable = isReturn ? 0 : totalAmount + previousDue;
   const paymentMethod = normalizePaymentMethod(body.paymentMethod);
-  const paidAmount = paymentMethod === 'credit' ? 0 : Number(body.paidAmount) || 0;
-  const dueAmount = paymentMethod === 'credit'
+  const paidAmount = isReturn || paymentMethod === 'credit' ? 0 : Number(body.paidAmount) || 0;
+  const dueAmount = isReturn
+    ? 0
+    : paymentMethod === 'credit'
     ? Math.max(0, netPayable - paidAmount)
     : Number(body.dueAmount ?? body.currentDue ?? 0);
   const returnAdjustments = (body.returnAdjustments || []).map((item) => ({
@@ -79,11 +90,11 @@ function invoiceValues(body) {
     challanNo: String(body.challanNo || '').trim().slice(0, 100),
     date: body.date,
     session: body.session,
-    officerId: String(body.officerId),
+    officerId: String(body.officerId || ''),
     officerCode: String(body.officerCode || ''),
     officerName: String(body.officerName || ''),
     officerDesignation: String(body.officerDesignation || ''),
-    dealerId: String(body.dealerId),
+    dealerId: String(body.dealerId || ''),
     dealerCode: String(body.dealerCode || ''),
     dealerName: String(body.dealerName || ''),
     dealerProprietor: String(body.dealerProprietor || ''),
@@ -158,7 +169,12 @@ async function applyInvoiceStockChanges(previousInvoice, nextInvoice, session) {
         : Number(variant.stockCartons) || 0;
       const stockCartons = currentCartons + change.cartons;
       const stock = currentPieces + change.pieces;
-      return { ...variant, stockCartons, stock };
+        return {
+          ...variant,
+          stockCartons,
+          stock,
+          damageStock: (Number(variant.damageStock) || 0) + change.damagePieces
+        };
     });
     if (!foundVariant) {
       const error = new Error(`প্যাক সাইজ ${change.sku} পাওয়া যায়নি।`);
@@ -257,23 +273,34 @@ export default async function handler(req, res) {
     const validationError = validateInvoice(input);
     if (validationError) return res.status(400).json({ error: validationError });
 
-    const dealer = await Dealer.findOne({ id: String(input.dealerId) }).lean();
-    if (!dealer) return res.status(400).json({ error: 'নির্বাচিত ডিলার ডেটাবেজে পাওয়া যায়নি।' });
+    const dealer = input.dealerId ? await Dealer.findOne({ id: String(input.dealerId) }).lean() : null;
+    if (input.dealerId && !dealer) {
+      return res.status(400).json({ error: 'নির্বাচিত ডিলার ডেটাবেজে পাওয়া যায়নি।' });
+    }
     const values = invoiceValues({
       ...input,
-      dealerCode: dealer.code || input.dealerCode,
-      dealerName: dealer.shopName || dealer.name || input.dealerName,
-      dealerProprietor: dealer.proprietor || '',
-      dealerAddress: dealer.address || dealer.businessAddress || '',
-      dealerPhone: dealer.phone || dealer.mobile || dealer.phoneNumber || ''
+      dealerCode: dealer?.code || input.dealerCode,
+      dealerName: dealer?.shopName || dealer?.name || input.dealerName,
+      dealerProprietor: dealer?.proprietor || input.dealerProprietor || '',
+      dealerAddress: dealer?.address || dealer?.businessAddress || input.dealerAddress || '',
+      dealerPhone: dealer?.phone || dealer?.mobile || dealer?.phoneNumber || input.dealerPhone || ''
     });
     if (req.method === 'POST') {
       let invoice;
       await withTransactionFallback(async (session) => {
-        let duplicateQuery = Invoice.findOne({ id: values.id }).select('id');
+        let duplicateQuery = Invoice.findOne({
+          $or: [{ id: values.id }, { invoiceNo: values.invoiceNo }]
+        }).select('id');
         if (session) duplicateQuery = duplicateQuery.session(session);
         if (await duplicateQuery.lean()) {
           const error = new Error('এই ইনভয়েস নম্বরটি আগে থেকেই আছে।');
+          error.statusCode = 409;
+          throw error;
+        }
+        let orderQuery = Order.findOne({ invoiceNo: values.invoiceNo }).select('id');
+        if (session) orderQuery = orderQuery.session(session);
+        if (await orderQuery.lean()) {
+          const error = new Error('এই ইনভয়েস নম্বরটি একটি অর্ডারে ব্যবহৃত হয়েছে।');
           error.statusCode = 409;
           throw error;
         }

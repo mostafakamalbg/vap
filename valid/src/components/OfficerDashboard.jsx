@@ -45,7 +45,7 @@ export default function OfficerDashboard() {
 
   const salesInvoices = useMemo(
     () => invoices.filter((invoice) => (
-      !['dealer_return', 'factory_damage'].includes(invoice.invoiceType)
+      !['dealer_return', 'factory_damage', 'depot_factory_return'].includes(invoice.invoiceType)
       && (
         (currentUser?.officerId && invoice.officerId === currentUser.officerId)
         || (officerCode

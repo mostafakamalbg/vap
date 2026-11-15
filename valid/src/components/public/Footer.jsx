@@ -74,11 +74,6 @@ export default function Footer({ onNavigate }) {
               </button>
             </li>
             <li>
-              <button onClick={() => onNavigate('damage-returns')} className="hover:text-emerald-400 transition">
-                {t('footer.returns')}
-              </button>
-            </li>
-            <li>
               <button onClick={() => onNavigate('dealer-ledger')} className="hover:text-emerald-400 transition">
                 {t('footer.dealerLedger')}
               </button>

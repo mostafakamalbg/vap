@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, Printer, Save, Trash2 } from 'lucide-react';
 import { getNextInvoiceNumber, useAgro } from '../../context/AgroContext';
 import { INVOICE_SESSIONS } from '../../../shared/sessions';
@@ -23,7 +23,8 @@ const emptyItem = () => ({
   unit: 'পিস/বোতল',
   cartonPrice: 0,
   unitPrice: 0,
-  commission: 0
+  commission: 0,
+  stockCondition: 'good'
 });
 
 const emptyReturnAdjustment = () => ({
@@ -40,7 +41,18 @@ const emptyReturnAdjustment = () => ({
   reason: 'মেয়াদ উত্তীর্ণ / ফেরত পণ্য'
 });
 
-export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCancelEdit }) {
+const INVOICE_TYPES = [
+  { value: 'regular', label: 'রেগুলার ইনভয়েস' },
+  { value: 'dealer_return', label: 'ডিলার কর্তৃক ফেরত' },
+  { value: 'depot_factory_return', label: 'ডিপো থেকে ফ্যাক্টরি/ওয়্যারহাউসে ফেরত' }
+];
+
+export default function InvoiceGenerator({
+  onViewInvoices,
+  onInvoiceCreated,
+  editInvoiceData,
+  onCancelEdit
+}) {
   const {
     allProductVariants,
     createInvoice,
@@ -58,8 +70,8 @@ export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCa
     session: INVOICE_SESSIONS.includes(editInvoiceData?.session)
       ? editInvoiceData.session
       : INVOICE_SESSIONS[0],
-    officerId: editInvoiceData?.officerId || officers[0]?.id || '',
-    dealerId: editInvoiceData?.dealerId || dealers[0]?.id || '',
+    officerId: editInvoiceData ? editInvoiceData.officerId || '' : officers[0]?.id || '',
+    dealerId: editInvoiceData ? editInvoiceData.dealerId || '' : dealers[0]?.id || '',
     paidAmount: String(editInvoiceData?.paidAmount ?? ''),
     transportCost: String(editInvoiceData?.transportCost ?? ''),
     paymentMethod: editInvoiceData
@@ -85,9 +97,58 @@ export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCa
         }))
       : [emptyItem()]
   }));
+  const [invoiceType, setInvoiceType] = useState(editInvoiceData?.invoiceType || 'regular');
+  const [pendingInvoiceIds, setPendingInvoiceIds] = useState([]);
+  const [invoiceNumberLoading, setInvoiceNumberLoading] = useState(
+    !editInvoiceData && currentUser?.role === 'admin'
+  );
+  const [invoiceNumberError, setInvoiceNumberError] = useState('');
   const [savedInvoice, setSavedInvoice] = useState(editInvoiceData || null);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (editInvoiceData || currentUser?.role !== 'admin') {
+      setInvoiceNumberLoading(false);
+      return undefined;
+    }
+
+    let cancelled = false;
+    setInvoiceNumberLoading(true);
+    setInvoiceNumberError('');
+    Promise.all([fetch('/api/invoices'), fetch('/api/orders')])
+      .then(async ([invoiceResponse, orderResponse]) => {
+        const [serverInvoices, orders] = await Promise.all([
+          invoiceResponse.json(),
+          orderResponse.json()
+        ]);
+        if (!invoiceResponse.ok) {
+          throw new Error(serverInvoices.error || 'ইনভয়েস তালিকা থেকে নম্বর যাচাই করা যায়নি।');
+        }
+        if (!orderResponse.ok) {
+          throw new Error(orders.error || 'অর্ডার তালিকা থেকে ইনভয়েস নম্বর যাচাই করা যায়নি।');
+        }
+        if (!Array.isArray(serverInvoices) || !Array.isArray(orders)) {
+          throw new Error('ইনভয়েস বা অর্ডার তালিকার তথ্য সঠিক নয়।');
+        }
+        return [
+          ...serverInvoices.map((invoice) => invoice.id).filter(Boolean),
+          ...orders.map((order) => order.invoiceNo).filter(Boolean)
+        ];
+      })
+      .then((reservedIds) => {
+        if (!cancelled) setPendingInvoiceIds(reservedIds);
+      })
+      .catch((loadError) => {
+        if (!cancelled) setInvoiceNumberError(loadError.message || 'ইনভয়েস নম্বর যাচাই করা যায়নি।');
+      })
+      .finally(() => {
+        if (!cancelled) setInvoiceNumberLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [currentUser?.role, editInvoiceData]);
 
   const selectedOfficer = officers.find((officer) => officer.id === form.officerId);
   const selectedDealer = dealers.find((dealer) => dealer.id === form.dealerId);
@@ -103,27 +164,39 @@ export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCa
     return { ...item, cartons: quantity, quantity, total: lineTotal };
   }), [form.items]);
 
+  const isRegularInvoice = invoiceType === 'regular';
+  const isDealerReturn = invoiceType === 'dealer_return';
+  const isDepotFactoryReturn = invoiceType === 'depot_factory_return';
   const subtotal = items.reduce((sum, item) => sum + item.total, 0);
-  const commissionAmount = items.reduce(
+  const commissionAmount = isRegularInvoice ? items.reduce(
     (sum, item) => sum + item.total * (Number(item.commission) || 0) / 100,
     0
-  );
-  const returnAdjustments = form.returnAdjustments.map((item) => ({
+  ) : 0;
+  const returnAdjustments = isRegularInvoice ? form.returnAdjustments.map((item) => ({
     ...item,
     quantity: Math.max(0, Number(item.quantity) || 0),
     price: Math.max(0, Number(item.price) || 0),
     total: Math.max(0, Number(item.quantity) || 0) * Math.max(0, Number(item.price) || 0)
-  }));
+  })) : [];
   const returnAdjustmentTotal = returnAdjustments.reduce((sum, item) => sum + item.total, 0);
-  const transportCost = Math.max(0, Number(form.transportCost) || 0);
-  const totalAmount = Math.max(0, subtotal - commissionAmount + transportCost - returnAdjustmentTotal);
-  const previousDue = editInvoiceData
+  const transportCost = isRegularInvoice ? Math.max(0, Number(form.transportCost) || 0) : 0;
+  const totalAmount = isRegularInvoice
+    ? Math.max(0, subtotal - commissionAmount + transportCost - returnAdjustmentTotal)
+    : subtotal;
+  const previousDue = isRegularInvoice && editInvoiceData
     ? Number(editInvoiceData.previousDue) || 0
-    : Number(dealerSummary?.currentDue) || 0;
-  const netPayable = totalAmount + previousDue;
-  const paymentMethod = normalizePaymentMethod(form.paymentMethod);
-  const paidAmount = paymentMethod === 'credit' ? 0 : Math.max(0, Number(form.paidAmount) || 0);
-  const dueAmount = Math.max(0, netPayable - paidAmount);
+    : isRegularInvoice ? Number(dealerSummary?.currentDue) || 0 : 0;
+  const netPayable = isRegularInvoice ? totalAmount + previousDue : 0;
+  const paymentMethod = isRegularInvoice ? normalizePaymentMethod(form.paymentMethod) : 'credit';
+  const paidAmount = isRegularInvoice && paymentMethod !== 'credit'
+    ? Math.max(0, Number(form.paidAmount) || 0)
+    : 0;
+  const dueAmount = isRegularInvoice ? Math.max(0, netPayable - paidAmount) : 0;
+  const invoiceNumbers = useMemo(() => [
+    ...invoices,
+    ...pendingInvoiceIds.map((id) => ({ id }))
+  ], [invoices, pendingInvoiceIds]);
+  const { candidateId } = getNextInvoiceNumber(invoiceNumbers);
 
   const updateForm = (key, value) => {
     setForm((current) => ({
@@ -227,6 +300,10 @@ export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCa
   const handleSubmit = async (event) => {
     event.preventDefault();
     setError('');
+    if (invoiceNumberLoading || invoiceNumberError) {
+      setError(invoiceNumberError || 'ইনভয়েস নম্বর যাচাই হচ্ছে, একটু অপেক্ষা করুন।');
+      return;
+    }
     const invalidItem = items.some((item) => (
       !item.productId
       || !Number.isSafeInteger(item.cartons)
@@ -240,49 +317,39 @@ export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCa
       || item.quantity <= 0
       || !Number.isFinite(item.total)
     ));
-    if (!form.session || !selectedOfficer || !selectedDealer || invalidItem || invalidReturn) {
-      setError('সেশন, অফিসার, ডিলার এবং প্রতিটি পণ্যের সঠিক তথ্য পূরণ করুন।');
+    const invalidParties = (isRegularInvoice && (!selectedOfficer || !selectedDealer))
+      || (isDealerReturn && !selectedDealer);
+    if (!form.session || invalidParties || invalidItem || invalidReturn) {
+      setError('সেশন, প্রয়োজনীয় অফিসার/ডিলার এবং প্রতিটি পণ্যের সঠিক তথ্য পূরণ করুন।');
       return;
     }
 
-    let numberedInvoices = invoices;
-    if (!editInvoiceData && currentUser?.role === 'admin') {
-      try {
-        const response = await fetch('/api/orders');
-        let pendingOrders;
-        try {
-          pendingOrders = await response.json();
-        } catch {
-          throw new Error('অর্ডার তালিকা থেকে ইনভয়েস নম্বর যাচাই করা যায়নি।');
-        }
-        if (!response.ok) throw new Error(pendingOrders.error || 'ইনভয়েস নম্বর যাচাই করা যায়নি।');
-        numberedInvoices = [
-          ...invoices,
-          ...pendingOrders.map((order) => ({ id: order.invoiceNo }))
-        ];
-      } catch (numberError) {
-        setError(numberError.message || 'ইনভয়েস নম্বর যাচাই করা যায়নি।');
-        return;
-      }
+    const nextInvoice = editInvoiceData
+      ? { candidateId: editInvoiceData.id, seqNumber: editInvoiceData.seqNumber || 0 }
+      : getNextInvoiceNumber(invoiceNumbers);
+    if (!editInvoiceData && invoiceNumbers.some((entry) => entry.id === nextInvoice.candidateId)) {
+      setError('এই ইনভয়েস নম্বরটি আগে থেকেই আছে। নতুন ইনভয়েস নম্বর তৈরি করুন।');
+      return;
     }
-
-    const { candidateId, seqNumber } = getNextInvoiceNumber(numberedInvoices);
     const invoice = {
       ...(editInvoiceData || {}),
-      id: editInvoiceData?.id || candidateId,
-      invoiceNo: editInvoiceData?.id || candidateId,
+      id: nextInvoice.candidateId,
+      invoiceNo: nextInvoice.candidateId,
       challanNo: form.challanNo.trim(),
-      seqNumber: editInvoiceData?.seqNumber || seqNumber,
+      seqNumber: editInvoiceData?.seqNumber || nextInvoice.seqNumber,
+      invoiceType,
       session: form.session,
       date: form.date,
-      officerId: selectedOfficer.id,
-      officerCode: formatOfficerCode(selectedOfficer.code, selectedOfficer.designation),
-      officerName: selectedOfficer.name,
-      officerDesignation: selectedOfficer.designation || '',
-      dealerId: selectedDealer.id,
-      dealerCode: formatDealerCode(selectedDealer.code),
+      officerId: selectedOfficer?.id || '',
+      officerCode: selectedOfficer
+        ? formatOfficerCode(selectedOfficer.code, selectedOfficer.designation)
+        : '',
+      officerName: selectedOfficer?.name || '',
+      officerDesignation: selectedOfficer?.designation || '',
+      dealerId: selectedDealer?.id || '',
+      dealerCode: selectedDealer ? formatDealerCode(selectedDealer.code) : '',
       dealerName: selectedDealerName,
-      dealerProprietor: selectedDealer.proprietor || '',
+      dealerProprietor: selectedDealerProprietor,
       dealerAddress: selectedDealerAddress,
       dealerPhone: selectedDealerPhone,
       items: items.map((item) => ({
@@ -298,6 +365,7 @@ export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCa
         cartonPrice: Number(item.cartonPrice) || 0,
         unitPrice: Number(item.unitPrice) || 0,
         commission: Number(item.commission) || 0,
+        stockCondition: !isRegularInvoice && item.stockCondition === 'damaged' ? 'damaged' : 'good',
         total: item.total
       })),
       returnAdjustments: returnAdjustments.map((item) => ({
@@ -327,18 +395,27 @@ export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCa
       currentDue: dueAmount,
       dueAmount,
       paymentMethod,
-      transport: form.transport,
-      note: form.note.trim()
+      transport: isRegularInvoice ? form.transport : '',
+      note: form.note.trim(),
+      ...(isDealerReturn ? { returnReason: 'ডিলার কর্তৃক পণ্য ফেরত' } : {}),
+      ...(isDepotFactoryReturn ? { returnReason: 'ডিপো থেকে ফ্যাক্টরি/ওয়্যারহাউসে ফেরত' } : {})
     };
 
+    setSaving(true);
     try {
       const saved = editInvoiceData
         ? await updateInvoice(invoice)
         : await createInvoice(invoice);
       setSavedInvoice(saved);
       setSuccess(editInvoiceData ? 'ইনভয়েস আপডেট হয়েছে।' : 'ইনভয়েস তৈরি হয়েছে।');
+      if (!editInvoiceData) {
+        window.alert('ইনভয়েস সফলভাবে সংরক্ষণ করা হয়েছে!');
+        onInvoiceCreated?.();
+      }
     } catch (saveError) {
       setError(saveError.message || 'ইনভয়েস সংরক্ষণ করা যায়নি।');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -347,7 +424,7 @@ export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCa
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">{editInvoiceData ? 'ইনভয়েস সম্পাদনা' : 'নতুন ইনভয়েস'}</h1>
-          <p className="mt-1 text-sm text-slate-500">ইনভয়েস নং: {formatInvoiceNumber(editInvoiceData?.id || getNextInvoiceNumber(invoices).candidateId)}</p>
+          <p className="mt-1 text-sm text-slate-500">ইনভয়েস নং: {formatInvoiceNumber(editInvoiceData?.id || candidateId)}</p>
         </div>
         <div className="flex gap-2">
           {onCancelEdit && (
@@ -363,14 +440,48 @@ export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCa
         </div>
       </div>
 
+      {!editInvoiceData && (
+        <fieldset className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+          <legend className="px-2 text-sm font-bold text-slate-700">ইনভয়েসের ধরন নির্বাচন করুন</legend>
+          <div className="grid gap-3 md:grid-cols-3">
+            {INVOICE_TYPES.map((type) => (
+              <label
+                key={type.value}
+                className={`flex cursor-pointer items-center gap-3 rounded-lg border p-4 text-sm font-bold transition ${
+                  invoiceType === type.value
+                    ? 'border-emerald-600 bg-emerald-50 text-emerald-900 ring-1 ring-emerald-600'
+                    : 'border-slate-300 text-slate-700 hover:border-emerald-400'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="invoiceType"
+                  value={type.value}
+                  checked={invoiceType === type.value}
+                  onChange={() => {
+                    setInvoiceType(type.value);
+                    setForm((current) => ({ ...current, dealerId: '', officerId: '' }));
+                    setSavedInvoice(null);
+                    setSuccess('');
+                  }}
+                  className="accent-emerald-700"
+                />
+                {type.label}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+      )}
+
       {error && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm font-semibold text-rose-700">{error}</p>}
       {success && <p role="status" className="rounded-lg bg-emerald-50 p-3 text-sm font-semibold text-emerald-800">{success}</p>}
+      {invoiceNumberError && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm font-semibold text-rose-700">{invoiceNumberError}</p>}
 
       <form onSubmit={handleSubmit} className="space-y-6">
         <section className="grid gap-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:grid-cols-2 lg:grid-cols-4">
           <label className="text-sm font-semibold text-slate-700">
             ইনভয়েস নং
-            <input value={formatInvoiceNumber(editInvoiceData?.id || getNextInvoiceNumber(invoices).candidateId)} readOnly className="mt-1 w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2" />
+            <input value={formatInvoiceNumber(editInvoiceData?.id || candidateId)} readOnly className="mt-1 w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2" />
           </label>
           <label className="text-sm font-semibold text-slate-700">
             চালান নং
@@ -391,7 +502,7 @@ export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCa
             </select>
           </label>
           <SearchableRecordSelect
-            label="সেলস অফিসার *"
+            label={`সেলস অফিসার${isRegularInvoice ? ' *' : ' (ঐচ্ছিক)'}`}
             items={officers}
             value={form.officerId}
             onChange={(value) => updateForm('officerId', value)}
@@ -399,9 +510,10 @@ export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCa
             searchPlaceholder="কোড, নাম বা পদবী দিয়ে খুঁজুন"
             optionLabel={(officer) => `${formatOfficerCode(officer.code, officer.designation) || '—'} • ${officer.name} • ${officer.designation || '—'}`}
             searchText={(officer) => `${formatOfficerCode(officer.code, officer.designation)} ${officer.name || ''} ${officer.designation || ''}`}
+            required={isRegularInvoice}
           />
           <SearchableRecordSelect
-            label="ডিলার *"
+            label={`ডিলার${isRegularInvoice || isDealerReturn ? ' *' : ' (ঐচ্ছিক)'}`}
             items={dealers}
             value={form.dealerId}
             onChange={(value) => updateForm('dealerId', value)}
@@ -409,6 +521,7 @@ export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCa
             searchPlaceholder="ডিলার কোড বা নাম দিয়ে খুঁজুন"
             optionLabel={(dealer) => `${formatDealerCode(dealer.code)} • ${dealer.shopName}`}
             searchText={(dealer) => `${formatDealerCode(dealer.code)} ${dealer.shopName || ''} ${dealer.proprietor || ''}`}
+            required={isRegularInvoice || isDealerReturn}
           />
           {selectedDealer && (
             <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-950 sm:col-span-2 lg:col-span-4">
@@ -433,8 +546,12 @@ export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCa
         <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 p-5">
             <div>
-              <h2 className="text-lg font-bold text-slate-800">পণ্যের তালিকা</h2>
-              <p className="text-xs text-slate-500">প্যাক সাইজ অনুযায়ী পরিমাণ ও মূল্য গণনা হবে।</p>
+              <h2 className="text-lg font-bold text-slate-800">{isRegularInvoice ? 'পণ্যের তালিকা' : 'ফেরত পণ্যের তালিকা'}</h2>
+              <p className="text-xs text-slate-500">
+                {isRegularInvoice
+                  ? 'প্যাক সাইজ অনুযায়ী পরিমাণ ও মূল্য গণনা হবে।'
+                  : 'পণ্যের পরিমাণ ও দর অনুযায়ী ফেরতের হিসাব হবে; ভালো/ডেমেজ অবস্থা নির্বাচন করুন।'}
+              </p>
             </div>
             <button type="button" onClick={addItem} className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white">+ পণ্য যোগ করুন</button>
           </div>
@@ -449,7 +566,7 @@ export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCa
                   </select>
                 </label>
                 <label className="text-sm font-semibold text-slate-700">
-                  পরিমাণ ({getPackageQuantityUnit(item)}) <span className="text-rose-600">*</span>
+                  {isRegularInvoice ? 'পরিমাণ' : 'ফেরত পরিমাণ'} ({getPackageQuantityUnit(item)}) <span className="text-rose-600">*</span>
                   <input type="number" min="1" step="1" required value={item.cartons} onChange={(event) => updateItem(index, 'cartons', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" />
                 </label>
                 <label className="text-sm font-semibold text-slate-700">
@@ -460,6 +577,19 @@ export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCa
                   মোট
                   <p className="mt-1 rounded-lg bg-slate-50 px-3 py-2 font-bold text-slate-900">৳{toBnCurrency(items[index]?.total)}</p>
                 </div>
+                {!isRegularInvoice && (
+                  <label className="text-sm font-semibold text-slate-700">
+                    পণ্যের অবস্থা
+                    <select
+                      value={item.stockCondition || 'good'}
+                      onChange={(event) => updateItem(index, 'stockCondition', event.target.value)}
+                      className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+                    >
+                      <option value="good">ভালো পণ্য</option>
+                      <option value="damaged">ডেমেজ / মেয়াদোত্তীর্ণ</option>
+                    </select>
+                  </label>
+                )}
                 <button type="button" aria-label="পণ্য সরান" onClick={() => removeItem(index)} className="rounded-lg p-2 text-rose-600 hover:bg-rose-50">
                   <Trash2 className="h-5 w-5" />
                 </button>
@@ -468,7 +598,7 @@ export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCa
           </div>
         </section>
 
-        <section className="overflow-hidden rounded-xl border border-amber-200 bg-white shadow-sm">
+        {isRegularInvoice && editInvoiceData && <section className="overflow-hidden rounded-xl border border-amber-200 bg-white shadow-sm">
           {returnAdjustments.length > 0 ? (
             <>
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-amber-100 p-5">
@@ -516,9 +646,9 @@ export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCa
               <button type="button" onClick={addReturnAdjustment} className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white">+ মেয়াদ উত্তীর্ণ / ফেরত পণ্য যোগ করুন</button>
             </div>
           )}
-        </section>
+        </section>}
 
-        <section className="grid gap-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm lg:grid-cols-2">
+        {isRegularInvoice ? <section className="grid gap-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm lg:grid-cols-2">
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="text-sm font-semibold text-slate-700">
               পরিবহন খরচ (৳)
@@ -576,11 +706,23 @@ export default function InvoiceGenerator({ onViewInvoices, editInvoiceData, onCa
             <div className="flex justify-between"><span>পরিশোধিত</span><span>৳{toBnCurrency(paidAmount)}</span></div>
             <div className="flex justify-between border-t border-slate-300 pt-3 text-base text-rose-700"><strong>বর্তমান বকেয়া</strong><strong>৳{toBnCurrency(dueAmount)}</strong></div>
           </div>
-        </section>
+        </section> : (
+          <section className="rounded-xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-950">
+            <div className="flex justify-between gap-4 text-base">
+              <strong>{isDealerReturn ? 'ডিলার লেজারে জমা হবে' : 'ফ্যাক্টরি/ওয়্যারহাউসে ফেরত মূল্য'}</strong>
+              <strong>৳{toBnCurrency(totalAmount)}</strong>
+            </div>
+            <p className="mt-2">
+              {isDealerReturn
+                ? 'এই পরিমাণটি নির্বাচিত ডিলারের বকেয়া থেকে কমবে।'
+                : 'ডিলার লেজারে কোনো পরিবর্তন হবে না; নির্বাচিত অবস্থান অনুযায়ী ডিপোর ভালো বা ডেমেজ স্টক কমবে।'}
+            </p>
+          </section>
+        )}
 
         <div className="flex justify-end gap-3">
-          <button type="submit" className="rounded-lg bg-emerald-700 px-5 py-3 font-bold text-white hover:bg-emerald-800">
-            <Save className="mr-2 inline h-4 w-4" /> {editInvoiceData ? 'আপডেট করুন' : 'ইনভয়েস সংরক্ষণ করুন'}
+          <button type="submit" disabled={saving || invoiceNumberLoading || Boolean(invoiceNumberError)} className="rounded-lg bg-emerald-700 px-5 py-3 font-bold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-60">
+            <Save className="mr-2 inline h-4 w-4" /> {saving ? 'সংরক্ষণ হচ্ছে...' : editInvoiceData ? 'আপডেট করুন' : 'ইনভয়েস সংরক্ষণ করুন'}
           </button>
         </div>
       </form>

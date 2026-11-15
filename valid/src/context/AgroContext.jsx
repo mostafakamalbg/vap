@@ -25,7 +25,7 @@ import { normalizeProductDisplayNames } from '../../shared/productNames';
 const AgroContext = createContext();
 
 const isSalesInvoice = (invoice) =>
-  invoice.invoiceType !== 'dealer_return' && invoice.invoiceType !== 'factory_damage';
+  !['dealer_return', 'factory_damage', 'depot_factory_return'].includes(invoice.invoiceType);
 
 const isInvoicePaymentRecord = (payment) => (
   Boolean(payment?.sourceInvoiceId)
@@ -478,7 +478,46 @@ export function AgroProvider({ children }) {
     note: `ইনভয়েস #${invoice.id} এর বিপরীতে পরিশোধ`
   });
 
-  const createInvoiceDamageLogs = (invoice) => (invoice.returnAdjustments || []).map((ret, index) => ({
+  const createInvoiceDamageLogs = (invoice) => [
+    ...(invoice.returnAdjustments || []).map((ret) => ({
+      productId: ret.productId,
+      productName: ret.productName,
+      sku: ret.sku,
+      size: ret.size,
+      packPerBox: Number(ret.packPerBox) || 1,
+      unit: ret.unit || 'পিস/বোতল',
+      quantityPieces: Number(ret.quantity) || 1,
+      unitPrice: Number(ret.price) || 0,
+      totalDamageValue: Number(ret.total) || 0,
+      reason: ret.reason || 'মেয়াদোত্তীর্ণ বা ক্ষতিগ্রস্ত পণ্য ফেরত',
+      action: 'চালান হতে সমন্বয় কর্তন',
+      actionType: 'ledger_credit'
+    })),
+    ...(invoice.items || [])
+      .filter((item) => item.stockCondition === 'damaged')
+      .map((item) => ({
+        productId: item.productId,
+        productName: item.productName,
+        sku: item.sku,
+        size: item.size,
+        packPerBox: Number(item.packPerBox) || 1,
+        unit: item.unit || 'পিস/বোতল',
+        quantityPieces: Number(item.totalPieces)
+          || (Number(item.cartons) || 0) * (Number(item.packPerBox) || 1),
+        unitPrice: Number(item.unitPrice) || 0,
+        totalDamageValue: Number(item.total) || 0,
+        reason: invoice.invoiceType === 'depot_factory_return'
+          ? 'ডিপো থেকে ফ্যাক্টরিতে ক্ষতিগ্রস্ত পণ্য ফেরত'
+          : 'ডিলার কর্তৃক ক্ষতিগ্রস্ত পণ্য ফেরত',
+        action: invoice.invoiceType === 'depot_factory_return'
+          ? 'ডেমেজ স্টক থেকে ফ্যাক্টরিতে ফেরত'
+          : 'ডিলার থেকে ডেমেজ স্টকে গ্রহণ',
+        actionType: invoice.invoiceType === 'depot_factory_return'
+          ? 'damage_stock_out'
+          : 'damage_stock_in'
+      })),
+  ].map((entry, index) => ({
+    ...entry,
     id: `DMG-${invoice.id}-${globalThis.crypto.randomUUID()}-${index}`,
     date: invoice.date,
     dealerId: invoice.dealerId,
@@ -486,18 +525,6 @@ export function AgroProvider({ children }) {
     officerId: invoice.officerId,
     officerCode: invoice.officerCode,
     officerName: invoice.officerName,
-    productId: ret.productId,
-    productName: ret.productName,
-    sku: ret.sku,
-    size: ret.size,
-    packPerBox: Number(ret.packPerBox) || 1,
-    unit: ret.unit || 'পিস/বোতল',
-    quantityPieces: Number(ret.quantity) || 1,
-    unitPrice: Number(ret.price) || 0,
-    totalDamageValue: Number(ret.total) || 0,
-    reason: ret.reason || 'মেয়াদোত্তীর্ণ বা ক্ষতিগ্রস্ত পণ্য ফেরত',
-    action: 'চালান হতে সমন্বয় কর্তন',
-    actionType: 'ledger_credit',
     status: 'নিষ্পন্ন',
     invoiceRef: invoice.id
   }));
@@ -505,7 +532,10 @@ export function AgroProvider({ children }) {
   // Create new Invoice with strict duplicate prevention, type tracking and stock update
   const createInvoice = async (newInvoice) => {
     let finalId = newInvoice.id;
-    if (!finalId || invoices.some((inv) => inv.id === finalId)) {
+    if (finalId && invoices.some((inv) => inv.id === finalId)) {
+      throw new Error('এই ইনভয়েস নম্বরটি আগে থেকেই আছে। নতুন ইনভয়েস নম্বর ব্যবহার করুন।');
+    }
+    if (!finalId) {
       const { candidateId } = getNextInvoiceNumber(invoices);
       finalId = candidateId;
     }
@@ -519,7 +549,7 @@ export function AgroProvider({ children }) {
       ...newInvoice,
       ...getInvoicePaymentFields(newInvoice),
       id: finalId,
-      invoiceType: newInvoice.invoiceType || 'regular', // 'regular' | 'dealer_return' | 'factory_damage'
+      invoiceType: newInvoice.invoiceType || 'regular',
       totalCartons: calculatedTotalCartons
     };
 

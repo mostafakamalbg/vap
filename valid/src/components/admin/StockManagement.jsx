@@ -427,6 +427,7 @@ export default function StockManagement() {
                   <th className="py-3 px-3 text-right">টিপি রেট (৳)</th>
                   <th className="py-3 px-3 text-right">এমআরপি (৳)</th>
                   <th className="py-3 px-3 text-center">বর্তমান স্টক (পিস)</th>
+                  <th className="py-3 px-3 text-center">ডেমেজ স্টক (পিস)</th>
                   <th className="py-3 px-3 text-center">প্যাকেজ স্টক</th>
                 </tr>
               </thead>
@@ -502,6 +503,10 @@ export default function StockManagement() {
                           </span>
                         </td>
 
+                        <td className="py-3 px-3 text-center text-xs font-semibold text-rose-700">
+                          {(Number(v.damageStock) || 0).toLocaleString('bn-BD')} {v.unit}
+                        </td>
+
                         <td className="py-2.5 px-2 text-center text-xs whitespace-nowrap">
                           <span className={`inline-flex rounded-full px-2.5 py-0.5 font-semibold ${stockColor}`}>
                             {isShortStock ? `${packageStock} (ঘাটতি)` : packageStock} {quantityUnit}
@@ -514,7 +519,7 @@ export default function StockManagement() {
                 })}
                 {!filteredProducts.length && (
                   <tr>
-                    <td colSpan="9" className="px-4 py-8 text-center text-sm text-slate-500">
+                    <td colSpan="10" className="px-4 py-8 text-center text-sm text-slate-500">
                       নির্বাচিত ফিল্টারে কোনো পণ্য পাওয়া যায়নি।
                     </td>
                   </tr>

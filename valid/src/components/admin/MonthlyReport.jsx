@@ -203,7 +203,7 @@ export default function MonthlyReport() {
   filteredInvoices.forEach((inv) => {
     const cartons = getInvoiceCartons(inv);
     const isDealerReturn = inv.invoiceType === 'dealer_return';
-    const isFactoryReturn = inv.invoiceType === 'factory_damage';
+    const isFactoryReturn = ['factory_damage', 'depot_factory_return'].includes(inv.invoiceType);
 
     if (isDealerReturn) {
       totalSalesValue -= getInvoiceSalesAmount(inv);
@@ -218,6 +218,8 @@ export default function MonthlyReport() {
 
     (inv.items || []).forEach((item) => {
       const key = `${item.productName} (${item.size})`;
+      if (item.stockCondition === 'damaged'
+        && ['dealer_return', 'depot_factory_return'].includes(inv.invoiceType)) return;
       const direction = isDealerReturn ? 1 : -1;
       productCartonStockChange[key] =
         (productCartonStockChange[key] || 0) + direction * getItemCartons(item);
@@ -281,7 +283,7 @@ export default function MonthlyReport() {
     ['salary', 'vehicle_rent', 'lc_commission'].includes(normalizePaymentType(payment.paymentType))
   ));
   const reportUnloggedInvoiceCollection = filteredInvoices
-    .filter((invoice) => !['dealer_return', 'factory_damage'].includes(invoice.invoiceType))
+    .filter((invoice) => !['dealer_return', 'factory_damage', 'depot_factory_return'].includes(invoice.invoiceType))
     .filter((invoice) => !reportPaymentTransactions.some((payment) => (
       payment.sourceInvoiceId === invoice.id
       || (
@@ -296,14 +298,14 @@ export default function MonthlyReport() {
   const reportExpenses = reportExpenseTransactions
     .reduce((sum, payment) => sum + (Number(payment.amount) || 0), 0);
   const officerSalesInvoices = filteredInvoices.filter((invoice) => (
-    !['dealer_return', 'factory_damage'].includes(invoice.invoiceType)
+    !['dealer_return', 'factory_damage', 'depot_factory_return'].includes(invoice.invoiceType)
   ));
   const sessionSalesInvoices = filterMode === 'officer'
     ? invoices.filter((invoice) => (
       officerMatches(invoice)
       && (activeOfficerSession === 'ALL'
         || (invoice.session || LEGACY_INVOICE_SESSION) === activeOfficerSession)
-      && !['dealer_return', 'factory_damage'].includes(invoice.invoiceType)
+      && !['dealer_return', 'factory_damage', 'depot_factory_return'].includes(invoice.invoiceType)
     ))
     : [];
   const summarizeProducts = (entries) => {
@@ -343,7 +345,11 @@ export default function MonthlyReport() {
       const direction = invoice.invoiceType === 'dealer_return' ? 1 : -1;
       const itemMovement = (invoice.items || [])
         .filter((item) => item.productId === product.id && item.sku === variant.sku)
-        .reduce((sum, item) => sum + itemPieces(item) * direction, 0);
+        .reduce((sum, item) => {
+          if (item.stockCondition === 'damaged'
+            && ['dealer_return', 'depot_factory_return'].includes(invoice.invoiceType)) return sum;
+          return sum + itemPieces(item) * direction;
+        }, 0);
       const adjustedReturn = (invoice.returnAdjustments || [])
         .filter((item) => item.productId === product.id && item.sku === variant.sku)
         .reduce((sum, item) => sum + (Number(item.quantity ?? item.quantityPieces) || 0), 0);
@@ -359,7 +365,7 @@ export default function MonthlyReport() {
       0
     );
     const salesPieces = periodInvoices
-      .filter((invoice) => !['dealer_return', 'factory_damage'].includes(invoice.invoiceType))
+      .filter((invoice) => !['dealer_return', 'factory_damage', 'depot_factory_return'].includes(invoice.invoiceType))
       .flatMap((invoice) => invoice.items || [])
       .filter((item) => item.productId === product.id && item.sku === variant.sku)
       .reduce((sum, item) => sum + itemPieces(item), 0);
@@ -369,7 +375,7 @@ export default function MonthlyReport() {
       .filter((item) => item.productId === product.id && item.sku === variant.sku)
       .reduce((sum, item) => sum + itemPieces(item), 0);
     const factoryReturnPieces = periodInvoices.reduce((sum, invoice) => {
-      const damagedItems = invoice.invoiceType === 'factory_damage'
+      const damagedItems = ['factory_damage', 'depot_factory_return'].includes(invoice.invoiceType)
         ? (invoice.items || [])
           .filter((item) => item.productId === product.id && item.sku === variant.sku)
           .reduce((itemSum, item) => itemSum + itemPieces(item), 0)

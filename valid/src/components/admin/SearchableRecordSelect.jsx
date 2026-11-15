@@ -8,7 +8,8 @@ export default function SearchableRecordSelect({
   placeholder,
   searchPlaceholder,
   optionLabel,
-  searchText
+  searchText,
+  required = true
 }) {
   const [query, setQuery] = useState('');
   const filteredItems = useMemo(() => {
@@ -34,7 +35,7 @@ export default function SearchableRecordSelect({
         className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 font-normal"
       />
       <select
-        required
+        required={required}
         value={value}
         onChange={(event) => {
           onChange(event.target.value);

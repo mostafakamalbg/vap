@@ -95,7 +95,13 @@ export default function InvoicePrintHeader({ invoice }) {
       <header className="invoice-company-header">
         <CompanyLetterhead className="invoice-print-letterhead" />
         <div className="invoice-session-badge">সেশন: {invoice.session || LEGACY_INVOICE_SESSION}</div>
-        <h2 className="invoice-title-bar">{invoice.invoiceType === 'factory_damage' ? 'ক্ষতিগ্রস্ত পণ্য ফেরত বিবরণী' : 'ডিলার ইনভয়েস কপি'}</h2>
+        <h2 className="invoice-title-bar">
+          {invoice.invoiceType === 'depot_factory_return' || invoice.invoiceType === 'factory_damage'
+            ? 'ডিপো থেকে ফ্যাক্টরি/ওয়্যারহাউসে ফেরত'
+            : invoice.invoiceType === 'dealer_return'
+              ? 'ডিলার কর্তৃক পণ্য ফেরত'
+              : 'ডিলার ইনভয়েস কপি'}
+        </h2>
       </header>
 
       <section className="invoice-parties-grid">

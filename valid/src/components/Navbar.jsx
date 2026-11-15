@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import {
   FileText,
   Package,
-  RotateCcw,
   Users,
   UserCheck,
   BarChart3,
@@ -40,7 +39,6 @@ export default function Navbar({ activeTab, setActiveTab }) {
     { id: 'new-invoice', label: t('nav.newInvoice'), icon: FileText },
     { id: 'invoice-list', label: t('nav.invoiceHistory'), icon: FileText },
     { id: 'inventory', label: t('nav.stock'), icon: Package },
-    { id: 'damage-returns', label: t('nav.returns'), icon: RotateCcw },
     { id: 'dealer-ledger', label: t('nav.dealerLedger'), icon: Users },
     { id: 'sales-agreements', label: 'সেলস ও কালেকশন চুক্তি', icon: FileText },
     { id: 'officer-tracking', label: t('nav.officerTracking'), icon: UserCheck },

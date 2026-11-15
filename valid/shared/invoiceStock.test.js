@@ -89,3 +89,57 @@ test('invoice stock changes preserve negative carton and piece balances', () => 
   assert.equal(updated[0].variants[0].stockCartons, -2);
   assert.equal(updated[0].variants[0].stock, -18);
 });
+
+test('dealer returns add good goods to depot stock and damaged goods to damage stock', () => {
+  const products = [{
+    id: 'product-1',
+    variants: [{ sku: 'sku-1', stockCartons: 10, stock: 120, damageStock: 3, packPerBox: 12 }]
+  }];
+  const updated = applyInvoiceStockChanges(products, null, {
+    invoiceType: 'dealer_return',
+    items: [
+      { productId: 'product-1', sku: 'sku-1', cartons: 2, totalPieces: 24, stockCondition: 'good' },
+      { productId: 'product-1', sku: 'sku-1', cartons: 1, totalPieces: 12, stockCondition: 'damaged' }
+    ]
+  });
+
+  assert.equal(updated[0].variants[0].stockCartons, 12);
+  assert.equal(updated[0].variants[0].stock, 144);
+  assert.equal(updated[0].variants[0].damageStock, 15);
+});
+
+test('depot factory returns subtract good and damaged goods from their respective stocks', () => {
+  const products = [{
+    id: 'product-1',
+    variants: [{ sku: 'sku-1', stockCartons: 10, stock: 120, damageStock: 15, packPerBox: 12 }]
+  }];
+  const updated = applyInvoiceStockChanges(products, null, {
+    invoiceType: 'depot_factory_return',
+    items: [
+      { productId: 'product-1', sku: 'sku-1', cartons: 1, totalPieces: 12, stockCondition: 'good' },
+      { productId: 'product-1', sku: 'sku-1', cartons: 2, totalPieces: 24, stockCondition: 'damaged' }
+    ]
+  });
+
+  assert.equal(updated[0].variants[0].stockCartons, 9);
+  assert.equal(updated[0].variants[0].stock, 108);
+  assert.equal(updated[0].variants[0].damageStock, -9);
+});
+
+test('editing a return reverses its previous stock movement before applying the replacement', () => {
+  const products = [{
+    id: 'product-1',
+    variants: [{ sku: 'sku-1', stockCartons: 12, stock: 144, damageStock: 0, packPerBox: 12 }]
+  }];
+  const updated = applyInvoiceStockChanges(products, {
+    invoiceType: 'dealer_return',
+    items: [{ productId: 'product-1', sku: 'sku-1', cartons: 2, totalPieces: 24, stockCondition: 'good' }]
+  }, {
+    invoiceType: 'depot_factory_return',
+    items: [{ productId: 'product-1', sku: 'sku-1', cartons: 1, totalPieces: 12, stockCondition: 'damaged' }]
+  });
+
+  assert.equal(updated[0].variants[0].stockCartons, 10);
+  assert.equal(updated[0].variants[0].stock, 120);
+  assert.equal(updated[0].variants[0].damageStock, -12);
+});

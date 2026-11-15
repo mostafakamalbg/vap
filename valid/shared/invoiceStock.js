@@ -1,8 +1,9 @@
 import { getItemCartons } from './invoiceCartons.js';
 
 function getInvoiceStockMovements(invoice) {
-  const direction = invoice.invoiceType === 'dealer_return' ? 1 : -1;
   const movements = new Map();
+  const isDealerReturn = invoice.invoiceType === 'dealer_return';
+  const isDepotFactoryReturn = ['depot_factory_return', 'factory_damage'].includes(invoice.invoiceType);
 
   (invoice.items || []).forEach((item) => {
     if (!item.productId || !item.sku) return;
@@ -16,11 +17,17 @@ function getInvoiceStockMovements(invoice) {
       productId: item.productId,
       sku: item.sku,
       cartons: 0,
-      pieces: 0
+      pieces: 0,
+      damagePieces: 0
     };
 
-    movement.cartons += cartons * direction;
-    movement.pieces += pieces * direction;
+    const direction = isDealerReturn ? 1 : -1;
+    if (item.stockCondition === 'damaged' && (isDealerReturn || isDepotFactoryReturn)) {
+      movement.damagePieces += pieces * direction;
+    } else {
+      movement.cartons += cartons * direction;
+      movement.pieces += pieces * direction;
+    }
     movements.set(key, movement);
   });
 
@@ -34,7 +41,8 @@ function getInvoiceStockMovements(invoice) {
       productId: item.productId,
       sku: item.sku,
       cartons: 0,
-      pieces: 0
+      pieces: 0,
+      damagePieces: 0
     };
 
     movement.cartons -= Math.floor(quantity / packPerBox);
@@ -56,10 +64,12 @@ export function getInvoiceStockChanges(previousInvoice, nextInvoice) {
         productId: movement.productId,
         sku: movement.sku,
         cartons: 0,
-        pieces: 0
+        pieces: 0,
+        damagePieces: 0
       };
       change.cartons += movement.cartons * multiplier;
       change.pieces += movement.pieces * multiplier;
+      change.damagePieces += movement.damagePieces * multiplier;
       changes.set(key, change);
     });
   });
@@ -83,7 +93,8 @@ export function applyInvoiceStockChanges(products, previousInvoice, nextInvoice)
         return {
           ...variant,
           stockCartons: (Number(variant.stockCartons) || 0) + change.cartons,
-          stock: (Number(variant.stock) || 0) + change.pieces
+          stock: (Number(variant.stock) || 0) + change.pieces,
+          damageStock: (Number(variant.damageStock) || 0) + change.damagePieces
         };
       })
     };

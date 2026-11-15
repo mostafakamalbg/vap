@@ -9,7 +9,7 @@ import { INVOICE_SESSIONS } from '../shared/sessions.js';
 import { normalizeOfficerCode } from '../shared/codes.js';
 import { isDealerCollection } from '../shared/paymentMethods.js';
 
-const SALES_TYPES = ['dealer_return', 'factory_damage'];
+const SALES_TYPES = ['dealer_return', 'factory_damage', 'depot_factory_return'];
 
 function badRequest(message) {
   const error = new Error(message);
@@ -190,7 +190,7 @@ async function getProductSales(query) {
   if (!session && !startDate && !endDate) throw badRequest('সেশন অথবা তারিখের সীমা দিন।');
   const range = getDateFilter({ startDate, endDate });
   const match = {
-    invoiceType: { $ne: 'factory_damage' },
+    invoiceType: { $nin: ['factory_damage', 'depot_factory_return'] },
     ...(session ? { session } : {}),
     ...dateMatch(range)
   };
@@ -438,7 +438,23 @@ async function getCompanyReport(query) {
             $sum: { $cond: [{ $eq: ['$invoiceType', 'dealer_return'] }, piecesExpression, 0] }
           },
           piecesDamaged: {
-            $sum: { $cond: [{ $eq: ['$invoiceType', 'factory_damage'] }, piecesExpression, 0] }
+            $sum: {
+              $cond: [
+                {
+                  $or: [
+                    { $eq: ['$invoiceType', 'factory_damage'] },
+                    {
+                      $and: [
+                        { $eq: ['$invoiceType', 'depot_factory_return'] },
+                        { $eq: ['$items.stockCondition', 'damaged'] }
+                      ]
+                    }
+                  ]
+                },
+                piecesExpression,
+                0
+              ]
+            }
           }
         }
       },

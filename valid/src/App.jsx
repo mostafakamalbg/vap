@@ -14,7 +14,6 @@ import AdminAccess from './components/admin/AdminAccess';
 import InvoiceGenerator from './components/admin/InvoiceGenerator';
 import InvoiceList from './components/admin/InvoiceList';
 import StockManagement from './components/admin/StockManagement';
-import DamageReturns from './components/admin/DamageReturns';
 import DealerLedger from './components/admin/DealerLedger';
 import OfficerPerformance from './components/admin/OfficerPerformance';
 import MonthlyReport from './components/admin/MonthlyReport';
@@ -31,6 +30,7 @@ function AppContent() {
   const [activeTab, setActiveTab] = useState('website-home');
   const [editingInvoice, setEditingInvoice] = useState(null);
   const [invoiceToPrintId, setInvoiceToPrintId] = useState('');
+  const [invoiceFormKey, setInvoiceFormKey] = useState(0);
 
   const handleNavigate = (tab) => {
     const publicTabs = ['website-home', 'website-products', 'website-about'];
@@ -52,6 +52,7 @@ function AppContent() {
   const handleStartNewInvoice = () => {
     setEditingInvoice(null);
     setInvoiceToPrintId('');
+    setInvoiceFormKey((key) => key + 1);
     handleNavigate('new-invoice');
   };
 
@@ -103,9 +104,18 @@ function AppContent() {
     if (activeTab === 'new-invoice') {
       return (
         <InvoiceGenerator
+          key={invoiceFormKey}
           onViewInvoices={() => handleNavigate('invoice-list')}
+          onInvoiceCreated={() => {
+            setEditingInvoice(null);
+            setInvoiceToPrintId('');
+            setInvoiceFormKey((key) => key + 1);
+          }}
           editInvoiceData={editingInvoice}
-          onCancelEdit={() => setEditingInvoice(null)}
+          onCancelEdit={() => {
+            setEditingInvoice(null);
+            setInvoiceFormKey((key) => key + 1);
+          }}
         />
       );
     }
@@ -119,7 +129,6 @@ function AppContent() {
       );
     }
     if (activeTab === 'inventory') return <StockManagement />;
-    if (activeTab === 'damage-returns') return <DamageReturns />;
     if (activeTab === 'dealer-ledger') return <DealerLedger />;
     if (activeTab === 'officer-tracking') return <OfficerPerformance />;
     if (activeTab === 'monthly-reports') return <MonthlyReport />;
