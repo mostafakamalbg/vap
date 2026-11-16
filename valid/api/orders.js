@@ -6,6 +6,8 @@ import { authorize } from '../lib/auth.js';
 import { getBangladeshBusinessDate, getInvoiceSessionForDate } from '../shared/sessions.js';
 import { isDealerAssignedToOfficer, normalizeOfficerCode } from '../shared/codes.js';
 import { getDealersWithOfficerCodes } from '../lib/dealerAssignments.js';
+import { getPackageQuantityUnit } from '../shared/quantityUnits.js';
+import { STOCK_RECONCILIATION_START_DATE } from '../shared/stockReconciliation.js';
 
 const invoiceIdPattern = /^VAP-(\d{4})-(\d+)$/;
 
@@ -179,9 +181,17 @@ export default async function handler(req, res) {
             }
             const variants = product.variants.map((variant) => {
               const cartons = quantitiesBySku.get(variant.sku) || 0;
-              if (!cartons) return variant;
+              if (!cartons || pendingOrder.date < STOCK_RECONCILIATION_START_DATE) return variant;
               const available = Number(variant.stockCartons) || 0;
-              const pieces = cartons * (Number(variant.packPerBox) || 1);
+              const quantityUnit = getPackageQuantityUnit({
+                ...variant,
+                productName: product.name,
+                generic: product.generic
+              });
+              const unitsPerPackage = quantityUnit === 'কার্টুন'
+                ? (Number(variant.packPerBox) || 1)
+                : 1;
+              const pieces = cartons * unitsPerPackage;
               return {
                 ...variant,
                 stockCartons: available - cartons,

@@ -110,10 +110,10 @@ export default function AdminDataManagement() {
       <section className="rounded-xl border border-rose-200 bg-rose-50 p-5">
         <div className="flex items-center gap-2 text-rose-800">
           <AlertTriangle className="h-5 w-5" />
-          <h2 className="font-black">স্টক রিসেট</h2>
+          <h2 className="font-black">স্টক পুনর্গণনা</h2>
         </div>
         <p className="mt-2 text-sm text-rose-900">
-          সব পণ্যের স্টক শূন্য করে স্টক-ইন রেকর্ড মুছুন। ইনভয়েস, অন্যান্য হিসাব, ব্যবহারকারী ও অ্যাডমিন সিট পরিবর্তন হবে না।
+          ৩০-০৯-২০২৬ থেকে পূর্ণ প্যাকেজের ইনভয়েস ও স্টক-ইন হিসাব করে স্টক পুনর্গণনা করুন। ইনভয়েস, ডিলার লেজার বা স্টক-ইন রেকর্ড মুছবে না; খুচরা পিস বাদ থাকবে।
         </p>
         <StockResetButton
           disabled={busy}

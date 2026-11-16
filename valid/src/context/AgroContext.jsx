@@ -20,6 +20,7 @@ import { getInvoiceCartons, getItemCartons } from '../../shared/invoiceCartons';
 import { getInvoiceSalesAmount } from '../../shared/invoiceTotals';
 import { getDealerNetDue } from '../../shared/dealerLedger';
 import { getStockInQuantities } from '../../shared/quantityUnits';
+import { STOCK_RECONCILIATION_START_DATE } from '../../shared/stockReconciliation';
 import { normalizeHotlineNumber } from '../../shared/companyContact';
 import { normalizeProductDisplayNames } from '../../shared/productNames';
 
@@ -27,6 +28,10 @@ const AgroContext = createContext();
 
 const isSalesInvoice = (invoice) =>
   !['dealer_return', 'factory_damage', 'depot_factory_return'].includes(invoice.invoiceType);
+
+const getEffectiveStockInvoice = (invoice) => (
+  invoice?.date >= STOCK_RECONCILIATION_START_DATE ? invoice : null
+);
 
 const isInvoicePaymentRecord = (payment) => (
   Boolean(payment?.sourceInvoiceId)
@@ -564,7 +569,11 @@ export function AgroProvider({ children }) {
     setInvoices((prev) => [savedInvoice, ...prev.filter((invoice) => invoice.id !== savedInvoice.id)]);
 
     // Send to MongoDB Atlas API
-    setProducts((prevProducts) => applyInvoiceStockChanges(prevProducts, null, invoiceToSave));
+    setProducts((prevProducts) => applyInvoiceStockChanges(
+      prevProducts,
+      null,
+      getEffectiveStockInvoice(invoiceToSave)
+    ));
 
     const damageEntries = createInvoiceDamageLogs(savedInvoice);
     if (damageEntries.length) {
@@ -601,7 +610,11 @@ export function AgroProvider({ children }) {
     const savedInvoice = await readJsonResponse(response);
     if (previousInvoice) {
       setProducts((prevProducts) =>
-        applyInvoiceStockChanges(prevProducts, previousInvoice, savedInvoice)
+        applyInvoiceStockChanges(
+          prevProducts,
+          getEffectiveStockInvoice(previousInvoice),
+          getEffectiveStockInvoice(savedInvoice)
+        )
       );
     }
 
@@ -645,7 +658,11 @@ export function AgroProvider({ children }) {
       && !(entry.reference === `চালান #${invoiceId}` && entry.note === `ইনভয়েস #${invoiceId} এর বিপরীতে পরিশোধ`)
     )));
     if (invoice) {
-      setProducts((prev) => applyInvoiceStockChanges(prev, invoice, null));
+      setProducts((prev) => applyInvoiceStockChanges(
+        prev,
+        getEffectiveStockInvoice(invoice),
+        null
+      ));
     }
     return result;
   };
@@ -661,7 +678,9 @@ export function AgroProvider({ children }) {
     setStockInLogs((prev) => [...entries, ...prev]);
 
     setProducts((prevProducts) => prevProducts.map((product) => {
-      const productEntries = entries.filter((entry) => entry.productId === product.id);
+      const productEntries = entries.filter((entry) => (
+        entry.productId === product.id && entry.date >= STOCK_RECONCILIATION_START_DATE
+      ));
       if (!productEntries.length) return product;
       return {
         ...product,
@@ -914,40 +933,38 @@ export function AgroProvider({ children }) {
     return true;
   };
 
-  const clearStockOnly = async (password, confirmationText) => {
+  const recalculateStock = async (password, confirmationText) => {
     if (currentUser?.role !== 'admin') {
-      throw new Error('এই রিসেট ব্যবহারের অনুমতি নেই।');
+      throw new Error('স্টক পুনর্গণনা ব্যবহারের অনুমতি নেই।');
     }
     if (typeof password !== 'string' || !password) {
-      throw new Error('স্টক শূন্য করতে অ্যাডমিন পাসওয়ার্ড দিন।');
+      throw new Error('স্টক পুনর্গণনা করতে অ্যাডমিন পাসওয়ার্ড দিন।');
     }
-    if (confirmationText !== 'RESET') {
-      throw new Error('রিসেট নিশ্চিত করতে RESET লিখুন।');
+    if (confirmationText !== 'RECALCULATE') {
+      throw new Error('স্টক পুনর্গণনা নিশ্চিত করতে RECALCULATE লিখুন।');
     }
     await Promise.all(['products', 'stockInLogs'].map((type) => (
       syncQueueRef.current[type] || Promise.resolve()
     )));
+    if (['products', 'stockInLogs'].some((type) => syncErrorsRef.current.has(type))) {
+      throw new Error('সার্ভারে পণ্য বা স্টক-ইন রেকর্ড সিঙ্ক হয়নি; সিঙ্ক সফল হওয়ার পর পুনর্গণনা করুন।');
+    }
     const response = await fetch('/api/backup', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'clear-stock-only', password, confirmationText })
+      body: JSON.stringify({
+        action: 'recalculate-stock',
+        startDate: STOCK_RECONCILIATION_START_DATE,
+        password,
+        confirmationText
+      })
     });
     const result = await readJsonResponse(response);
-    const clearedProducts = products.map((product) => ({
-      ...product,
-      variants: (product.variants || []).map((variant) => ({
-        ...variant,
-        stock: 0,
-        stockCartons: 0
-      }))
-    }));
+    const updatedProducts = await refreshSharedRecords('products');
     localRecordsRef.current = {
       ...localRecordsRef.current,
-      products: clearedProducts,
-      stockInLogs: []
+      products: updatedProducts
     };
-    setProducts(clearedProducts);
-    setStockInLogs([]);
     return result;
   };
 
@@ -1123,7 +1140,7 @@ export function AgroProvider({ children }) {
         getDealerSummary,
         getOfficerSummary,
         resetToFactoryData,
-        clearStockOnly,
+        recalculateStock,
         exportBackupExcel,
         exportBackup,
         importBackup,

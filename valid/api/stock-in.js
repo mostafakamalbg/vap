@@ -4,6 +4,7 @@ import { authorize } from '../lib/auth.js';
 import { BusinessRecord, Product } from '../lib/models.js';
 import { transactionOptions, withTransactionFallback } from '../lib/transactions.js';
 import { getStockInQuantities, isValidStockInQuantities } from '../shared/quantityUnits.js';
+import { STOCK_RECONCILIATION_START_DATE } from '../shared/stockReconciliation.js';
 
 function isValidDate(value) {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -53,9 +54,10 @@ export default async function handler(req, res) {
   try {
     await withTransactionFallback(async (session) => {
       const options = transactionOptions(session);
-      const products = new Map();
+      const loadedProducts = new Map();
+      const changedProducts = new Map();
       for (const entry of entries) {
-        let product = products.get(String(entry.productId));
+        let product = loadedProducts.get(String(entry.productId));
         if (!product) {
           let productQuery = Product.findOne({ id: String(entry.productId) });
           if (session) productQuery = productQuery.session(session);
@@ -65,7 +67,7 @@ export default async function handler(req, res) {
             error.statusCode = 404;
             throw error;
           }
-          products.set(String(entry.productId), product);
+          loadedProducts.set(String(entry.productId), product);
         }
         const variant = (product.variants || []).find((item) => item.sku === entry.sku);
         if (!variant) {
@@ -79,13 +81,16 @@ export default async function handler(req, res) {
           error.statusCode = 409;
           throw error;
         }
+        const stockBase = entry.date >= STOCK_RECONCILIATION_START_DATE
+          ? variant
+          : { ...variant, stock: 0, stockCartons: 0 };
         const quantities = getStockInQuantities({
           productName: product.name,
           generic: product.generic,
           size: variant.size,
           packPerBox,
-          stock: variant.stock,
-          stockCartons: variant.stockCartons
+          stock: stockBase.stock,
+          stockCartons: stockBase.stockCartons
         }, entry.cartons);
         if (!isValidStockInQuantities(quantities)) {
           const error = new Error('স্টক পরিমাণ সঠিকভাবে হিসাব করা যায়নি; প্যাক ও মজুত তথ্য যাচাই করুন।');
@@ -95,10 +100,13 @@ export default async function handler(req, res) {
         entry.quantityPieces = quantities.quantityPieces;
         entry.quantityUnit = quantities.quantityUnit;
         entry.packPerBox = packPerBox;
-        variant.stockCartons = quantities.stockCartons;
-        variant.stock = quantities.stock;
+        if (entry.date >= STOCK_RECONCILIATION_START_DATE) {
+          variant.stockCartons = quantities.stockCartons;
+          variant.stock = quantities.stock;
+          changedProducts.set(String(entry.productId), product);
+        }
       }
-      for (const product of products.values()) {
+      for (const product of changedProducts.values()) {
         product.markModified('variants');
         await product.save(options);
       }

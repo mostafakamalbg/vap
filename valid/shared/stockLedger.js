@@ -4,7 +4,7 @@ export function buildStockLedger(events, startDate, endDate, currentBalance) {
   }
 
   const datedEvents = events
-    .map((event, index) => ({ ...event, index }))
+    .map((event, index) => ({ ...event, changeCount: Math.trunc(event.changeCount), index }))
     .filter((event) => (
       /^\d{4}-\d{2}-\d{2}$/.test(event.date)
       && event.unit !== 'পিস'
@@ -28,17 +28,21 @@ export function buildStockLedger(events, startDate, endDate, currentBalance) {
 export function buildDailyStockLedger(rows, openingBalance) {
   const totalsByDate = new Map();
   rows.filter((event) => event.unit !== 'পিস').forEach((event) => {
+    const changeCount = Math.trunc(Number(event.changeCount));
+    if (!Number.isFinite(changeCount)) return;
     const day = totalsByDate.get(event.date) || {
       date: event.date,
       factoryIn: 0,
-      stockOut: 0,
-      dealerReturns: 0,
+      marketReturns: 0,
+      factoryReturns: 0,
+      sales: 0,
       netChange: 0
     };
-    if (event.category === 'factoryIn') day.factoryIn += Math.max(0, event.changeCount);
-    else if (event.category === 'dealerReturn') day.dealerReturns += Math.max(0, event.changeCount);
-    else day.stockOut += Math.max(0, -event.changeCount);
-    day.netChange += event.changeCount;
+    if (event.category === 'factoryIn') day.factoryIn += Math.max(0, changeCount);
+    else if (event.category === 'marketReturn') day.marketReturns += Math.max(0, changeCount);
+    else if (event.category === 'factoryReturn') day.factoryReturns += Math.max(0, -changeCount);
+    else day.sales += Math.max(0, -changeCount);
+    day.netChange += changeCount;
     totalsByDate.set(event.date, day);
   });
 

@@ -54,7 +54,7 @@ export function getStockInQuantities(item, packageCount) {
     stock,
     stockCartons: quantityUnit === 'কার্টুন'
       ? currentCartons + count
-      : Math.floor(stock / packPerBox)
+      : stock
   };
 }
 

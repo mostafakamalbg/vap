@@ -4,6 +4,7 @@ import { User } from '../lib/models.js';
 import { BusinessRecord, Dealer, Invoice, Order, Product } from '../lib/models.js';
 import { normalizeDealerAssignment } from '../shared/codes.js';
 import { transactionOptions, withTransactionFallback } from '../lib/transactions.js';
+import { rebuildStockBalances, STOCK_RECONCILIATION_START_DATE } from '../shared/stockReconciliation.js';
 import {
   INITIAL_DAMAGES,
   INITIAL_DEALERS,
@@ -86,26 +87,49 @@ async function restoreFactoryData() {
   await replaceWithTransaction(data, { clearOrders: true });
 }
 
-async function clearStockAndLogs() {
-  let matchedProducts = 0;
-  let deletedStockInLogs = 0;
+async function recalculateStock(startDate) {
+  let summary;
   await withTransactionFallback(async (session) => {
     const options = transactionOptions(session);
-    const result = await Product.updateMany(
-      { variants: { $type: 'array' } },
-      {
-        $set: {
-          'variants.$[].stock': 0,
-          'variants.$[].stockCartons': 0
-        }
-      },
-      options
+    let productsQuery = Product.find({});
+    let invoicesQuery = Invoice.find({}).select('id date invoiceType items').lean();
+    let stockInQuery = BusinessRecord.find({ type: 'stockInLogs' }).select('data').lean();
+    if (session) {
+      productsQuery = productsQuery.session(session);
+      invoicesQuery = invoicesQuery.session(session);
+      stockInQuery = stockInQuery.session(session);
+    }
+    const [products, invoices, stockInRecords] = await Promise.all([
+      productsQuery,
+      invoicesQuery,
+      stockInQuery
+    ]);
+    const rebuilt = rebuildStockBalances(
+      products.map((product) => product.toObject()),
+      invoices,
+      stockInRecords.map((record) => record.data),
+      startDate
     );
-    matchedProducts = result.matchedCount;
-    const deleteResult = await BusinessRecord.deleteMany({ type: 'stockInLogs' }, options);
-    deletedStockInLogs = deleteResult.deletedCount;
+    if (rebuilt.products.length) {
+      await Product.bulkWrite(rebuilt.products.map((product) => ({
+        updateOne: {
+          filter: { id: product.id },
+          update: {
+            $set: {
+              variants: product.variants
+            }
+          }
+        }
+      })), options);
+    }
+    summary = {
+      products: rebuilt.products.length,
+      invoices: rebuilt.invoiceCount,
+      stockInLogs: rebuilt.stockInCount,
+      startDate: rebuilt.startDate
+    };
   });
-  return { products: matchedProducts, stockInLogs: deletedStockInLogs };
+  return summary;
 }
 
 export default async function handler(req, res) {
@@ -122,20 +146,30 @@ export default async function handler(req, res) {
   }
 
   if (req.method === 'POST') {
-    if (!['factory-reset', 'clear-stock-only'].includes(req.body?.action)) {
+    if (!['factory-reset', 'recalculate-stock'].includes(req.body?.action)) {
       return res.status(400).json({ error: 'Invalid reset request.' });
     }
-    if (req.body.confirmationText !== 'RESET') {
-      return res.status(400).json({ error: 'রিসেট নিশ্চিত করতে RESET লিখুন।' });
+    const isStockRecalculation = req.body.action === 'recalculate-stock';
+    const requiredConfirmation = isStockRecalculation ? 'RECALCULATE' : 'RESET';
+    if (req.body.confirmationText !== requiredConfirmation) {
+      return res.status(400).json({
+        error: isStockRecalculation
+          ? 'স্টক পুনর্গণনা নিশ্চিত করতে RECALCULATE লিখুন।'
+          : 'রিসেট নিশ্চিত করতে RESET লিখুন।'
+      });
     }
     let stage = 'ডেটাবেসের রেকর্ড';
     try {
-      if (req.body.action === 'clear-stock-only') {
-        stage = 'পণ্যের স্টক শূন্য করা ও স্টক-ইন রেকর্ড মুছে ফেলা';
-        const cleared = await clearStockAndLogs();
+      if (isStockRecalculation) {
+        const startDate = String(req.body.startDate || '');
+        if (startDate !== STOCK_RECONCILIATION_START_DATE) {
+          return res.status(400).json({ error: 'স্টক পুনর্গণনার শুরুর তারিখ সঠিক নয়।' });
+        }
+        stage = 'ইনভয়েস ও স্টক-ইন লেজার থেকে পণ্যের স্টক পুনর্গণনা';
+        const recalculated = await recalculateStock(startDate);
         return res.status(200).json({
-          message: 'ইনভয়েস, হিসাব, ব্যবহারকারী ও অ্যাডমিন সিট অক্ষত রেখে স্টক শূন্য এবং স্টক-ইন রেকর্ড মুছে ফেলা হয়েছে।',
-          ...cleared
+          message: 'ইনভয়েস, ডিলার লেজার ও স্টক-ইন ইতিহাস অক্ষত রেখে স্টক পুনর্গণনা হয়েছে।',
+          ...recalculated
         });
       }
       stage = 'ফ্যাক্টরি ডেটা পুনরুদ্ধার';
@@ -143,8 +177,8 @@ export default async function handler(req, res) {
       return res.status(200).json({ message: 'ফ্যাক্টরি ডেটা পুনরুদ্ধার হয়েছে।' });
     } catch (error) {
       console.error('Data reset failed:', { action: req.body.action, stage, error });
-      const errorMessage = req.body.action === 'clear-stock-only'
-        ? `স্টক রিসেট করা যায়নি (${stage} ধাপ)। অনুগ্রহ করে আবার চেষ্টা করুন।`
+      const errorMessage = isStockRecalculation
+        ? `স্টক পুনর্গণনা করা যায়নি (${stage} ধাপ)। ${error.message}`
         : 'ফ্যাক্টরি ডেটা পুনরুদ্ধার করা যায়নি।';
       return res.status(500).json({ error: errorMessage });
     }

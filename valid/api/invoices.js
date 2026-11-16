@@ -4,6 +4,7 @@ import { authorize, verifyPassword } from '../lib/auth.js';
 import { normalizePaymentMethod } from '../shared/paymentMethods.js';
 import { getInvoiceStockChanges } from '../shared/invoiceStock.js';
 import { getItemCartons } from '../shared/invoiceCartons.js';
+import { STOCK_RECONCILIATION_START_DATE } from '../shared/stockReconciliation.js';
 import { transactionOptions, withTransactionFallback } from '../lib/transactions.js';
 
 const isValidDate = (value) => {
@@ -168,7 +169,13 @@ function isWithinDeleteWindow(invoice) {
 }
 
 async function applyInvoiceStockChanges(previousInvoice, nextInvoice, session) {
-  const changes = getInvoiceStockChanges(previousInvoice, nextInvoice);
+  const effectivePreviousInvoice = previousInvoice?.date >= STOCK_RECONCILIATION_START_DATE
+    ? previousInvoice
+    : null;
+  const effectiveNextInvoice = nextInvoice?.date >= STOCK_RECONCILIATION_START_DATE
+    ? nextInvoice
+    : null;
+  const changes = getInvoiceStockChanges(effectivePreviousInvoice, effectiveNextInvoice);
   for (const change of changes.values()) {
     let productQuery = Product.findOne({ id: change.productId });
     if (session) productQuery = productQuery.session(session);

@@ -1,3 +1,5 @@
+import { getPackageQuantityUnit } from './quantityUnits.js';
+
 function getInvoiceStockMovements(invoice) {
   const movements = new Map();
   const isDealerReturn = invoice.invoiceType === 'dealer_return';
@@ -8,17 +10,19 @@ function getInvoiceStockMovements(invoice) {
 
     if (item.unitType === 'piece') return;
 
-    const cartons = Number(item.cartons ?? item.quantity) || 0;
+    const cartons = Math.trunc(Number(item.cartons ?? item.quantity) || 0);
     if (cartons <= 0) return;
 
     const key = `${item.productId}\u0000${item.sku}`;
     const packPerBox = Number(item.packPerBox);
     const totalPieces = Number(item.totalPieces);
-    const retailPieces = Number(item.retailPieces) || 0;
-    const pieces = Number.isFinite(packPerBox) && packPerBox > 0
-      ? cartons * packPerBox
+    const quantityUnit = getPackageQuantityUnit(item);
+    const pieces = quantityUnit !== 'কার্টুন'
+      ? cartons
+      : Number.isSafeInteger(packPerBox) && packPerBox > 0
+        ? cartons * packPerBox
       : Number.isFinite(totalPieces)
-        ? Math.max(0, totalPieces - retailPieces)
+        ? Math.max(0, totalPieces - (Number(item.retailPieces) || 0))
         : cartons;
     const movement = movements.get(key) || {
       productId: item.productId,
@@ -35,25 +39,6 @@ function getInvoiceStockMovements(invoice) {
       movement.cartons += cartons * direction;
       movement.pieces += pieces * direction;
     }
-    movements.set(key, movement);
-  });
-
-  (invoice.returnAdjustments || []).forEach((item) => {
-    if (!item.productId || !item.sku) return;
-
-    const key = `${item.productId}\u0000${item.sku}`;
-    const quantity = Number(item.quantity ?? item.quantityPieces) || 0;
-    const packPerBox = Number(item.packPerBox) || 1;
-    const movement = movements.get(key) || {
-      productId: item.productId,
-      sku: item.sku,
-      cartons: 0,
-      pieces: 0,
-      damagePieces: 0
-    };
-
-    movement.cartons -= Math.floor(quantity / packPerBox);
-    movement.pieces -= quantity;
     movements.set(key, movement);
   });
 

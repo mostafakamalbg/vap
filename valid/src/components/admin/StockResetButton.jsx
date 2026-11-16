@@ -1,32 +1,33 @@
 import React, { useState } from 'react';
 import { AlertTriangle, CheckCircle } from 'lucide-react';
 import { useAgro } from '../../context/AgroContext';
+import { STOCK_RECONCILIATION_START_DATE } from '../../../shared/stockReconciliation';
 
 export default function StockResetButton({ className = '', disabled = false }) {
-  const { currentUser, cloudError, cloudReady, clearStockOnly } = useAgro();
+  const { currentUser, cloudError, cloudReady, recalculateStock } = useAgro();
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null);
 
-  const handleStockReset = async () => {
-    if (!window.confirm('স্টক রিসেট করলে সব পণ্যের স্টক শূন্য হবে এবং সব স্টক-ইন রেকর্ড মুছে যাবে। ইনভয়েস, অন্যান্য হিসাব, ব্যবহারকারী ও অ্যাডমিন সিট অক্ষত থাকবে। এগোবেন?')) {
+  const handleRecalculate = async () => {
+    if (!window.confirm('৩০-০৯-২০২৬ থেকে ইনভয়েস ও স্টক-ইন হিসাব করে পণ্যের বর্তমান স্টক পুনর্গণনা হবে। ইনভয়েস, ডিলার লেজার ও স্টক-ইন রেকর্ড পরিবর্তন বা মুছে ফেলা হবে না। এগোবেন?')) {
       return;
     }
-    const confirmationText = window.prompt('নিশ্চিত করতে RESET লিখুন।');
-    if (confirmationText !== 'RESET') return;
-    const password = window.prompt('স্টক রিসেট নিশ্চিত করতে আপনার অ্যাডমিন পাসওয়ার্ড দিন।');
+    const confirmationText = window.prompt('নিশ্চিত করতে RECALCULATE লিখুন।');
+    if (confirmationText !== 'RECALCULATE') return;
+    const password = window.prompt('স্টক পুনর্গণনা নিশ্চিত করতে আপনার অ্যাডমিন পাসওয়ার্ড দিন।');
     if (!password) return;
 
     setBusy(true);
     try {
-      const response = await clearStockOnly(password, confirmationText);
+      const response = await recalculateStock(password, confirmationText);
       setResult({
         success: true,
-        message: `${response.message} (${response.products}টি পণ্য আপডেট, ${response.stockInLogs}টি স্টক-ইন রেকর্ড মুছে ফেলা হয়েছে।)`
+        message: `${response.message} (${response.products}টি পণ্য, ${response.invoices}টি ইনভয়েস ও ${response.stockInLogs}টি স্টক-ইন হিসাব করা হয়েছে; শুরু ${STOCK_RECONCILIATION_START_DATE}.)`
       });
     } catch (error) {
       setResult({
         success: false,
-        message: error instanceof Error ? error.message : 'স্টক রিসেট করা যায়নি।'
+        message: error instanceof Error ? error.message : 'স্টক পুনর্গণনা করা যায়নি।'
       });
     } finally {
       setBusy(false);
@@ -41,11 +42,11 @@ export default function StockResetButton({ className = '', disabled = false }) {
         <button
           type="button"
           disabled={busy || disabled || !cloudReady}
-          onClick={handleStockReset}
-          title={!cloudReady ? 'ডেটাবেস সংযোগ প্রস্তুত হলে Reset Stock চালু হবে।' : undefined}
+          onClick={handleRecalculate}
+          title={!cloudReady ? 'ডেটাবেস সংযোগ প্রস্তুত হলে স্টক পুনর্গণনা চালু হবে।' : undefined}
           className={className || 'inline-flex items-center justify-center rounded-lg bg-rose-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-rose-800 disabled:cursor-not-allowed disabled:opacity-50'}
         >
-          {busy ? 'রিসেট হচ্ছে…' : 'Reset Stock'}
+          {busy ? 'পুনর্গণনা হচ্ছে…' : 'Recalculate Stock'}
         </button>
         {!cloudReady && (
           <p role={cloudError ? 'alert' : 'status'} className="text-xs font-semibold text-amber-800">
@@ -66,7 +67,7 @@ export default function StockResetButton({ className = '', disabled = false }) {
                 ? <CheckCircle className="h-6 w-6" />
                 : <AlertTriangle className="h-6 w-6" />}
               <h2 id="stock-reset-result-title" className="text-lg font-black">
-                {result.success ? 'রিসেট সফল' : 'রিসেট ব্যর্থ'}
+                {result.success ? 'পুনর্গণনা সফল' : 'পুনর্গণনা ব্যর্থ'}
               </h2>
             </div>
             <p className="mt-3 text-sm leading-6 text-slate-700" role={result.success ? 'status' : 'alert'}>

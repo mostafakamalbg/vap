@@ -11,6 +11,7 @@ import { sortInvoiceItems } from './invoiceSorting.js';
 import { getDealerLedgerTransactions, getDealerNetDue } from './dealerLedger.js';
 import { applyInvoiceStockChanges } from './invoiceStock.js';
 import { buildDailyStockLedger, buildStockLedger } from './stockLedger.js';
+import { rebuildStockBalances, STOCK_RECONCILIATION_START_DATE } from './stockReconciliation.js';
 import {
   getInvoiceQuantityParts,
   getPackageQuantityUnit,
@@ -101,7 +102,7 @@ test('stock-in counts bags and jars directly while carton counts expand by pack 
     stock: 480,
     stockCartons: 80
   }, 4), {
-    quantityUnit: 'বস্তা', cartons: 4, quantityPieces: 4, stock: 484, stockCartons: 80
+    quantityUnit: 'বস্তা', cartons: 4, quantityPieces: 4, stock: 484, stockCartons: 484
   });
   assert.deepEqual(getStockInQuantities({
     productName: 'Product A', size: '৫লিটার × ০১', packPerBox: 1, stock: 10, stockCartons: 10
@@ -155,7 +156,7 @@ test('stock-in accepts valid entries when existing carton or bag balances are ne
   assert.equal(cartonQuantities.stock, -24);
   assert.equal(cartonQuantities.stockCartons, -2);
   assert.equal(bagQuantities.stock, -5);
-  assert.equal(bagQuantities.stockCartons, -1);
+  assert.equal(bagQuantities.stockCartons, -5);
   assert.equal(isValidStockInQuantities(cartonQuantities), true);
   assert.equal(isValidStockInQuantities(bagQuantities), true);
 });
@@ -212,20 +213,145 @@ test('opening stock recorded on the report start date leaves a zero opening bala
   assert.equal(ledger.rows[0].runningTotal, 4716);
 });
 
-test('daily stock ledger separates factory receipts from dealer returns and stock out', () => {
+test('daily stock ledger separates receipts, market returns, factory returns and sales', () => {
   const rows = [
-    { date: '2026-03-02', unit: 'কার্টুন', category: 'outflow', changeCount: -5 },
+    { date: '2026-03-02', unit: 'কার্টুন', category: 'sales', changeCount: -5 },
     { date: '2026-03-01', unit: 'কার্টুন', category: 'factoryIn', changeCount: 20 },
-    { date: '2026-03-02', unit: 'বস্তা', category: 'dealerReturn', changeCount: 2 },
+    { date: '2026-03-02', unit: 'বস্তা', category: 'marketReturn', changeCount: 2 },
+    { date: '2026-03-02', unit: 'কার্টুন', category: 'factoryReturn', changeCount: -3 },
     { date: '2026-03-01', unit: 'জার', category: 'factoryIn', changeCount: 3 },
     { date: '2026-03-01', unit: 'বোতল', category: 'factoryIn', changeCount: 4 },
     { date: '2026-03-01', unit: 'পিস', category: 'factoryIn', changeCount: 99 }
   ];
 
   assert.deepEqual(buildDailyStockLedger(rows, 10), [
-    { date: '2026-03-01', factoryIn: 27, stockOut: 0, dealerReturns: 0, runningTotal: 37 },
-    { date: '2026-03-02', factoryIn: 0, stockOut: 5, dealerReturns: 2, runningTotal: 34 }
+    { date: '2026-03-01', factoryIn: 27, marketReturns: 0, factoryReturns: 0, sales: 0, runningTotal: 37 },
+    { date: '2026-03-02', factoryIn: 0, marketReturns: 2, factoryReturns: 3, sales: 5, runningTotal: 31 }
   ]);
+});
+
+test('stock reconciliation rebuilds whole-package balances from the zero opening date', () => {
+  const products = [{
+    id: 'product-1',
+    name: 'Product A',
+    variants: [{ sku: 'sku-1', size: '১০০ মিলি', packPerBox: 12, stock: 999, stockCartons: 99 }]
+  }];
+  const invoices = [
+    {
+      id: 'before-baseline',
+      date: '2026-09-29',
+      invoiceType: 'regular',
+      items: [{ productId: 'product-1', sku: 'sku-1', cartons: 50, packPerBox: 12 }]
+    },
+    {
+      id: 'sale',
+      date: STOCK_RECONCILIATION_START_DATE,
+      invoiceType: 'regular',
+      items: [
+        { productId: 'product-1', sku: 'sku-1', cartons: 3, packPerBox: 12, retailPieces: 2 },
+        { productId: 'product-1', sku: 'sku-1', cartons: 0, unitType: 'piece', retailPieces: 4, packPerBox: 12 }
+      ],
+      returnAdjustments: [{ productId: 'product-1', sku: 'sku-1', quantity: 24, packPerBox: 12 }]
+    },
+    {
+      id: 'market-return',
+      date: '2026-10-01',
+      invoiceType: 'dealer_return',
+      items: [{ productId: 'product-1', sku: 'sku-1', cartons: 2, packPerBox: 12 }]
+    },
+    {
+      id: 'factory-return',
+      date: '2026-10-02',
+      invoiceType: 'depot_factory_return',
+      items: [{ productId: 'product-1', sku: 'sku-1', cartons: 1, packPerBox: 12 }]
+    }
+  ];
+  const stockInLogs = [
+    { id: 'old-receipt', date: '2026-09-29', productId: 'product-1', sku: 'sku-1', cartons: 20 },
+    { id: 'receipt', date: STOCK_RECONCILIATION_START_DATE, productId: 'product-1', sku: 'sku-1', cartons: 4, quantityUnit: 'কার্টুন' },
+    { id: 'loose-receipt', date: '2026-10-01', productId: 'product-1', sku: 'sku-1', cartons: 6, quantityUnit: 'পিস' }
+  ];
+
+  const result = rebuildStockBalances(products, invoices, stockInLogs);
+
+  assert.deepEqual(result.products[0].variants[0], {
+    sku: 'sku-1',
+    size: '১০০ মিলি',
+    packPerBox: 12,
+    stock: 24,
+    stockCartons: 2,
+    damageStock: 0
+  });
+  assert.equal(result.invoiceCount, 3);
+  assert.equal(result.stockInCount, 1);
+  assert.equal(products[0].variants[0].stockCartons, 99);
+  assert.equal(invoices[0].items[0].cartons, 50);
+  assert.equal(stockInLogs.length, 3);
+});
+
+test('stock reconciliation counts jars and bags as whole packages', () => {
+  const result = rebuildStockBalances([
+    {
+      id: 'jar-product',
+      name: 'Product 5L',
+      variants: [{ sku: 'jar', size: '৫ লিটার', packPerBox: 1 }]
+    },
+    {
+      id: 'bag-product',
+      name: 'জিপসাম',
+      variants: [{ sku: 'bag', size: '৫ কেজি × ৬', packPerBox: 6 }]
+    }
+  ], [{
+    id: 'jar-sale',
+    date: STOCK_RECONCILIATION_START_DATE,
+    invoiceType: 'regular',
+    items: [{ productId: 'jar-product', sku: 'jar', cartons: 1, packPerBox: 1, size: '৫ লিটার' }]
+  }], [
+    {
+      id: 'bag-in',
+      date: STOCK_RECONCILIATION_START_DATE,
+      productId: 'bag-product',
+      sku: 'bag',
+      cartons: 4,
+      quantityUnit: 'বস্তা'
+    }
+  ]);
+
+  assert.deepEqual(result.products.map((product) => product.variants[0].stockCartons), [-1, 4]);
+  assert.deepEqual(result.products.map((product) => product.variants[0].stock), [-1, 4]);
+});
+
+test('stock reconciliation truncates legacy fractional package counts', () => {
+  const result = rebuildStockBalances([{
+    id: 'product-1',
+    name: 'Product A',
+    variants: [{ sku: 'sku-1', size: '১০০ মিলি', packPerBox: 12 }]
+  }], [{
+    id: 'sale',
+    date: STOCK_RECONCILIATION_START_DATE,
+    invoiceType: 'regular',
+    items: [{ productId: 'product-1', sku: 'sku-1', cartons: 1.8, packPerBox: 12 }]
+  }], [{
+    id: 'receipt',
+    date: STOCK_RECONCILIATION_START_DATE,
+    productId: 'product-1',
+    sku: 'sku-1',
+    cartons: 3.9,
+    quantityUnit: 'কার্টুন'
+  }]);
+
+  assert.equal(result.products[0].variants[0].stockCartons, 2);
+  assert.equal(result.products[0].variants[0].stock, 24);
+});
+
+test('stock reconciliation rejects transactions for missing product variants', () => {
+  assert.throws(() => rebuildStockBalances([], [], [{
+    id: 'orphan-stock-in',
+    date: STOCK_RECONCILIATION_START_DATE,
+    productId: 'missing',
+    sku: 'missing-sku',
+    cartons: 1
+  }]), /পাওয়া যায়নি/);
 });
 
 test('invoice carton totals fall back to item quantities when the stored total is missing or zero', () => {
