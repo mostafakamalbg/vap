@@ -628,7 +628,7 @@ export default function StockManagement() {
                           onBlur={(event) => {
                             if (!event.currentTarget.contains(event.relatedTarget)) setActiveStockInRow(null);
                           }}
-                          className={`h-8 transition-colors ${activeStockInRow === rowKey ? 'bg-amber-50' : 'bg-white hover:bg-slate-50'}`}
+                          className={`h-8 transition-colors ${activeStockInRow === rowKey ? '#64eb5f' : 'bg-white hover:bg-slate-50'}`}
                         >
                           <td className="px-2 py-0.5 font-semibold text-slate-800">{product?.name || 'পণ্য'}</td>
                           <td className="px-2 py-0.5 text-slate-600">
