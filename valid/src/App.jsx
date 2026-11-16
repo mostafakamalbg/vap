@@ -17,6 +17,7 @@ import StockManagement from './components/admin/StockManagement';
 import DealerLedger from './components/admin/DealerLedger';
 import OfficerPerformance from './components/admin/OfficerPerformance';
 import SalesAgreement from './components/admin/SalesAgreement';
+import MonthlySalesReports from './components/admin/MonthlySalesReports';
 import AdminDataManagement from './components/admin/AdminDataManagement';
 import FactoryDataReset from './components/admin/FactoryDataReset';
 
@@ -134,6 +135,7 @@ function AppContent() {
     if (activeTab === 'data-management') return <AdminDataManagement />;
     if (activeTab === 'factory-reset') return <FactoryDataReset />;
     if (activeTab === 'sales-agreements') return <SalesAgreement />;
+    if (activeTab === 'monthly-sales-reports') return <MonthlySalesReports />;
     return <Home onNavigate={handleNavigate} />;
   };
 

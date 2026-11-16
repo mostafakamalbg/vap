@@ -9,6 +9,8 @@ export const INITIAL_OFFICERS = [
     designation: 'সেলস অফিসার (SO)',
     territory: 'পীরগঞ্জ',
     phone: '০১৭৩১-২৮১৫৩৬',
+    salesTargetJulyDec2026: 2500000,
+    salesTargetJanJune2027: 9000000,
     joinDate: '2024-01-01'
   },
   {
@@ -18,6 +20,8 @@ export const INITIAL_OFFICERS = [
     designation: 'সেলস অফিসার (SO)',
     territory: 'রাণীশংকৈল',
     phone: '০১৭৭৩-০৮২৭২৯',
+    salesTargetJulyDec2026: 3000000,
+    salesTargetJanJune2027: 8000000,
     joinDate: '2024-01-01'
   },
   {
@@ -27,6 +31,8 @@ export const INITIAL_OFFICERS = [
     designation: 'সেলস অফিসার (SO)',
     territory: 'বীরগঞ্জ ও কাহারোল',
     phone: '০১৭১৩৭৩৬৩২০',
+    salesTargetJulyDec2026: 1000000,
+    salesTargetJanJune2027: 3000000,
     joinDate: '2024-01-01'
   },
   {
@@ -36,6 +42,8 @@ export const INITIAL_OFFICERS = [
     designation: 'সেলস অফিসার (SO)',
     territory: 'দিনাজপুর সদর',
     phone: '০১৭৩০-৪৭৮৪৭৭',
+    salesTargetJulyDec2026: 1500000,
+    salesTargetJanJune2027: 3500000,
     joinDate: '2024-01-01'
   }
 ];

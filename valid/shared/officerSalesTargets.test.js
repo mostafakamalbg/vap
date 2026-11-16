@@ -37,3 +37,14 @@ test('officer targets can be totaled across sessions and unknown officers defaul
   assert.equal(getOfficerSalesTarget({ code: '5' }), 11500000);
   assert.equal(getOfficerSalesTarget({ code: '99' }, 'জুলাই - ডিসেম্বর 2026'), 0);
 });
+
+test('officer target fields override defaults for Bengali and English session labels', () => {
+  const officer = {
+    code: '5',
+    salesTargetJulyDec2026: 1200000.4,
+    salesTargetJanJune2027: 5400000.4
+  };
+  assert.equal(getOfficerSalesTarget(officer, 'July-December 2026'), 1200000);
+  assert.equal(getOfficerSalesTarget(officer, 'January-June 2027'), 5400000);
+  assert.equal(getOfficerSalesTarget({ ...officer, salesTargetJanJune2027: 0 }, 'January-June 2027'), 0);
+});

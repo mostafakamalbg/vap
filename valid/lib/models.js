@@ -100,6 +100,70 @@ const orderSchema = new Schema({
 }, flexibleOptions);
 orderSchema.index({ invoiceNo: 1 }, { unique: true, sparse: true });
 
+const paymentAndExpenseSchema = new Schema({
+  officePay: { type: Number, default: 0 },
+  fare: { type: Number, default: 0 },
+  salary: { type: Number, default: 0 },
+  lc: { type: Number, default: 0 }
+}, { _id: false });
+
+const salesOfficerSchema = new Schema({
+  slNo: { type: Number, required: true, unique: true },
+  officerId: { type: String, default: '', index: true },
+  officerCode: { type: String, default: '', index: true },
+  officerName: { type: String, required: true, trim: true },
+  mobileNo: { type: String, default: '' },
+  salesTargetJulyDec2026: { type: Number, default: 0 },
+  salesTargetJanJune2027: { type: Number, default: 0 },
+  lastSessionDue: { type: Number, default: 0 },
+  salesAmount: { type: Number, default: 0 },
+  returnAmount: { type: Number, default: 0 },
+  previousPlusNetSales: { type: Number, default: 0 },
+  paymentAndExpense: { type: paymentAndExpenseSchema, default: () => ({}) },
+  totalReceivedAmount: { type: Number, default: 0 },
+  totalAmountDues: { type: Number, default: 0 },
+  totalNetSales: { type: Number, default: 0 },
+  totalSalesDues: { type: Number, default: 0 },
+  expensePercentage: { type: Number, default: 0 },
+  salesPercentage: { type: Number, default: 0 },
+  paymentPercentage: { type: Number, default: 0 }
+}, flexibleOptions);
+salesOfficerSchema.index({ officerCode: 1 });
+
+const reportPartySchema = new Schema({
+  slNo: { type: Number, default: 0 },
+  nameOfTheParty: { type: String, required: true, trim: true },
+  lastMonthDues: { type: Number, default: 0 },
+  presentMonth: {
+    sales: { type: Number, default: 0 },
+    return: { type: Number, default: 0 },
+    netSales: { type: Number, default: 0 }
+  },
+  lastAndPresent: {
+    netSales: { type: Number, default: 0 },
+    salary: { type: Number, default: 0 },
+    collection: { type: Number, default: 0 },
+    fare: { type: Number, default: 0 },
+    l_c: { type: Number, default: 0 }
+  },
+  presentMonthTotalCollection: { type: Number, default: 0 },
+  presentMonthNetDues: { type: Number, default: 0 }
+}, { _id: false });
+
+const monthlySalesCollectionSchema = new Schema({
+  personName: { type: String, required: true, trim: true },
+  designation: { type: String, default: '' },
+  areaName: { type: String, default: '' },
+  mobileNo: { type: String, default: '' },
+  monthOfReport: { type: String, required: true, trim: true },
+  session: { type: String, required: true, trim: true },
+  reportingDate: { type: String, required: true, match: /^\d{4}-\d{2}-\d{2}$/ },
+  officerId: { type: String, default: '', index: true },
+  officerCode: { type: String, default: '', index: true },
+  parties: { type: [reportPartySchema], default: [] }
+}, flexibleOptions);
+monthlySalesCollectionSchema.index({ session: 1, monthOfReport: 1 });
+
 export const User = mongoose.models.User || mongoose.model('User', userSchema);
 export const AdminSeat = mongoose.models.AdminSeat || mongoose.model('AdminSeat', adminSeatSchema);
 export const BusinessRecord = mongoose.models.BusinessRecord
@@ -108,3 +172,7 @@ export const Product = mongoose.models.Product || mongoose.model('Product', prod
 export const Dealer = mongoose.models.Dealer || mongoose.model('Dealer', dealerSchema);
 export const Invoice = mongoose.models.Invoice || mongoose.model('Invoice', invoiceSchema);
 export const Order = mongoose.models.Order || mongoose.model('Order', orderSchema);
+export const SalesOfficer = mongoose.models.SalesOfficer
+  || mongoose.model('SalesOfficer', salesOfficerSchema);
+export const MonthlySalesCollection = mongoose.models.MonthlySalesCollection
+  || mongoose.model('MonthlySalesCollection', monthlySalesCollectionSchema);
