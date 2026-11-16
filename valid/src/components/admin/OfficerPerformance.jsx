@@ -17,11 +17,22 @@ import { useAgro } from '../../context/AgroContext';
 import { createOfficerCode, formatOfficerCode, getNextOfficerCode, OFFICER_DESIGNATIONS, normalizeOfficerCode } from '../../../shared/codes';
 import { getInvoiceCartons } from '../../../shared/invoiceCartons';
 import { getInvoiceSalesAmount } from '../../../shared/invoiceTotals';
+import { OFFICER_TARGET_SESSIONS } from '../../../shared/officerSalesTargets';
+import { buildOfficerSessionSummary } from '../../../shared/reportAnalytics';
 
 export default function OfficerPerformance() {
-  const { officers, addNewOfficer, getOfficerSummary } = useAgro();
+  const {
+    officers,
+    dealers,
+    invoices,
+    payments,
+    damageLogs,
+    addNewOfficer,
+    getOfficerSummary
+  } = useAgro();
 
   const [searchTerm, setSearchTerm] = useState('');
+  const [summarySession, setSummarySession] = useState(OFFICER_TARGET_SESSIONS[0]);
   const [showAddOfficerModal, setShowAddOfficerModal] = useState(false);
   const [selectedOfficerDetail, setSelectedOfficerDetail] = useState(null);
 
@@ -57,6 +68,18 @@ export default function OfficerPerformance() {
   const totalCompanySales = officerSummaries.reduce((acc, curr) => acc + (curr?.totalSalesAmount || 0), 0);
   const totalCompanyCartons = officerSummaries.reduce((acc, curr) => acc + (curr?.totalCartonsSold || 0), 0);
   const totalCompanyCollected = officerSummaries.reduce((acc, curr) => acc + (curr?.totalCollected || 0), 0);
+  const summaryMonth = `${summarySession.match(/\d{4}$/)?.[0] || new Date().getFullYear()}-${summarySession.includes('জানুয়ারি') ? '06' : '12'}`;
+  const { rows: sessionSummaryRows, totals: sessionSummaryTotals } = buildOfficerSessionSummary({
+    officers,
+    dealers,
+    invoices,
+    payments,
+    damageLogs,
+    session: summarySession,
+    asOfMonth: summaryMonth
+  });
+  const formatSummaryAmount = (value) => Math.round(Number(value) || 0).toLocaleString('en-US');
+  const formatSummaryPercent = (value) => `${(Number(value) || 0).toFixed(2)}%`;
 
   const handleSubmitNewOfficer = (e) => {
     e.preventDefault();
@@ -166,6 +189,104 @@ export default function OfficerPerformance() {
           </div>
         </div>
       </div>
+
+      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="flex flex-col gap-3 border-b border-slate-200 p-4 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h2 className="text-base font-black text-slate-800">Sales Officer Target &amp; Summary</h2>
+            <p className="mt-1 text-xs text-slate-500">সেশন অনুযায়ী বিক্রয়, বকেয়া, পেমেন্ট/খরচ ও টার্গেট অগ্রগতি</p>
+          </div>
+          <label className="text-xs font-bold text-slate-700">
+            হিসাবের সেশন
+            <select
+              value={summarySession}
+              onChange={(event) => setSummarySession(event.target.value)}
+              className="mt-1 block w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm sm:min-w-64"
+            >
+              {OFFICER_TARGET_SESSIONS.map((session) => (
+                <option key={session} value={session}>{session}</option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="min-w-[2200px] border-collapse text-right text-[11px]" aria-label="Sales Officer target and summary">
+            <thead className="bg-slate-100 text-slate-700">
+              <tr>
+                <th rowSpan={2} className="border border-slate-200 px-2 py-2 text-center">SL No</th>
+                <th rowSpan={2} className="border border-slate-200 px-2 py-2 text-left">Officer Name</th>
+                <th rowSpan={2} className="border border-slate-200 px-2 py-2 text-left">Mobile No</th>
+                <th rowSpan={2} className="border border-slate-200 px-2 py-2">July-December 2026<br />Sales Target</th>
+                <th rowSpan={2} className="border border-slate-200 px-2 py-2">January-June 2027<br />Sales Target</th>
+                <th rowSpan={2} className="border border-slate-200 px-2 py-2">Last Session Due</th>
+                <th rowSpan={2} className="border border-slate-200 px-2 py-2">Sales Amount</th>
+                <th rowSpan={2} className="border border-slate-200 px-2 py-2">Return Amount</th>
+                <th rowSpan={2} className="border border-slate-200 px-2 py-2">Previous + Net Sales</th>
+                <th colSpan={4} className="border border-slate-200 px-2 py-2 text-center">Payment &amp; Expense</th>
+                <th rowSpan={2} className="border border-slate-200 bg-orange-100 px-2 py-2">Total Received Amount</th>
+                <th rowSpan={2} className="border border-slate-200 bg-orange-100 px-2 py-2">Total Amount Dues</th>
+                <th rowSpan={2} className="border border-slate-200 bg-orange-200 px-2 py-2">Total Net Sales</th>
+                <th rowSpan={2} className="border border-slate-200 bg-orange-100 px-2 py-2">Total Sales Dues</th>
+                <th rowSpan={2} className="border border-slate-200 bg-orange-100 px-2 py-2">Expense %</th>
+                <th rowSpan={2} className="border border-slate-200 bg-orange-100 px-2 py-2">Sales %</th>
+                <th rowSpan={2} className="border border-slate-200 bg-orange-100 px-2 py-2">Payment %</th>
+              </tr>
+              <tr>
+                <th className="border border-slate-200 px-2 py-2">Office Pay</th>
+                <th className="border border-slate-200 px-2 py-2">Fare</th>
+                <th className="border border-slate-200 px-2 py-2">Salary</th>
+                <th className="border border-slate-200 px-2 py-2">L/C</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {sessionSummaryRows.map((row, index) => (
+                <tr key={row.id} className="hover:bg-slate-50">
+                  <td className="border border-slate-100 px-2 py-2 text-center">{index + 1}</td>
+                  <td className="border border-slate-100 px-2 py-2 text-left font-semibold">{row.officerName}</td>
+                  <td className="border border-slate-100 px-2 py-2 text-left">{row.mobileNo}</td>
+                  <td className="border border-slate-100 px-2 py-2">{formatSummaryAmount(row.salesTargetJulyDec2026)}</td>
+                  <td className="border border-slate-100 px-2 py-2">{formatSummaryAmount(row.salesTargetJanJune2027)}</td>
+                  <td className="border border-slate-100 px-2 py-2">{formatSummaryAmount(row.lastSessionDue)}</td>
+                  <td className="border border-slate-100 px-2 py-2">{formatSummaryAmount(row.salesAmount)}</td>
+                  <td className="border border-slate-100 px-2 py-2">{formatSummaryAmount(row.returnAmount)}</td>
+                  <td className="border border-slate-100 px-2 py-2">{formatSummaryAmount(row.previousPlusNetSales)}</td>
+                  <td className="border border-slate-100 px-2 py-2">{formatSummaryAmount(row.officePay)}</td>
+                  <td className="border border-slate-100 px-2 py-2">{formatSummaryAmount(row.fare)}</td>
+                  <td className="border border-slate-100 px-2 py-2">{formatSummaryAmount(row.salary)}</td>
+                  <td className="border border-slate-100 px-2 py-2">{formatSummaryAmount(row.lc)}</td>
+                  <td className="border border-slate-100 bg-orange-50 px-2 py-2">{formatSummaryAmount(row.totalReceivedAmount)}</td>
+                  <td className="border border-slate-100 bg-orange-50 px-2 py-2">{formatSummaryAmount(row.totalAmountDues)}</td>
+                  <td className="border border-slate-100 bg-orange-100 px-2 py-2 font-black">{formatSummaryAmount(row.totalNetSales)}</td>
+                  <td className="border border-slate-100 bg-orange-50 px-2 py-2">{formatSummaryAmount(row.totalSalesDues)}</td>
+                  <td className="border border-slate-100 bg-orange-50 px-2 py-2">{formatSummaryPercent(row.expensePercentage)}</td>
+                  <td className="border border-slate-100 bg-orange-50 px-2 py-2">{formatSummaryPercent(row.salesPercentage)}</td>
+                  <td className="border border-slate-100 bg-orange-50 px-2 py-2">{formatSummaryPercent(row.paymentPercentage)}</td>
+                </tr>
+              ))}
+              <tr className="bg-slate-100 font-black">
+                <th colSpan={3} className="border border-slate-200 px-2 py-2 text-left">Total Tk</th>
+                <td className="border border-slate-200 px-2 py-2">{formatSummaryAmount(sessionSummaryTotals.salesTargetJulyDec2026)}</td>
+                <td className="border border-slate-200 px-2 py-2">{formatSummaryAmount(sessionSummaryTotals.salesTargetJanJune2027)}</td>
+                <td className="border border-slate-200 px-2 py-2">{formatSummaryAmount(sessionSummaryTotals.lastSessionDue)}</td>
+                <td className="border border-slate-200 px-2 py-2">{formatSummaryAmount(sessionSummaryTotals.salesAmount)}</td>
+                <td className="border border-slate-200 px-2 py-2">{formatSummaryAmount(sessionSummaryTotals.returnAmount)}</td>
+                <td className="border border-slate-200 px-2 py-2">{formatSummaryAmount(sessionSummaryTotals.previousPlusNetSales)}</td>
+                <td className="border border-slate-200 px-2 py-2">{formatSummaryAmount(sessionSummaryTotals.officePay)}</td>
+                <td className="border border-slate-200 px-2 py-2">{formatSummaryAmount(sessionSummaryTotals.fare)}</td>
+                <td className="border border-slate-200 px-2 py-2">{formatSummaryAmount(sessionSummaryTotals.salary)}</td>
+                <td className="border border-slate-200 px-2 py-2">{formatSummaryAmount(sessionSummaryTotals.lc)}</td>
+                <td className="border border-slate-200 bg-orange-100 px-2 py-2">{formatSummaryAmount(sessionSummaryTotals.totalReceivedAmount)}</td>
+                <td className="border border-slate-200 bg-orange-100 px-2 py-2">{formatSummaryAmount(sessionSummaryTotals.totalAmountDues)}</td>
+                <td className="border border-slate-200 bg-orange-200 px-2 py-2">{formatSummaryAmount(sessionSummaryTotals.totalNetSales)}</td>
+                <td className="border border-slate-200 bg-orange-100 px-2 py-2">{formatSummaryAmount(sessionSummaryTotals.totalSalesDues)}</td>
+                <td className="border border-slate-200 bg-orange-100 px-2 py-2">{formatSummaryPercent(sessionSummaryTotals.expensePercentage)}</td>
+                <td className="border border-slate-200 bg-orange-100 px-2 py-2">{formatSummaryPercent(sessionSummaryTotals.salesPercentage)}</td>
+                <td className="border border-slate-200 bg-orange-100 px-2 py-2">{formatSummaryPercent(sessionSummaryTotals.paymentPercentage)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
 
       {/* Officers Table */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-4 no-print">

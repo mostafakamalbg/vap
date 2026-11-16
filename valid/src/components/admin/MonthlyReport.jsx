@@ -33,7 +33,7 @@ import { buildDailyStockLedger, buildStockLedger } from '../../../shared/stockLe
 import { STOCK_RECONCILIATION_START_DATE } from '../../../shared/stockReconciliation';
 import { getInvoiceSalesAmount } from '../../../shared/invoiceTotals';
 import { getInvoiceSessionForDate, INVOICE_SESSIONS, LEGACY_INVOICE_SESSION } from '../../../shared/sessions';
-import { getOfficerSalesTarget } from '../../../shared/officerSalesTargets';
+import { buildOfficerSessionSummary } from '../../../shared/reportAnalytics';
 import SearchableRecordSelect from './SearchableRecordSelect';
 import CompanyLetterhead from './CompanyLetterhead';
 
@@ -379,10 +379,6 @@ export default function MonthlyReport() {
   )))
     .filter((row) => row.cartons > 0)
     .sort((left, right) => left.name.localeCompare(right.name));
-  const sessionYear = activeSession.match(/(\d{4})$/)?.[1] || selectedMonth.slice(0, 4);
-  const isFirstHalfSession = activeSession.includes('জানুয়ারি') || activeSession.includes('জানুয়ারি');
-  const sessionStartDate = `${sessionYear}-${isFirstHalfSession ? '01-01' : '07-01'}`;
-  const sessionEndDate = `${sessionYear}-${isFirstHalfSession ? '06-30' : '12-31'}`;
   const isSalesInvoice = (invoice) => ![
     'dealer_return',
     'factory_damage',
@@ -397,9 +393,6 @@ export default function MonthlyReport() {
       && normalizeOfficerCode(record.officerCode, officer.designation)
         === normalizeOfficerCode(officer.code, officer.designation)
     )
-  );
-  const belongsToOfficerSession = (record) => (
-    (record.session || getInvoiceSessionForDate(record.date) || LEGACY_INVOICE_SESSION) === activeSession
   );
   const matchesDealer = (record, dealer) => (
     record.dealerId === dealer.id
@@ -441,109 +434,15 @@ export default function MonthlyReport() {
       - historicalDamageCredits
     );
   };
-  const officerSessionRows = officers.map((officer) => {
-    const officerInvoices = invoices.filter((invoice) => (
-      matchesOfficer(invoice, officer) && belongsToOfficerSession(invoice)
-    ));
-    const salesInvoices = officerInvoices.filter(isSalesInvoice);
-    const returnInvoices = officerInvoices.filter(isReturnInvoice);
-    const assignedDealers = dealers.filter((dealer) => (
-      normalizeDealerOfficerCode(dealer, officers)
-        === normalizeOfficerCode(officer.code, officer.designation)
-    ));
-    const previousDue = assignedDealers.reduce(
-      (sum, dealer) => sum + getDealerDueAt(dealer, sessionStartDate),
-      0
-    );
-    const officerPayments = payments.filter((payment) => (
-      matchesOfficer(payment, officer)
-      && belongsToOfficerSession(payment)
-      && payment.date >= sessionStartDate
-      && payment.date <= sessionEndDate
-    ));
-    const getPaymentTotal = (type) => wholeAmount(officerPayments
-      .filter((payment) => normalizePaymentType(payment.paymentType) === type)
-      .reduce((sum, payment) => sum + (Number(payment.amount) || 0), 0));
-    const officePay = getPaymentTotal('company_transfer');
-    const fare = getPaymentTotal('vehicle_rent');
-    const salary = getPaymentTotal('salary');
-    const lc = getPaymentTotal('lc_commission');
-    const salesAmount = wholeAmount(salesInvoices.reduce(
-      (sum, invoice) => sum + getInvoiceSalesAmount(invoice),
-      0
-    ));
-    const returnAmount = wholeAmount(returnInvoices.reduce(
-      (sum, invoice) => sum + Math.abs(getInvoiceSalesAmount(invoice)),
-      0
-    ));
-    const totalNetSales = previousDue + salesAmount - returnAmount;
-    const totalReceived = officePay + fare + salary + lc;
-    const target = getOfficerSalesTarget(officer, activeSession);
-    const previousInvoices = officerInvoices.filter((invoice) => (
-      invoice.date >= sessionStartDate && invoice.date < `${selectedMonth}-01`
-    )).length;
-    const salesInvoiceCount = salesInvoices.length;
-    const returnInvoiceCount = returnInvoices.length;
-    const totalInvoiceCount = salesInvoiceCount + returnInvoiceCount;
-    const expenseTotal = officePay + fare + salary + lc;
-    return {
-      id: officer.id,
-      officer,
-      target,
-      previousDue,
-      salesAmount,
-      returnAmount,
-      totalNetSales,
-      officePay,
-      fare,
-      salary,
-      lc,
-      totalReceived,
-      totalAmountDue: totalNetSales - totalReceived,
-      totalSalesDue: target - totalNetSales,
-      expensePercent: totalNetSales ? (expenseTotal / totalNetSales) * 100 : 0,
-      salesPercent: target ? (totalNetSales / target) * 100 : 0,
-      paymentPercent: totalNetSales ? (totalReceived / totalNetSales) * 100 : 0,
-      salesInvoiceCount,
-      returnInvoiceCount,
-      totalInvoiceCount,
-      previousInvoices,
-      runningInvoices: Math.max(0, totalInvoiceCount - previousInvoices)
-    };
+  const { rows: officerSessionRows, totals: officerSessionTotals } = buildOfficerSessionSummary({
+    officers,
+    dealers,
+    invoices,
+    payments,
+    damageLogs,
+    session: activeSession,
+    asOfMonth: selectedMonth
   });
-  const officerSessionTotals = officerSessionRows.reduce((totals, row) => {
-    Object.keys(totals).forEach((key) => { totals[key] += row[key]; });
-    return totals;
-  }, {
-    target: 0,
-    previousDue: 0,
-    salesAmount: 0,
-    returnAmount: 0,
-    totalNetSales: 0,
-    officePay: 0,
-    fare: 0,
-    salary: 0,
-    lc: 0,
-    totalReceived: 0,
-    totalAmountDue: 0,
-    totalSalesDue: 0,
-    salesInvoiceCount: 0,
-    returnInvoiceCount: 0,
-    totalInvoiceCount: 0,
-    previousInvoices: 0,
-    runningInvoices: 0
-  });
-  officerSessionTotals.expensePercent = officerSessionTotals.totalNetSales
-    ? ((officerSessionTotals.officePay + officerSessionTotals.fare
-      + officerSessionTotals.salary + officerSessionTotals.lc)
-      / officerSessionTotals.totalNetSales) * 100
-    : 0;
-  officerSessionTotals.salesPercent = officerSessionTotals.target
-    ? (officerSessionTotals.totalNetSales / officerSessionTotals.target) * 100
-    : 0;
-  officerSessionTotals.paymentPercent = officerSessionTotals.totalNetSales
-    ? (officerSessionTotals.totalReceived / officerSessionTotals.totalNetSales) * 100
-    : 0;
   const excelOfficer = selectedOfficer || officers[0] || null;
   const excelOfficerDealers = excelOfficer
     ? dealers.filter((dealer) => (
@@ -1284,8 +1183,10 @@ export default function MonthlyReport() {
                   <thead>
                     <tr>
                       <th rowSpan={2}>SL No</th>
+                      <th rowSpan={2}>Officer Name</th>
                       <th rowSpan={2}>Mobile No</th>
-                      <th rowSpan={2}>{activeSession}<br />Sales Target</th>
+                      <th rowSpan={2}>July-December 2026<br />Sales Target</th>
+                      <th rowSpan={2}>January-June 2027<br />Sales Target</th>
                       <th rowSpan={2}>Last Session<br />Due</th>
                       <th rowSpan={2}>Sales<br />Amount Tk</th>
                       <th rowSpan={2}>Return<br />Amount Tk</th>
@@ -1315,23 +1216,25 @@ export default function MonthlyReport() {
                     {officerSessionRows.map((row, index) => (
                       <tr key={row.id}>
                         <td>{index + 1}</td>
-                        <td className="text-left">{row.officer.phone || ''}</td>
-                        <td>{formatWhole(row.target)}</td>
-                        <td>{formatWhole(row.previousDue)}</td>
+                        <td className="text-left">{row.officerName}</td>
+                        <td className="text-left">{row.mobileNo}</td>
+                        <td>{formatWhole(row.salesTargetJulyDec2026)}</td>
+                        <td>{formatWhole(row.salesTargetJanJune2027)}</td>
+                        <td>{formatWhole(row.lastSessionDue)}</td>
                         <td>{formatWhole(row.salesAmount)}</td>
                         <td>{formatWhole(row.returnAmount)}</td>
-                        <td className="excel-emphasis">{formatWhole(row.totalNetSales)}</td>
+                        <td className="excel-emphasis">{formatWhole(row.previousPlusNetSales)}</td>
                         <td>{formatWhole(row.officePay)}</td>
                         <td>{formatWhole(row.fare)}</td>
                         <td>{formatWhole(row.salary)}</td>
                         <td>{formatWhole(row.lc)}</td>
-                        <td>{formatWhole(row.totalReceived)}</td>
-                        <td>{formatWhole(row.totalAmountDue)}</td>
+                        <td>{formatWhole(row.totalReceivedAmount)}</td>
+                        <td>{formatWhole(row.totalAmountDues)}</td>
                         <td className="excel-emphasis">{formatWhole(row.totalNetSales)}</td>
                         <td>{formatWhole(row.totalSalesDue)}</td>
-                        <td>{formatPercent(row.expensePercent)}</td>
-                        <td>{formatPercent(row.salesPercent)}</td>
-                        <td>{formatPercent(row.paymentPercent)}</td>
+                        <td>{formatPercent(row.expensePercentage)}</td>
+                        <td>{formatPercent(row.salesPercentage)}</td>
+                        <td>{formatPercent(row.paymentPercentage)}</td>
                         <td>{formatWhole(row.salesInvoiceCount)}</td>
                         <td>{formatWhole(row.returnInvoiceCount)}</td>
                         <td>{formatWhole(row.totalInvoiceCount)}</td>
@@ -1340,23 +1243,24 @@ export default function MonthlyReport() {
                       </tr>
                     ))}
                     <tr className="excel-total-row">
-                      <th colSpan={2}>Total Tk</th>
-                      <td>{formatWhole(officerSessionTotals.target)}</td>
-                      <td>{formatWhole(officerSessionTotals.previousDue)}</td>
+                      <th colSpan={3}>Total Tk</th>
+                      <td>{formatWhole(officerSessionTotals.salesTargetJulyDec2026)}</td>
+                      <td>{formatWhole(officerSessionTotals.salesTargetJanJune2027)}</td>
+                      <td>{formatWhole(officerSessionTotals.lastSessionDue)}</td>
                       <td>{formatWhole(officerSessionTotals.salesAmount)}</td>
                       <td>{formatWhole(officerSessionTotals.returnAmount)}</td>
-                      <td>{formatWhole(officerSessionTotals.totalNetSales)}</td>
+                      <td>{formatWhole(officerSessionTotals.previousPlusNetSales)}</td>
                       <td>{formatWhole(officerSessionTotals.officePay)}</td>
                       <td>{formatWhole(officerSessionTotals.fare)}</td>
                       <td>{formatWhole(officerSessionTotals.salary)}</td>
                       <td>{formatWhole(officerSessionTotals.lc)}</td>
-                      <td>{formatWhole(officerSessionTotals.totalReceived)}</td>
-                      <td>{formatWhole(officerSessionTotals.totalAmountDue)}</td>
+                      <td>{formatWhole(officerSessionTotals.totalReceivedAmount)}</td>
+                      <td>{formatWhole(officerSessionTotals.totalAmountDues)}</td>
                       <td>{formatWhole(officerSessionTotals.totalNetSales)}</td>
                       <td>{formatWhole(officerSessionTotals.totalSalesDue)}</td>
-                      <td>{formatPercent(officerSessionTotals.expensePercent)}</td>
-                      <td>{formatPercent(officerSessionTotals.salesPercent)}</td>
-                      <td>{formatPercent(officerSessionTotals.paymentPercent)}</td>
+                      <td>{formatPercent(officerSessionTotals.expensePercentage)}</td>
+                      <td>{formatPercent(officerSessionTotals.salesPercentage)}</td>
+                      <td>{formatPercent(officerSessionTotals.paymentPercentage)}</td>
                       <td>{formatWhole(officerSessionTotals.salesInvoiceCount)}</td>
                       <td>{formatWhole(officerSessionTotals.returnInvoiceCount)}</td>
                       <td>{formatWhole(officerSessionTotals.totalInvoiceCount)}</td>
@@ -1380,6 +1284,7 @@ export default function MonthlyReport() {
                 <div className="monthly-report-excel-company">
                   <CompanyLetterhead className="monthly-report-excel-letterhead" />
                   <p>Monthly sales and collection Report form</p>
+                  <p>Location: Nadurpukur, Sajahanpur, Bogura</p>
                   <p>Session : {activeSession}</p>
                 </div>
                 <p className="monthly-report-excel-date"><b>Reporting date:</b> {excelReportDate}</p>

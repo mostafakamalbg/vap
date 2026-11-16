@@ -324,6 +324,10 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
   font-size: 0.7rem;
 }
 
+.monthly-report-top-sheet {
+  min-width: 1500px;
+}
+
 .monthly-report-excel-table th,
 .monthly-report-excel-table td {
   height: 2rem;
@@ -354,11 +358,11 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
   font-weight: 800;
 }
 
-.monthly-report-top-sheet tbody td:nth-child(n + 12):nth-child(-n + 18) {
+.monthly-report-top-sheet tbody td:nth-child(n + 14):nth-child(-n + 20) {
   background: #f7bd91;
 }
 
-.monthly-report-top-sheet tbody td:nth-child(n + 19) {
+.monthly-report-top-sheet tbody td:nth-child(n + 21) {
   background: #fff500;
   font-weight: 700;
 }
@@ -371,11 +375,11 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
   background: #fff500;
 }
 
-.monthly-report-top-sheet .excel-total-row td:nth-child(n + 12):nth-child(-n + 18) {
+.monthly-report-top-sheet .excel-total-row td:nth-child(n + 14):nth-child(-n + 20) {
   background: #f7bd91;
 }
 
-.monthly-report-top-sheet .excel-total-row td:nth-child(n + 19) {
+.monthly-report-top-sheet .excel-total-row td:nth-child(n + 21) {
   background: #fff500;
 }
 
