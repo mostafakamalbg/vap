@@ -270,9 +270,6 @@ export default function MonthlyReport() {
       officerMatches(payment) && String(payment.date || '').startsWith(selectedOfficerMonth)
     ))
     : [];
-  const officerMonthlyExpenses = monthlyOfficerPayments
-    .filter((payment) => ['salary', 'vehicle_rent', 'lc_commission'].includes(normalizePaymentType(payment.paymentType)))
-    .reduce((sum, payment) => sum + (Number(payment.amount) || 0), 0);
   const officerExpenseTransactions = monthlyOfficerPayments.filter((payment) => (
     ['salary', 'vehicle_rent', 'lc_commission'].includes(normalizePaymentType(payment.paymentType))
   ));
@@ -318,9 +315,6 @@ export default function MonthlyReport() {
     .reduce((sum, payment) => sum + (Number(payment.amount) || 0), reportUnloggedInvoiceCollection);
   const reportExpenses = reportExpenseTransactions
     .reduce((sum, payment) => sum + (Number(payment.amount) || 0), 0);
-  const officerSalesInvoices = filteredInvoices.filter((invoice) => (
-    !['dealer_return', 'factory_damage', 'depot_factory_return'].includes(invoice.invoiceType)
-  ));
   const sessionSalesInvoices = filterMode === 'officer'
     ? invoices.filter((invoice) => (
       officerMatches(invoice)
@@ -337,6 +331,7 @@ export default function MonthlyReport() {
         const summary = totals.get(key) || {
           key,
           name: item.productName || 'পণ্য',
+          sku: item.sku || '',
           size: item.size || '',
           unit: item.unit || 'পিস/বোতল',
           quantityUnit: getPackageQuantityUnit(item),
@@ -351,8 +346,12 @@ export default function MonthlyReport() {
     });
     return [...totals.values()];
   };
-  const officerMonthProducts = filterMode === 'officer' ? summarizeProducts(officerSalesInvoices) : [];
   const officerSessionProducts = summarizeProducts(sessionSalesInvoices);
+  const reportProductRows = summarizeProducts(filteredInvoices.filter((invoice) => (
+    !['dealer_return', 'factory_damage', 'depot_factory_return'].includes(invoice.invoiceType)
+  )))
+    .filter((row) => row.cartons > 0)
+    .sort((left, right) => left.name.localeCompare(right.name));
 
   const stockVariantByKey = new Map(products.flatMap((product) => (product.variants || []).map((variant) => [
     `${product.id}::${variant.sku}`,
@@ -977,61 +976,116 @@ export default function MonthlyReport() {
           )}
         </div>
 
-        {/* Summary Metric Ribbon */}
-        <div className={`monthly-report-summary grid grid-cols-2 ${filterMode === 'officer' ? 'md:grid-cols-5' : 'md:grid-cols-4'} gap-4 bg-slate-50 p-4 rounded-lg border border-slate-200 text-xs`}>
-          <div>
-            <span className="text-slate-500 font-medium">মোট বিক্রিত কার্টুন:</span>
-            <p className="text-base font-black text-emerald-800 font-mono">{totalCartonsSold} কার্টুন</p>
-          </div>
-          <div>
-            <span className="text-slate-500 font-medium">মোট চালান মূল্য:</span>
-            <p className="text-base font-black text-slate-900 font-mono">৳{totalSalesValue.toLocaleString()}</p>
-            <p className="text-[10px] text-slate-500">বিক্রয় − ডিলার ফেরত</p>
-          </div>
-          <div>
-            <span className="text-slate-500 font-medium">আদায়কৃত নগদ / চেক:</span>
-            <p className="text-base font-black text-emerald-700 font-mono">৳{reportCollection.toLocaleString()}</p>
-          </div>
-          <div>
-            <span className="text-slate-500 font-medium">অবশিষ্ট বকেয়া / বাকি:</span>
-            <p className="text-base font-black text-rose-700 font-mono">৳{totalDueOutstanding.toLocaleString()}</p>
-          </div>
-          {filterMode === 'officer' && (
+        <section className="monthly-report-summary rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs" aria-label="সারসংক্ষেপ ও আর্থিক হিসাব">
+          <h3 className="mb-2 text-sm font-black text-slate-800">আর্থিক সারসংক্ষেপ</h3>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
             <div>
-              <span className="text-slate-500 font-medium">মাসিক অফিসার খরচ:</span>
-              <p className="text-base font-black text-rose-700 font-mono">৳{officerMonthlyExpenses.toLocaleString()}</p>
+              <span className="text-slate-500 font-medium">মোট বিক্রিত কার্টুন:</span>
+              <p className="text-base font-black text-emerald-800 font-mono">{toBn(totalCartonsSold)} কার্টুন</p>
             </div>
-          )}
-        </div>
+            <div>
+              <span className="text-slate-500 font-medium">নিট চালান মূল্য:</span>
+              <p className="text-base font-black text-slate-900 font-mono">৳{toBn(totalSalesValue)}</p>
+              <p className="text-[10px] text-slate-500">বিক্রয় − ডিলার ফেরত</p>
+            </div>
+            <div>
+              <span className="text-slate-500 font-medium">আদায়কৃত কালেকশন:</span>
+              <p className="text-base font-black text-emerald-700 font-mono">৳{toBn(reportCollection)}</p>
+            </div>
+            <div>
+              <span className="text-slate-500 font-medium">অবশিষ্ট বকেয়া / ডিউ:</span>
+              <p className="text-base font-black text-rose-700 font-mono">৳{toBn(totalDueOutstanding)}</p>
+            </div>
+            <div>
+              <span className="text-slate-500 font-medium">ফেরত / ক্ষতিগ্রস্ত প্যাকেজ:</span>
+              <p className="text-base font-black text-amber-700 font-mono">{toBn(totalDealerReturnCartons + totalFactoryReturnCartons)} প্যাকেজ</p>
+              <p className="text-[10px] text-slate-500">ডিলার {toBn(totalDealerReturnCartons)} • ফ্যাক্টরি {toBn(totalFactoryReturnCartons)}</p>
+            </div>
+            <div>
+              <span className="text-slate-500 font-medium">মোট খরচ (বেতন, ভাড়া, এল/সি):</span>
+              <p className="text-base font-black text-rose-700 font-mono">৳{toBn(reportExpenses)}</p>
+            </div>
+            <div>
+              <span className="text-slate-500 font-medium">নিট কালেকশন − খরচ:</span>
+              <p className="text-base font-black text-slate-900 font-mono">৳{toBn(reportCollection - reportExpenses)}</p>
+            </div>
+          </div>
+        </section>
+
+        <section className="monthly-report-product-section space-y-2" aria-label="SKU অনুযায়ী পণ্য বিবরণ">
+          <div className="flex flex-wrap items-end justify-between gap-2">
+            <div>
+              <h3 className="text-sm font-black text-slate-800">পণ্য ও প্যাকেজ বিবরণ</h3>
+              <p className="text-[11px] text-slate-500">শুধুমাত্র পূর্ণ কার্টুন / প্যাকেজ; খুচরা পিস অন্তর্ভুক্ত নয়</p>
+            </div>
+            <span className="text-xs font-bold text-emerald-800">
+              মোট {toBn(reportProductRows.reduce((sum, row) => sum + row.cartons, 0))} প্যাকেজ
+            </span>
+          </div>
+          <div className="overflow-x-auto rounded-lg border border-slate-200">
+            <table className="monthly-report-product-table w-full min-w-[620px] text-left text-xs">
+              <thead className="bg-slate-100 text-slate-700">
+                <tr>
+                  <th className="px-3 py-2 text-center">নং</th>
+                  <th className="px-3 py-2">SKU</th>
+                  <th className="px-3 py-2">পণ্যের নাম</th>
+                  <th className="px-3 py-2">প্যাক সাইজ</th>
+                  <th className="px-3 py-2 text-right">পরিমাণ (কার্টুন / প্যাকেজ)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {reportProductRows.map((row, index) => (
+                  <tr key={row.key}>
+                    <td className="px-3 py-1.5 text-center text-slate-500">{toBn(index + 1)}</td>
+                    <td className="px-3 py-1.5 font-mono font-semibold text-slate-600">{row.sku || '—'}</td>
+                    <td className="px-3 py-1.5 font-semibold text-slate-800">{row.name}</td>
+                    <td className="px-3 py-1.5 text-slate-600">{row.size || '—'}</td>
+                    <td className="px-3 py-1.5 text-right font-bold text-emerald-800">{toBn(row.cartons)} {row.quantityUnit}</td>
+                  </tr>
+                ))}
+                {!reportProductRows.length && (
+                  <tr><td colSpan={5} className="px-3 py-3 text-center text-slate-500">নির্বাচিত সময়ে কোনো পূর্ণ প্যাকেজ বিক্রয় নেই।</td></tr>
+                )}
+              </tbody>
+              {reportProductRows.length > 0 && (
+                <tfoot className="border-t border-slate-300 bg-slate-50 font-black">
+                  <tr>
+                    <th colSpan={4} className="px-3 py-1.5 text-right">সর্বমোট প্যাকেজ</th>
+                    <td className="px-3 py-1.5 text-right text-emerald-800">
+                      {toBn(reportProductRows.reduce((sum, row) => sum + row.cartons, 0))}
+                    </td>
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+          </div>
+        </section>
 
         {filterMode === 'officer' && (
           <section className="space-y-4">
-            <h4 className="text-sm font-black text-slate-800">মাসিক সেলস অ্যাপ্রেইজাল: পণ্য ও সেশনভিত্তিক বিতরণ</h4>
-            <div className="grid gap-4 lg:grid-cols-2">
-              {[
-                { title: `নির্বাচিত মাসে বিক্রিত পণ্য (${selectedOfficerMonth})`, rows: officerMonthProducts },
-                { title: `নির্বাচিত সেশনে সরবরাহকৃত পণ্য (${activeOfficerSession === 'ALL' ? 'সব সেশন' : toBn(activeOfficerSession)})`, rows: officerSessionProducts }
-              ].map(({ title, rows }) => (
-                <div key={title} className="overflow-x-auto rounded-lg border border-slate-200">
-                  <h5 className="bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-900">{title}</h5>
-                  <table className="w-full text-left text-xs">
-                    <thead className="bg-slate-100 text-slate-700">
-                      <tr><th className="p-2">পণ্য</th><th className="p-2">প্যাক সাইজ</th><th className="p-2 text-right">প্যাক / কার্টুন</th><th className="p-2 text-right">মোট একক</th></tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {rows.map((row) => (
-                        <tr key={row.key}>
-                          <td className="p-2 font-semibold">{row.name}</td>
-                          <td className="p-2">{row.size || '—'}</td>
-                          <td className="p-2 text-right">{toBn(row.cartons)} {row.quantityUnit}</td>
-                          <td className="p-2 text-right">{toBn(row.pieces)} {row.unit}</td>
-                        </tr>
-                      ))}
-                      {!rows.length && <tr><td colSpan={4} className="p-3 text-center text-slate-500">এই ফিল্টারে পণ্য সরবরাহ নেই।</td></tr>}
-                    </tbody>
-                  </table>
-                </div>
-              ))}
+            <h4 className="text-sm font-black text-slate-800">নির্বাচিত সেশনে অফিসারের পণ্য সরবরাহ</h4>
+            <div className="overflow-x-auto rounded-lg border border-slate-200">
+              <h5 className="bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-900">
+                {activeOfficerSession === 'ALL' ? 'সব সেশন' : toBn(activeOfficerSession)}
+              </h5>
+              <table className="monthly-report-product-table w-full text-left text-xs">
+                <thead className="bg-slate-100 text-slate-700">
+                  <tr><th className="px-3 py-2">SKU</th><th className="px-3 py-2">পণ্য</th><th className="px-3 py-2">প্যাক সাইজ</th><th className="px-3 py-2 text-right">কার্টুন / প্যাকেজ</th></tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {officerSessionProducts.filter((row) => row.cartons > 0).map((row) => (
+                    <tr key={row.key}>
+                      <td className="px-3 py-1.5 font-mono">{row.sku || '—'}</td>
+                      <td className="px-3 py-1.5 font-semibold">{row.name}</td>
+                      <td className="px-3 py-1.5">{row.size || '—'}</td>
+                      <td className="px-3 py-1.5 text-right font-bold">{toBn(row.cartons)} {row.quantityUnit}</td>
+                    </tr>
+                  ))}
+                  {!officerSessionProducts.some((row) => row.cartons > 0) && (
+                    <tr><td colSpan={4} className="p-3 text-center text-slate-500">এই সেশনে কোনো পূর্ণ প্যাকেজ সরবরাহ নেই।</td></tr>
+                  )}
+                </tbody>
+              </table>
             </div>
             <div className="overflow-x-auto rounded-lg border border-slate-200">
               <h5 className="bg-rose-50 px-3 py-2 text-xs font-bold text-rose-900">মাসিক খরচের পোস্টিং</h5>
@@ -1385,17 +1439,18 @@ export default function MonthlyReport() {
           </div>
         </div>
 
-        {/* Signatures for Print */}
-        <div className="grid grid-cols-3 gap-6 pt-16 text-center text-xs">
-          <div>
-            <div className="border-t border-slate-400 pt-1 font-semibold">প্রস্তুতকারী (ডাটা এন্ট্রি)</div>
-          </div>
-          <div>
-            <div className="border-t border-slate-400 pt-1 font-semibold">একাউন্টস বিভাগ, নিশিন্দারা বগুড়া</div>
-          </div>
-          <div>
-            <div className="border-t border-slate-400 pt-1 font-semibold">ব্যবস্থাপনা পরিচালক / জিএম</div>
-          </div>
+        <div className="monthly-report-signatures grid grid-cols-3 gap-6 pt-14 text-center text-xs" aria-label="রিপোর্ট অনুমোদন স্বাক্ষর">
+          {[
+            { label: 'প্রিপেয়ার্ড বাই', role: 'প্রস্তুতকারীর স্বাক্ষর' },
+            { label: 'চেকড বাই', role: 'যাচাইকারীর স্বাক্ষর' },
+            { label: 'সিইও সিগনেচার', role: 'অনুমোদিত স্বাক্ষর' }
+          ].map(({ label, role }) => (
+            <div key={label} className="pt-8 font-semibold">
+              <div className="border-t border-slate-500" />
+              <p className="mt-1">{label}</p>
+              <p className="font-normal text-slate-600">{role}</p>
+            </div>
+          ))}
         </div>
       </div>
     </div>

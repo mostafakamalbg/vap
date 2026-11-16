@@ -228,6 +228,11 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
   background: #94a3b8;
 }
 
+.monthly-report-product-table th,
+.monthly-report-product-table td {
+  height: 34px;
+}
+
 @media print {
   * {
     font-family: 'Nirmala UI', system-ui, sans-serif !important;
@@ -508,6 +513,21 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
   .monthly-report-sheet td {
     border: 0.2mm solid #64748b !important;
     color: #000 !important;
+  }
+  .monthly-report-product-table th,
+  .monthly-report-product-table td {
+    height: 8mm;
+    padding: 1.5mm 2mm !important;
+    vertical-align: middle;
+  }
+  .monthly-report-signatures {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    margin-top: 12mm !important;
+  }
+  .monthly-report-signatures > div {
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
   .monthly-report-sheet > section {
     break-inside: auto;
