@@ -13,7 +13,12 @@ import {
 } from 'lucide-react';
 import { useAgro } from '../../context/AgroContext';
 import { toBn, toBnDate } from '../../utils/bengali';
-import { formatDealerCode, formatOfficerCode, normalizeOfficerCode } from '../../../shared/codes';
+import {
+  formatDealerCode,
+  formatOfficerCode,
+  normalizeDealerOfficerCode,
+  normalizeOfficerCode
+} from '../../../shared/codes';
 import { isDealerCollection, normalizePaymentType, PAYMENT_TYPES } from '../../../shared/paymentMethods';
 import {
   getPackageQuantityUnit,
@@ -28,6 +33,7 @@ import { buildDailyStockLedger, buildStockLedger } from '../../../shared/stockLe
 import { STOCK_RECONCILIATION_START_DATE } from '../../../shared/stockReconciliation';
 import { getInvoiceSalesAmount } from '../../../shared/invoiceTotals';
 import { getInvoiceSessionForDate, INVOICE_SESSIONS, LEGACY_INVOICE_SESSION } from '../../../shared/sessions';
+import { getOfficerSalesTarget } from '../../../shared/officerSalesTargets';
 import SearchableRecordSelect from './SearchableRecordSelect';
 import CompanyLetterhead from './CompanyLetterhead';
 
@@ -38,6 +44,22 @@ function getBengaliDesignation(designation = '') {
     .replace(/\bTSO\b/g, 'টি.এস.ও.')
     .replace(/\bASM\b/g, 'এ.এস.এম.')
     .replace(/\bRSM\b/g, 'আর.এস.এম.');
+}
+
+function wholeAmount(value) {
+  return Math.round(Number(value) || 0);
+}
+
+function formatWhole(value) {
+  return wholeAmount(value).toLocaleString('en-US');
+}
+
+function formatWholeOrBlank(value) {
+  return wholeAmount(value) ? formatWhole(value) : '';
+}
+
+function formatPercent(value) {
+  return `${(Number(value) || 0).toFixed(2)}%`;
 }
 
 export default function MonthlyReport() {
@@ -53,11 +75,13 @@ export default function MonthlyReport() {
   } = useAgro();
 
   // Mode: 'month' | 'year' | 'dealer' | 'officer' | 'session'
-  const [filterMode, setFilterMode] = useState('dealer');
+  const [filterMode, setFilterMode] = useState('excel');
 
   // Filter States
   const todayStr = new Date().toISOString().slice(0, 10);
   const currentMonthStr = new Date().toISOString().slice(0, 7);
+  const [reportDateYear, reportDateMonth, reportDateDay] = todayStr.split('-');
+  const excelReportDate = `${reportDateDay}.${reportDateMonth}.${reportDateYear}`;
   const currentYearStr = new Date().getFullYear().toString();
   const stockTransactionDates = [...invoices, ...stockInLogs]
     .map((entry) => String(entry.date || ''))
@@ -141,6 +165,9 @@ export default function MonthlyReport() {
     const bMonthName = bMonths[parseInt(m, 10) - 1] || 'অক্টোবর';
     reportTitle = `মাসিক সেলস ও ইনভেন্টরি রিপোর্ট (${bMonthName}, ${toBn(y)})`;
     reportSubtitle = `নির্দিষ্ট মাস অনুযায়ী বিক্রয়, কার্টুন প্রবাহ ও রিটার্ন বিবরণী`;
+  } else if (filterMode === 'excel') {
+    reportTitle = 'মাসিক সেলস ও কালেকশন রিপোর্ট';
+    reportSubtitle = `${activeSession} • ${selectedMonth}`;
   } else if (filterMode === 'year') {
     filteredInvoices = invoices.filter((inv) => inv.date?.startsWith(selectedYear));
     filteredDamages = damageLogs.filter((d) => d.date?.startsWith(selectedYear));
@@ -352,6 +379,248 @@ export default function MonthlyReport() {
   )))
     .filter((row) => row.cartons > 0)
     .sort((left, right) => left.name.localeCompare(right.name));
+  const sessionYear = activeSession.match(/(\d{4})$/)?.[1] || selectedMonth.slice(0, 4);
+  const isFirstHalfSession = activeSession.includes('জানুয়ারি') || activeSession.includes('জানুয়ারি');
+  const sessionStartDate = `${sessionYear}-${isFirstHalfSession ? '01-01' : '07-01'}`;
+  const sessionEndDate = `${sessionYear}-${isFirstHalfSession ? '06-30' : '12-31'}`;
+  const isSalesInvoice = (invoice) => ![
+    'dealer_return',
+    'factory_damage',
+    'depot_factory_return'
+  ].includes(invoice.invoiceType);
+  const isReturnInvoice = (invoice) => invoice.invoiceType === 'dealer_return';
+  const matchesOfficer = (record, officer) => (
+    record.officerId === officer.id
+    || record.officerName === officer.name
+    || (
+      Boolean(normalizeOfficerCode(record.officerCode, officer.designation))
+      && normalizeOfficerCode(record.officerCode, officer.designation)
+        === normalizeOfficerCode(officer.code, officer.designation)
+    )
+  );
+  const belongsToOfficerSession = (record) => (
+    (record.session || getInvoiceSessionForDate(record.date) || LEGACY_INVOICE_SESSION) === activeSession
+  );
+  const matchesDealer = (record, dealer) => (
+    record.dealerId === dealer.id
+    || record.dealerCode === dealer.code
+    || record.dealerName === dealer.shopName
+  );
+  const getDealerDueAt = (dealer, cutoffDate) => {
+    const historicalInvoices = invoices.filter((invoice) => (
+      matchesDealer(invoice, dealer)
+      && invoice.date < cutoffDate
+      && !['factory_damage', 'depot_factory_return'].includes(invoice.invoiceType)
+    ));
+    const historicalSales = historicalInvoices
+      .filter((invoice) => !isReturnInvoice(invoice))
+      .reduce((sum, invoice) => sum + getInvoiceSalesAmount(invoice), 0);
+    const historicalReturns = historicalInvoices
+      .filter(isReturnInvoice)
+      .reduce((sum, invoice) => sum + Math.abs(getInvoiceSalesAmount(invoice)), 0);
+    const historicalCollections = payments
+      .filter((payment) => (
+        isDealerCollection(payment)
+        && matchesDealer(payment, dealer)
+        && payment.date < cutoffDate
+      ))
+      .reduce((sum, payment) => sum + (Number(payment.amount) || 0), 0);
+    const historicalDamageCredits = damageLogs
+      .filter((damage) => (
+        matchesDealer(damage, dealer)
+        && damage.actionType === 'ledger_credit'
+        && !damage.invoiceRef
+        && damage.date < cutoffDate
+      ))
+      .reduce((sum, damage) => sum + (Number(damage.totalDamageValue) || 0), 0);
+    return wholeAmount(
+      (Number(dealer.openingDue) || 0)
+      + historicalSales
+      - historicalReturns
+      - historicalCollections
+      - historicalDamageCredits
+    );
+  };
+  const officerSessionRows = officers.map((officer) => {
+    const officerInvoices = invoices.filter((invoice) => (
+      matchesOfficer(invoice, officer) && belongsToOfficerSession(invoice)
+    ));
+    const salesInvoices = officerInvoices.filter(isSalesInvoice);
+    const returnInvoices = officerInvoices.filter(isReturnInvoice);
+    const assignedDealers = dealers.filter((dealer) => (
+      normalizeDealerOfficerCode(dealer, officers)
+        === normalizeOfficerCode(officer.code, officer.designation)
+    ));
+    const previousDue = assignedDealers.reduce(
+      (sum, dealer) => sum + getDealerDueAt(dealer, sessionStartDate),
+      0
+    );
+    const officerPayments = payments.filter((payment) => (
+      matchesOfficer(payment, officer)
+      && belongsToOfficerSession(payment)
+      && payment.date >= sessionStartDate
+      && payment.date <= sessionEndDate
+    ));
+    const getPaymentTotal = (type) => wholeAmount(officerPayments
+      .filter((payment) => normalizePaymentType(payment.paymentType) === type)
+      .reduce((sum, payment) => sum + (Number(payment.amount) || 0), 0));
+    const officePay = getPaymentTotal('company_transfer');
+    const fare = getPaymentTotal('vehicle_rent');
+    const salary = getPaymentTotal('salary');
+    const lc = getPaymentTotal('lc_commission');
+    const salesAmount = wholeAmount(salesInvoices.reduce(
+      (sum, invoice) => sum + getInvoiceSalesAmount(invoice),
+      0
+    ));
+    const returnAmount = wholeAmount(returnInvoices.reduce(
+      (sum, invoice) => sum + Math.abs(getInvoiceSalesAmount(invoice)),
+      0
+    ));
+    const totalNetSales = previousDue + salesAmount - returnAmount;
+    const totalReceived = officePay + fare + salary + lc;
+    const target = getOfficerSalesTarget(officer, activeSession);
+    const previousInvoices = officerInvoices.filter((invoice) => (
+      invoice.date >= sessionStartDate && invoice.date < `${selectedMonth}-01`
+    )).length;
+    const salesInvoiceCount = salesInvoices.length;
+    const returnInvoiceCount = returnInvoices.length;
+    const totalInvoiceCount = salesInvoiceCount + returnInvoiceCount;
+    const expenseTotal = officePay + fare + salary + lc;
+    return {
+      id: officer.id,
+      officer,
+      target,
+      previousDue,
+      salesAmount,
+      returnAmount,
+      totalNetSales,
+      officePay,
+      fare,
+      salary,
+      lc,
+      totalReceived,
+      totalAmountDue: totalNetSales - totalReceived,
+      totalSalesDue: target - totalNetSales,
+      expensePercent: totalNetSales ? (expenseTotal / totalNetSales) * 100 : 0,
+      salesPercent: target ? (totalNetSales / target) * 100 : 0,
+      paymentPercent: totalNetSales ? (totalReceived / totalNetSales) * 100 : 0,
+      salesInvoiceCount,
+      returnInvoiceCount,
+      totalInvoiceCount,
+      previousInvoices,
+      runningInvoices: Math.max(0, totalInvoiceCount - previousInvoices)
+    };
+  });
+  const officerSessionTotals = officerSessionRows.reduce((totals, row) => {
+    Object.keys(totals).forEach((key) => { totals[key] += row[key]; });
+    return totals;
+  }, {
+    target: 0,
+    previousDue: 0,
+    salesAmount: 0,
+    returnAmount: 0,
+    totalNetSales: 0,
+    officePay: 0,
+    fare: 0,
+    salary: 0,
+    lc: 0,
+    totalReceived: 0,
+    totalAmountDue: 0,
+    totalSalesDue: 0,
+    salesInvoiceCount: 0,
+    returnInvoiceCount: 0,
+    totalInvoiceCount: 0,
+    previousInvoices: 0,
+    runningInvoices: 0
+  });
+  officerSessionTotals.expensePercent = officerSessionTotals.totalNetSales
+    ? ((officerSessionTotals.officePay + officerSessionTotals.fare
+      + officerSessionTotals.salary + officerSessionTotals.lc)
+      / officerSessionTotals.totalNetSales) * 100
+    : 0;
+  officerSessionTotals.salesPercent = officerSessionTotals.target
+    ? (officerSessionTotals.totalNetSales / officerSessionTotals.target) * 100
+    : 0;
+  officerSessionTotals.paymentPercent = officerSessionTotals.totalNetSales
+    ? (officerSessionTotals.totalReceived / officerSessionTotals.totalNetSales) * 100
+    : 0;
+  const excelOfficer = selectedOfficer || officers[0] || null;
+  const excelOfficerDealers = excelOfficer
+    ? dealers.filter((dealer) => (
+      normalizeDealerOfficerCode(dealer, officers)
+        === normalizeOfficerCode(excelOfficer.code, excelOfficer.designation)
+    ))
+    : [];
+  const excelMonthStart = `${selectedMonth}-01`;
+  const excelDealerRows = excelOfficerDealers.map((dealer) => {
+    const previousDue = getDealerDueAt(dealer, excelMonthStart);
+    const monthInvoices = invoices.filter((invoice) => (
+      matchesDealer(invoice, dealer) && String(invoice.date || '').startsWith(selectedMonth)
+    ));
+    const salesInvoices = monthInvoices.filter(isSalesInvoice);
+    const returnInvoices = monthInvoices.filter(isReturnInvoice);
+    const sales = wholeAmount(salesInvoices.reduce(
+      (sum, invoice) => sum + getInvoiceSalesAmount(invoice),
+      0
+    ));
+    const returns = wholeAmount(returnInvoices.reduce(
+      (sum, invoice) => sum + Math.abs(getInvoiceSalesAmount(invoice)),
+      0
+    ));
+    const monthPayments = payments.filter((payment) => (
+      matchesDealer(payment, dealer) && String(payment.date || '').startsWith(selectedMonth)
+    ));
+    const paymentTotal = (type) => wholeAmount(monthPayments
+      .filter((payment) => normalizePaymentType(payment.paymentType) === type)
+      .reduce((sum, payment) => sum + (Number(payment.amount) || 0), 0));
+    const salary = paymentTotal('salary');
+    const collection = paymentTotal('dealer_collection');
+    const fare = paymentTotal('vehicle_rent');
+    const lc = paymentTotal('lc_commission');
+    const invoiceCollectionsWithoutPayment = salesInvoices.reduce((sum, invoice) => {
+      const hasPayment = monthPayments.some((payment) => (
+        payment.sourceInvoiceId === invoice.id
+        || (
+          payment.reference === `চালান #${invoice.id}`
+          && payment.note === `ইনভয়েস #${invoice.id} এর বিপরীতে পরিশোধ`
+        )
+      ));
+      return sum + (hasPayment ? 0 : Number(invoice.paidAmount) || 0);
+    }, 0);
+    const totalCollection = collection + wholeAmount(invoiceCollectionsWithoutPayment) + salary + fare + lc;
+    const totalNetSales = previousDue + sales - returns;
+    return {
+      id: dealer.id,
+      dealer,
+      previousDue,
+      sales,
+      returns,
+      netSales: sales - returns,
+      totalNetSales,
+      salary,
+      collection: collection + wholeAmount(invoiceCollectionsWithoutPayment),
+      fare,
+      lc,
+      totalCollection,
+      netDue: totalNetSales - totalCollection
+    };
+  });
+  const excelDealerTotals = excelDealerRows.reduce((totals, row) => {
+    Object.keys(totals).forEach((key) => { totals[key] += row[key]; });
+    return totals;
+  }, {
+    previousDue: 0,
+    sales: 0,
+    returns: 0,
+    netSales: 0,
+    totalNetSales: 0,
+    salary: 0,
+    collection: 0,
+    fare: 0,
+    lc: 0,
+    totalCollection: 0,
+    netDue: 0
+  });
 
   const stockVariantByKey = new Map(products.flatMap((product) => (product.variants || []).map((variant) => [
     `${product.id}::${variant.sku}`,
@@ -592,6 +861,7 @@ export default function MonthlyReport() {
               onChange={(event) => setFilterMode(event.target.value)}
               className="mt-1 w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm font-bold"
             >
+              <option value="excel">মাসিক সেলস ও কালেকশন (Excel Format)</option>
               <option value="month">মাসিক রিপোর্ট (Monthly)</option>
               <option value="year">বার্ষিক হিসাব (Yearly / Annual)</option>
               <option value="dealer">ডিলারভিত্তিক রিপোর্ট (By Dealer)</option>
@@ -615,6 +885,44 @@ export default function MonthlyReport() {
                   className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 font-mono font-bold text-slate-800"
                 />
               </div>
+            )}
+
+            {filterMode === 'excel' && (
+              <>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">রিপোর্ট মাস:</label>
+                  <input
+                    type="month"
+                    value={selectedMonth}
+                    onChange={(event) => setSelectedMonth(event.target.value)}
+                    className="w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 font-mono font-bold text-slate-800"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">সেলস সেশন:</label>
+                  <select
+                    value={activeSession}
+                    onChange={(event) => setSelectedSession(event.target.value)}
+                    className="w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 font-bold text-slate-800"
+                  >
+                    {availableSessions.map((session) => (
+                      <option key={session.id} value={session.id}>{session.id}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <SearchableRecordSelect
+                    label="অফিসারভিত্তিক ডিটেইল শিট:"
+                    items={officers.map((officer) => ({ ...officer, id: officer.code }))}
+                    value={selectedOfficerCode}
+                    onChange={setSelectedOfficerCode}
+                    placeholder="অফিসার নির্বাচন করুন"
+                    searchPlaceholder="কোড বা নাম দিয়ে খুঁজুন"
+                    optionLabel={(officer) => `${formatOfficerCode(officer.code, officer.designation)} • ${officer.name}`}
+                    searchText={(officer) => `${formatOfficerCode(officer.code, officer.designation)} ${officer.name}`}
+                  />
+                </div>
+              </>
             )}
 
             {filterMode === 'stock' && (
@@ -957,7 +1265,199 @@ export default function MonthlyReport() {
       </div>
 
       {/* Official Printable Statement Sheet */}
-      <div className={`monthly-report-sheet ${filterMode === 'stock' ? 'monthly-report-stock-mode' : ''} bg-white rounded-xl border border-slate-200 shadow-sm p-8 space-y-6`}>
+      <div className={`monthly-report-sheet ${filterMode === 'stock' ? 'monthly-report-stock-mode' : ''} ${filterMode === 'excel' ? 'monthly-report-excel-mode' : ''} bg-white rounded-xl border border-slate-200 shadow-sm p-8 space-y-6`}>
+        {filterMode === 'excel' && (
+          <div className="monthly-report-excel-reports">
+            <section className="monthly-report-excel-page">
+              <div className="monthly-report-excel-heading">
+                <CompanyLetterhead className="monthly-report-excel-letterhead" />
+                <div className="monthly-report-excel-heading-meta">
+                  <p>Pirganj Depot</p>
+                  <p>Month Of {selectedMonth}</p>
+                  <p>Sub: {activeSession} Sales, Payment &amp; Expense</p>
+                </div>
+                <h2>Top Sheet</h2>
+                <p>Date : {excelReportDate}</p>
+              </div>
+              <div className="monthly-report-excel-table-wrap">
+                <table className="monthly-report-excel-table monthly-report-top-sheet">
+                  <thead>
+                    <tr>
+                      <th rowSpan={2}>SL No</th>
+                      <th rowSpan={2}>Mobile No</th>
+                      <th rowSpan={2}>{activeSession}<br />Sales Target</th>
+                      <th rowSpan={2}>Last Session<br />Due</th>
+                      <th rowSpan={2}>Sales<br />Amount Tk</th>
+                      <th rowSpan={2}>Return<br />Amount Tk</th>
+                      <th rowSpan={2}>Previous + Net Sales<br />Amount Tk</th>
+                      <th colSpan={4}>Payment &amp; Expense</th>
+                      <th className="excel-orange-header" rowSpan={2}>Total Received<br />Amount</th>
+                      <th className="excel-orange-header" rowSpan={2}>Total Amount<br />Dues</th>
+                      <th className="excel-orange-header" rowSpan={2}>Total Net<br />Sales</th>
+                      <th className="excel-orange-header" rowSpan={2}>Total Sales<br />Dues</th>
+                      <th className="excel-orange-header" rowSpan={2}>Expense<br />Percentage</th>
+                      <th className="excel-orange-header" rowSpan={2}>Sales<br />Percentage</th>
+                      <th className="excel-orange-header" rowSpan={2}>Payment<br />Percentage</th>
+                      <th className="excel-yellow-header" rowSpan={2}>Sales<br />Invoice</th>
+                      <th className="excel-yellow-header" rowSpan={2}>Return<br />Invoice</th>
+                      <th className="excel-yellow-header" rowSpan={2}>Total<br />Invoice</th>
+                      <th className="excel-yellow-header" rowSpan={2}>Previous</th>
+                      <th className="excel-yellow-header" rowSpan={2}>Running</th>
+                    </tr>
+                    <tr>
+                      <th>Office Pay</th>
+                      <th>Fare</th>
+                      <th>Salary</th>
+                      <th>L/C</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {officerSessionRows.map((row, index) => (
+                      <tr key={row.id}>
+                        <td>{index + 1}</td>
+                        <td className="text-left">{row.officer.phone || ''}</td>
+                        <td>{formatWhole(row.target)}</td>
+                        <td>{formatWhole(row.previousDue)}</td>
+                        <td>{formatWhole(row.salesAmount)}</td>
+                        <td>{formatWhole(row.returnAmount)}</td>
+                        <td className="excel-emphasis">{formatWhole(row.totalNetSales)}</td>
+                        <td>{formatWhole(row.officePay)}</td>
+                        <td>{formatWhole(row.fare)}</td>
+                        <td>{formatWhole(row.salary)}</td>
+                        <td>{formatWhole(row.lc)}</td>
+                        <td>{formatWhole(row.totalReceived)}</td>
+                        <td>{formatWhole(row.totalAmountDue)}</td>
+                        <td className="excel-emphasis">{formatWhole(row.totalNetSales)}</td>
+                        <td>{formatWhole(row.totalSalesDue)}</td>
+                        <td>{formatPercent(row.expensePercent)}</td>
+                        <td>{formatPercent(row.salesPercent)}</td>
+                        <td>{formatPercent(row.paymentPercent)}</td>
+                        <td>{formatWhole(row.salesInvoiceCount)}</td>
+                        <td>{formatWhole(row.returnInvoiceCount)}</td>
+                        <td>{formatWhole(row.totalInvoiceCount)}</td>
+                        <td>{formatWhole(row.previousInvoices)}</td>
+                        <td>{formatWhole(row.runningInvoices)}</td>
+                      </tr>
+                    ))}
+                    <tr className="excel-total-row">
+                      <th colSpan={2}>Total Tk</th>
+                      <td>{formatWhole(officerSessionTotals.target)}</td>
+                      <td>{formatWhole(officerSessionTotals.previousDue)}</td>
+                      <td>{formatWhole(officerSessionTotals.salesAmount)}</td>
+                      <td>{formatWhole(officerSessionTotals.returnAmount)}</td>
+                      <td>{formatWhole(officerSessionTotals.totalNetSales)}</td>
+                      <td>{formatWhole(officerSessionTotals.officePay)}</td>
+                      <td>{formatWhole(officerSessionTotals.fare)}</td>
+                      <td>{formatWhole(officerSessionTotals.salary)}</td>
+                      <td>{formatWhole(officerSessionTotals.lc)}</td>
+                      <td>{formatWhole(officerSessionTotals.totalReceived)}</td>
+                      <td>{formatWhole(officerSessionTotals.totalAmountDue)}</td>
+                      <td>{formatWhole(officerSessionTotals.totalNetSales)}</td>
+                      <td>{formatWhole(officerSessionTotals.totalSalesDue)}</td>
+                      <td>{formatPercent(officerSessionTotals.expensePercent)}</td>
+                      <td>{formatPercent(officerSessionTotals.salesPercent)}</td>
+                      <td>{formatPercent(officerSessionTotals.paymentPercent)}</td>
+                      <td>{formatWhole(officerSessionTotals.salesInvoiceCount)}</td>
+                      <td>{formatWhole(officerSessionTotals.returnInvoiceCount)}</td>
+                      <td>{formatWhole(officerSessionTotals.totalInvoiceCount)}</td>
+                      <td>{formatWhole(officerSessionTotals.previousInvoices)}</td>
+                      <td>{formatWhole(officerSessionTotals.runningInvoices)}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <section className="monthly-report-excel-page">
+              <header className="monthly-report-excel-detail-heading">
+                <div>
+                  <p><b>Name of the Person:</b> {excelOfficer?.name || '—'}</p>
+                  <p><b>Designation:</b> {excelOfficer?.designation || '—'}</p>
+                  <p><b>Name of the area:</b> {excelOfficer?.territory || '—'}</p>
+                  <p><b>Mobile no:</b> {excelOfficer?.phone || '—'}</p>
+                  <p><b>Month of:</b> {selectedMonth}</p>
+                </div>
+                <div className="monthly-report-excel-company">
+                  <CompanyLetterhead className="monthly-report-excel-letterhead" />
+                  <p>Monthly sales and collection Report form</p>
+                  <p>Session : {activeSession}</p>
+                </div>
+                <p className="monthly-report-excel-date"><b>Reporting date:</b> {excelReportDate}</p>
+              </header>
+              <div className="monthly-report-excel-table-wrap">
+                <table className="monthly-report-excel-table monthly-report-detail-sheet">
+                  <thead>
+                    <tr>
+                      <th rowSpan={2}>SL<br />NO</th>
+                      <th rowSpan={2}>Name of the party</th>
+                      <th rowSpan={2}>Last month<br />Dues</th>
+                      <th colSpan={3}>Present month</th>
+                      <th rowSpan={2}>Last &amp; present<br />net sales</th>
+                      <th colSpan={4}>Present month</th>
+                      <th rowSpan={2}>Present month<br />Total Collection</th>
+                      <th rowSpan={2}>Present month<br />Net Dues</th>
+                    </tr>
+                    <tr>
+                      <th>Sales</th>
+                      <th>Return</th>
+                      <th>Net sales</th>
+                      <th>Salary</th>
+                      <th>Collection</th>
+                      <th>Fare</th>
+                      <th>L/C</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {excelDealerRows.map((row, index) => (
+                      <tr key={row.id}>
+                        <td>{index + 1}</td>
+                        <td className="text-left">{row.dealer.shopName}</td>
+                        <td>{formatWholeOrBlank(row.previousDue)}</td>
+                        <td>{formatWholeOrBlank(row.sales)}</td>
+                        <td>{formatWholeOrBlank(row.returns)}</td>
+                        <td>{formatWholeOrBlank(row.netSales)}</td>
+                        <td>{formatWholeOrBlank(row.totalNetSales)}</td>
+                        <td>{formatWholeOrBlank(row.salary)}</td>
+                        <td>{formatWholeOrBlank(row.collection)}</td>
+                        <td>{formatWholeOrBlank(row.fare)}</td>
+                        <td>{formatWholeOrBlank(row.lc)}</td>
+                        <td>{formatWholeOrBlank(row.totalCollection)}</td>
+                        <td>{formatWholeOrBlank(row.netDue)}</td>
+                      </tr>
+                    ))}
+                    {!excelDealerRows.length && (
+                      <tr><td colSpan={13}>এই অফিসারের অধীনে কোনো ডিলার নেই।</td></tr>
+                    )}
+                    <tr className="excel-total-row">
+                      <th colSpan={2}>Total Tk</th>
+                      <td>{formatWhole(excelDealerTotals.previousDue)}</td>
+                      <td>{formatWhole(excelDealerTotals.sales)}</td>
+                      <td>{formatWhole(excelDealerTotals.returns)}</td>
+                      <td>{formatWhole(excelDealerTotals.netSales)}</td>
+                      <td>{formatWhole(excelDealerTotals.totalNetSales)}</td>
+                      <td>{formatWhole(excelDealerTotals.salary)}</td>
+                      <td>{formatWhole(excelDealerTotals.collection)}</td>
+                      <td>{formatWhole(excelDealerTotals.fare)}</td>
+                      <td>{formatWhole(excelDealerTotals.lc)}</td>
+                      <td>{formatWhole(excelDealerTotals.totalCollection)}</td>
+                      <td>{formatWhole(excelDealerTotals.netDue)}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <footer className="monthly-report-excel-signatures">
+                {[
+                  ['Prepared by', 'S. O.'],
+                  ['Checked by', 'ASM'],
+                  ['Checked by', 'L.O.'],
+                  ['Approved by', 'C.E.O']
+                ].map(([label, role]) => (
+                  <div key={role}><span>{label}</span><b>{role}</b></div>
+                ))}
+              </footer>
+            </section>
+          </div>
+        )}
         <div className="monthly-report-print-header border-b-2 border-emerald-800 pb-4">
           <CompanyLetterhead className="monthly-report-letterhead" />
           <div className="mt-2 text-center">

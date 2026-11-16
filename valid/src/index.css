@@ -233,6 +233,185 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
   height: 34px;
 }
 
+.monthly-report-excel-mode > :not(.monthly-report-excel-reports) {
+  display: none !important;
+}
+
+.monthly-report-excel-reports {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  color: #111827;
+}
+
+.monthly-report-excel-page {
+  min-width: 0;
+  background: #fff;
+}
+
+.monthly-report-excel-heading {
+  position: relative;
+  min-height: 7rem;
+  padding: 0 0 0.6rem;
+  border-bottom: 1px solid #111;
+  text-align: center;
+}
+
+.monthly-report-excel-heading-meta {
+  position: absolute;
+  top: 0.2rem;
+  left: 0;
+  text-align: left;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.monthly-report-excel-heading-meta p,
+.monthly-report-excel-company p,
+.monthly-report-excel-detail-heading p {
+  margin: 0.1rem 0;
+}
+
+.monthly-report-excel-heading h2 {
+  margin: 0.25rem 0;
+  font-size: 1.3rem;
+  font-weight: 800;
+}
+
+.monthly-report-excel-heading > p:last-child {
+  position: absolute;
+  right: 0;
+  bottom: 0.25rem;
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.monthly-report-excel-letterhead {
+  justify-content: center;
+  min-height: 3.5rem;
+}
+
+.monthly-report-excel-detail-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) minmax(0, 1fr);
+  align-items: start;
+  gap: 0.75rem;
+  min-height: 6rem;
+  padding-bottom: 0.5rem;
+  font-size: 0.72rem;
+}
+
+.monthly-report-excel-company {
+  text-align: center;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.monthly-report-excel-date {
+  text-align: right;
+}
+
+.monthly-report-excel-table-wrap {
+  overflow-x: auto;
+}
+
+.monthly-report-excel-table {
+  width: 100%;
+  min-width: 1120px;
+  border-collapse: collapse;
+  color: #111;
+  font-size: 0.7rem;
+}
+
+.monthly-report-excel-table th,
+.monthly-report-excel-table td {
+  height: 2rem;
+  border: 1px solid #222;
+  padding: 0.2rem 0.3rem;
+  text-align: right;
+  vertical-align: middle;
+  white-space: normal;
+}
+
+.monthly-report-excel-table thead th {
+  background: #fff;
+  font-weight: 600;
+  text-align: center;
+}
+
+.monthly-report-excel-table th:first-child,
+.monthly-report-excel-table td:first-child {
+  text-align: center;
+}
+
+.monthly-report-excel-table .text-left {
+  text-align: left;
+}
+
+.monthly-report-excel-table .excel-emphasis {
+  background: #f7bd91;
+  font-weight: 800;
+}
+
+.monthly-report-top-sheet tbody td:nth-child(n + 12):nth-child(-n + 18) {
+  background: #f7bd91;
+}
+
+.monthly-report-top-sheet tbody td:nth-child(n + 19) {
+  background: #fff500;
+  font-weight: 700;
+}
+
+.monthly-report-top-sheet .excel-orange-header {
+  background: #f7bd91;
+}
+
+.monthly-report-top-sheet .excel-yellow-header {
+  background: #fff500;
+}
+
+.monthly-report-top-sheet .excel-total-row td:nth-child(n + 12):nth-child(-n + 18) {
+  background: #f7bd91;
+}
+
+.monthly-report-top-sheet .excel-total-row td:nth-child(n + 19) {
+  background: #fff500;
+}
+
+.monthly-report-excel-table .excel-total-row th,
+.monthly-report-excel-table .excel-total-row td {
+  font-weight: 800;
+}
+
+.monthly-report-excel-detail-heading + .monthly-report-excel-table-wrap
+  .monthly-report-detail-sheet tbody td:nth-child(2) {
+  color: #0563c1;
+  text-decoration: underline;
+}
+
+.monthly-report-excel-signatures {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1.5rem;
+  margin-top: 2rem;
+  padding: 1rem 0.5rem 0;
+  text-align: center;
+  font-size: 0.75rem;
+}
+
+.monthly-report-excel-signatures > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  border-top: 1px solid #333;
+  padding-top: 0.25rem;
+}
+
+.monthly-report-excel-signatures b {
+  font-weight: 500;
+}
+
 @media print {
   * {
     font-family: 'Nirmala UI', system-ui, sans-serif !important;
@@ -244,6 +423,10 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
   @page monthly-stock {
     size: A4;
     margin: 12.7mm 10mm 10mm;
+  }
+  @page monthly-excel {
+    size: A4 landscape;
+    margin: 6mm;
   }
   body * {
     visibility: hidden !important;
@@ -476,6 +659,80 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
     overflow: visible !important;
     break-inside: auto !important;
     page-break-inside: auto !important;
+  }
+  .monthly-report-excel-mode {
+    page: monthly-excel;
+    padding: 0 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .monthly-report-excel-reports {
+    display: block !important;
+  }
+  .monthly-report-excel-page {
+    break-inside: auto;
+    page-break-inside: auto;
+  }
+  .monthly-report-excel-page + .monthly-report-excel-page {
+    break-before: page;
+    page-break-before: always;
+  }
+  .monthly-report-excel-heading {
+    min-height: 25mm;
+  }
+  .monthly-report-excel-heading-meta,
+  .monthly-report-excel-heading > p:last-child {
+    font-size: 6pt;
+  }
+  .monthly-report-excel-heading h2 {
+    font-size: 11pt;
+  }
+  .monthly-report-excel-detail-heading {
+    min-height: 24mm;
+    grid-template-columns: 1fr 1.4fr 1fr;
+    gap: 2mm;
+    font-size: 6pt;
+  }
+  .monthly-report-excel-company {
+    font-size: 7pt;
+  }
+  .monthly-report-excel-table-wrap {
+    overflow: visible !important;
+  }
+  .monthly-report-excel-table {
+    width: 100% !important;
+    min-width: 0 !important;
+    table-layout: fixed;
+    font-size: 5.4pt;
+  }
+  .monthly-report-excel-table th,
+  .monthly-report-excel-table td {
+    height: 7mm;
+    padding: 1mm 0.6mm !important;
+    overflow-wrap: anywhere;
+    white-space: normal !important;
+  }
+  .monthly-report-detail-sheet th,
+  .monthly-report-detail-sheet td {
+    height: 3.5mm;
+    padding: 0.3mm 0.5mm !important;
+    font-size: 4.8pt;
+  }
+  .monthly-report-top-sheet {
+    font-size: 4.7pt;
+  }
+  .monthly-report-top-sheet th,
+  .monthly-report-top-sheet td {
+    padding: 0.8mm 0.4mm !important;
+  }
+  .monthly-report-excel-signatures {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    margin-top: 6mm;
+    padding-top: 5mm;
+  }
+  .monthly-report-excel-signatures > div {
+    min-height: 10mm;
   }
   body.monthly-report-printing #root > div > :not(main),
   body.monthly-report-printing #root > div > main > :not(.monthly-report-page),

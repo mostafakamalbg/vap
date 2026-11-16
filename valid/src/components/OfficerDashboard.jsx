@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ClipboardList, PackageCheck, Plus, Send, ShoppingCart, TrendingUp } from 'lucide-react';
+import { ClipboardList, PackageCheck, Plus, Send, ShoppingCart, Target, TrendingUp } from 'lucide-react';
 import { useAgro } from '../context/AgroContext';
 import { useUiPreferences } from '../context/UiPreferencesContext';
 import {
@@ -10,6 +10,8 @@ import {
 } from '../../shared/codes';
 import { getPackageQuantityUnit } from '../../shared/quantityUnits';
 import { getItemCartons, getInvoiceCartons } from '../../shared/invoiceCartons';
+import { getInvoiceSessionForDate } from '../../shared/sessions';
+import { getOfficerSalesTarget, OFFICER_TARGET_SESSIONS } from '../../shared/officerSalesTargets';
 
 async function requestJson(url, options) {
   const response = await fetch(url, options);
@@ -29,7 +31,9 @@ export default function OfficerDashboard() {
   const [orders, setOrders] = useState([]);
   const [items, setItems] = useState([{ productId: '', sku: '', cartons: 1 }]);
   const [dealerId, setDealerId] = useState(dealers[0]?.id || '');
-  const [sessionFilter, setSessionFilter] = useState('ALL');
+  const [sessionFilter, setSessionFilter] = useState(
+    () => getInvoiceSessionForDate(new Date().toISOString().slice(0, 10)) || 'ALL'
+  );
   const [monthFilter, setMonthFilter] = useState('ALL');
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
@@ -68,7 +72,10 @@ export default function OfficerDashboard() {
     }
   }, [availableDealers, dealerId]);
   const sessions = useMemo(
-    () => [...new Set(salesInvoices.map((invoice) => invoice.session).filter(Boolean))].sort().reverse(),
+    () => [...new Set([
+      ...OFFICER_TARGET_SESSIONS,
+      ...salesInvoices.map((invoice) => invoice.session).filter(Boolean)
+    ])].sort().reverse(),
     [salesInvoices]
   );
   const months = useMemo(
@@ -81,6 +88,18 @@ export default function OfficerDashboard() {
   )), [monthFilter, salesInvoices, sessionFilter]);
   const totalSales = filteredSalesInvoices.reduce((sum, invoice) => sum + (Number(invoice.totalAmount ?? invoice.grandTotal) || 0), 0);
   const totalDue = filteredSalesInvoices.reduce((sum, invoice) => sum + (Number(invoice.dueAmount ?? invoice.currentDue) || 0), 0);
+  const targetSalesInvoices = salesInvoices.filter((invoice) => (
+    sessionFilter === 'ALL'
+    || (invoice.session || getInvoiceSessionForDate(invoice.date)) === sessionFilter
+  ));
+  const sessionSalesAmount = Math.round(targetSalesInvoices.reduce(
+    (sum, invoice) => sum + (Number(invoice.totalAmount ?? invoice.grandTotal) || 0),
+    0
+  ));
+  const sessionSalesTarget = getOfficerSalesTarget(currentOfficer, sessionFilter);
+  const targetAchievement = sessionSalesTarget
+    ? Math.round((sessionSalesAmount / sessionSalesTarget) * 100)
+    : 0;
   const officerProductSales = useMemo(() => {
     const sales = new Map();
     filteredSalesInvoices.forEach((invoice) => {
@@ -155,16 +174,26 @@ export default function OfficerDashboard() {
         <p className="mt-1 text-sm text-emerald-100">{t('officer.code')} {formatOfficerCode(currentUser?.officerCode) || '—'} • {t('officer.onlineSales')}</p>
       </header>
 
-      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         {[
           { label: t('officer.invoiceCount'), value: filteredSalesInvoices.length.toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US'), Icon: ClipboardList },
           { label: t('officer.salesAmount'), value: `৳${totalSales.toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}`, Icon: TrendingUp },
           { label: 'মোট বকেয়া', value: `৳${totalDue.toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}`, Icon: TrendingUp },
-          { label: 'মোট বিক্রিত প্যাক / কার্টুন', value: totalCartonsSold.toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US'), Icon: PackageCheck }
-        ].map(({ label, value, Icon }) => (
+          { label: 'মোট বিক্রিত প্যাক / কার্টুন', value: totalCartonsSold.toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US'), Icon: PackageCheck },
+          {
+            label: `সেশন টার্গেট • ${sessionFilter === 'ALL' ? 'সব সেশন' : sessionFilter}`,
+            value: `৳${sessionSalesTarget.toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}`,
+            detail: `অর্জন ৳${sessionSalesAmount.toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')} • ${targetAchievement}%`,
+            Icon: Target
+          }
+        ].map(({ label, value, detail, Icon }) => (
           <div key={label} className="flex items-center gap-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
             <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700"><Icon className="h-5 w-5" /></span>
-            <div><p className="text-xs font-semibold text-slate-500">{label}</p><p className="text-xl font-black text-slate-900">{value}</p></div>
+            <div>
+              <p className="text-xs font-semibold text-slate-500">{label}</p>
+              <p className="text-xl font-black text-slate-900">{value}</p>
+              {detail && <p className="text-[11px] font-semibold text-emerald-700">{detail}</p>}
+            </div>
           </div>
         ))}
       </section>
