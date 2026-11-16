@@ -16,7 +16,7 @@ import { useAgro } from '../../context/AgroContext';
 import {
   getPackageQuantityUnit,
   getStockInQuantities,
-  getStockCartonEquivalent
+  getStockPackageCount
 } from '../../../shared/quantityUnits';
 
 const MINIMUM_STOCK_LEVEL = 20;
@@ -32,9 +32,9 @@ function getStockInRows(products, previousRows = []) {
   }));
 }
 
-function getTotalStockCartonEquivalents(products) {
+function getTotalStockPackages(products) {
   return products.reduce((total, product) => total + (product.variants || []).reduce((productTotal, variant) => (
-    productTotal + getStockCartonEquivalent({
+    productTotal + getStockPackageCount({
       ...variant,
       productName: product.name,
       generic: product.generic
@@ -115,7 +115,6 @@ export default function StockManagement() {
   });
 
   // Calculate total stock value & pieces
-  let totalStockPackages = 0;
   let totalStockValue = 0;
   let lowStockCount = 0;
 
@@ -126,31 +125,21 @@ export default function StockManagement() {
       const packageStock = quantityUnit === 'কার্টুন'
         ? Number(v.stockCartons ?? Math.floor(stockPieces / (Number(v.packPerBox) || 1))) || 0
         : stockPieces;
-      totalStockPackages += packageStock;
       totalStockValue += stockPieces * (Number(v.tp) || 0);
       if (packageStock >= 0 && packageStock <= MINIMUM_STOCK_LEVEL) lowStockCount += 1;
     });
   });
-  const currentStockCartonEquivalents = getTotalStockCartonEquivalents(products);
-  const incomingCartonEquivalents = (stockInPreview || []).reduce(
-    (total, entry) => total + entry.cartonEquivalent,
-    0
-  );
-  const stockInInputTotals = stockInItems.reduce((totals, item) => {
+  const currentStockPackages = getTotalStockPackages(products);
+  const incomingPackageCount = (stockInPreview || []).reduce((total, entry) => total + entry.quantity, 0);
+  const stockInInputTotal = stockInItems.reduce((total, item) => {
     const count = Number(item.quantity);
-    if (!Number.isFinite(count) || count <= 0) return totals;
+    if (!Number.isSafeInteger(count) || count <= 0) return total;
 
     const product = products.find((entry) => entry.id === item.productId);
     const variant = product?.variants.find((entry) => entry.sku === item.sku);
-    if (!product || !variant) return totals;
-
-    const itemData = { ...variant, productName: product.name, generic: product.generic };
-    const quantities = getStockInQuantities(itemData, count);
-    return {
-      cartonEquivalent: totals.cartonEquivalent + getStockCartonEquivalent(itemData, count),
-      pieces: totals.pieces + quantities.quantityPieces
-    };
-  }, { cartonEquivalent: 0, pieces: 0 });
+    if (!product || !variant) return total;
+    return total + count;
+  }, 0);
   const recentStockInLogs = [...stockInLogs]
     .sort((left, right) => String(right.date || '').localeCompare(String(left.date || '')))
     .slice(0, 8);
@@ -181,14 +170,7 @@ export default function StockManagement() {
         sku: item.sku,
         size: variant.size || '',
         quantityUnit: quantities.quantityUnit,
-        quantity: count,
-        quantityPieces,
-        cartonEquivalent: getStockCartonEquivalent({
-          ...variant,
-          productName: product.name,
-          generic: product.generic
-        }, count),
-        itemUnit: variant.unit || 'পিস'
+        quantity: count
       });
     }
     if (!entries.length) {
@@ -227,8 +209,7 @@ export default function StockManagement() {
 
     setStockInSuccess({
       productLines: stockInPreview.length,
-      cartonEquivalent: incomingCartonEquivalents,
-      pieces: stockInPreview.reduce((sum, entry) => sum + entry.quantityPieces, 0)
+      packages: incomingPackageCount
     });
     setStockInItems(getStockInRows(products));
     setStockInForm(createEmptyStockInForm());
@@ -363,8 +344,8 @@ export default function StockManagement() {
 
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
           <div>
-            <p className="text-xs font-semibold text-slate-500 uppercase">মোট প্যাকেজ</p>
-            <p className="text-2xl font-black text-emerald-700 mt-1">{totalStockPackages.toLocaleString()} প্যাকেজ</p>
+            <p className="text-xs font-semibold text-slate-500 uppercase">মোট বর্তমান স্টক</p>
+            <p className="text-2xl font-black text-emerald-700 mt-1">{currentStockPackages.toLocaleString('bn-BD')} প্যাকেজ</p>
           </div>
           <div className="w-10 h-10 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center">
             <Package className="w-5 h-5" />
@@ -464,10 +445,10 @@ export default function StockManagement() {
                     const packPerBox = v.packPerBox || 1;
                     const stockPcs = Number(v.stock) || 0;
                     const quantityUnit = getPackageQuantityUnit({ ...v, productName: prod.name, generic: prod.generic });
-                    const cartonEquivalent = Math.floor(stockPcs / packPerBox);
+                    const fallbackCartons = Math.floor(stockPcs / packPerBox);
                     const remainderPcs = stockPcs % packPerBox;
                     const packageStock = quantityUnit === 'কার্টুন'
-                      ? Number(v.stockCartons ?? cartonEquivalent) || 0
+                      ? Number(v.stockCartons ?? fallbackCartons) || 0
                       : stockPcs;
                     const isShortStock = packageStock < 0 || stockPcs <= 0;
                     const isLowStock = !isShortStock && packageStock <= MINIMUM_STOCK_LEVEL;
@@ -573,15 +554,11 @@ export default function StockManagement() {
           <form onSubmit={handleStockInSubmit} className="space-y-3">
             <section aria-label="লাইভ স্টক-ইন মোট" aria-live="polite" className="sticky top-0 z-20 grid grid-cols-2 gap-2 rounded-lg border border-emerald-200 bg-emerald-50/95 p-2 shadow-sm backdrop-blur sm:grid-cols-3">
               <div>
-                <p className="text-[11px] font-semibold text-slate-600">কার্টুন-সমতুল্য</p>
-                <p className="text-base font-black text-emerald-800">{stockInInputTotals.cartonEquivalent.toLocaleString('bn-BD', { maximumFractionDigits: 2 })}</p>
+                <p className="text-[11px] font-semibold text-slate-600">মোট প্যাকেজ (পিস বাদে)</p>
+                <p className="text-base font-black text-emerald-800">{stockInInputTotal.toLocaleString('bn-BD')}</p>
               </div>
-              <div>
-                <p className="text-[11px] font-semibold text-slate-600">মোট পিস / একক</p>
-                <p className="text-base font-black text-emerald-800">{stockInInputTotals.pieces.toLocaleString('bn-BD', { maximumFractionDigits: 2 })}</p>
-              </div>
-              <p className="col-span-2 self-center text-[11px] text-slate-500 sm:col-span-1">
-                কার্টুন, জার ও বস্তার ইনপুট অনুযায়ী লাইভ হিসাব
+              <p className="col-span-1 self-center text-[11px] text-slate-500 sm:col-span-2">
+                কার্টুন, জার, বস্তা বা অন্য প্যাকেজ ইউনিট—সব একই মোটে গণনা হবে
               </p>
             </section>
 
@@ -733,17 +710,16 @@ export default function StockManagement() {
                   <p className="mt-1 text-xs text-slate-600">{stockInForm.date} • {stockInForm.source} • রিসিভার: {stockInForm.receivedBy}</p>
                   <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
                     {[
-                      ['বর্তমান মোট কার্টুন-সমতুল্য', currentStockCartonEquivalents],
-                      ['এইবার যোগ হবে', incomingCartonEquivalents],
-                      ['যোগের পর মোট কার্টুন-সমতুল্য', currentStockCartonEquivalents + incomingCartonEquivalents]
+                      ['বর্তমান মোট প্যাকেজ', currentStockPackages],
+                      ['এইবার প্যাকেজ যোগ হবে', incomingPackageCount],
+                      ['যোগের পর মোট প্যাকেজ', currentStockPackages + incomingPackageCount]
                     ].map(([label, count]) => (
                       <div key={label} className="rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2">
                         <p className="text-xs font-semibold text-slate-600">{label}</p>
-                        <p className="mt-0.5 text-lg font-black text-emerald-800">{count.toLocaleString('bn-BD', { maximumFractionDigits: 2 })} কার্টুন</p>
+                        <p className="mt-0.5 text-lg font-black text-emerald-800">{count.toLocaleString('bn-BD')} প্যাকেজ</p>
                       </div>
                     ))}
                   </div>
-                  <p className="mt-2 text-xs text-slate-500">জার ও বস্তার পরিমাণ তাদের প্যাক-রেট অনুযায়ী কার্টুন-সমতুল্যে রূপান্তরিত হয়েছে।</p>
                 </div>
                 <div className="min-h-0 flex-1 overflow-auto px-4 py-4 sm:px-6">
                   <table className="w-full min-w-[520px] text-left text-sm">
@@ -752,7 +728,6 @@ export default function StockManagement() {
                         <th className="p-2">পণ্য</th>
                         <th className="p-2">প্যাক সাইজ</th>
                         <th className="p-2 text-right">আসছে</th>
-                        <th className="p-2 text-right">মোট একক</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -761,7 +736,6 @@ export default function StockManagement() {
                           <td className="p-2 font-semibold text-slate-800">{entry.productName}</td>
                           <td className="p-2 text-slate-600">{entry.size}</td>
                           <td className="p-2 text-right font-bold text-emerald-800">{entry.quantity.toLocaleString('bn-BD')} {entry.quantityUnit}</td>
-                          <td className="p-2 text-right text-slate-700">{entry.quantityPieces.toLocaleString('bn-BD')} {entry.itemUnit}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -805,9 +779,7 @@ export default function StockManagement() {
                       {stockInSuccess.productLines.toLocaleString('bn-BD')}টি প্যাক সাইজের এন্ট্রি সংরক্ষণ হয়েছে।
                     </p>
                     <p className="mt-2 text-sm font-semibold text-emerald-800">
-                      {stockInSuccess.cartonEquivalent.toLocaleString('bn-BD', { maximumFractionDigits: 2 })} কার্টুন-সমতুল্য
-                      {' • '}
-                      {stockInSuccess.pieces.toLocaleString('bn-BD')} পিস / একক যোগ হয়েছে।
+                      {stockInSuccess.packages.toLocaleString('bn-BD')}টি প্যাকেজ (পিস বাদে) যোগ হয়েছে।
                     </p>
                   </div>
                 </div>
@@ -829,7 +801,6 @@ export default function StockManagement() {
                     <th className="py-2.5 px-3">পণ্য</th>
                     <th className="py-2.5 px-3">প্যাক সাইজ</th>
                     <th className="py-2.5 px-3 text-center">প্যাকেজ</th>
-                    <th className="py-2.5 px-3 text-center">মোট পিস</th>
                     <th className="py-2.5 px-3">ব্যাচ নং</th>
                     <th className="py-2.5 px-3">উৎস</th>
                     <th className="py-2.5 px-3">রিসিভার</th>
@@ -842,9 +813,6 @@ export default function StockManagement() {
                       <td className="py-2 px-3 font-medium text-slate-800">{log.productName}</td>
                       <td className="py-2 px-3">{log.size}</td>
                       <td className="py-2 px-3 text-center font-semibold">{log.cartons > 0 ? `${Number(log.cartons).toLocaleString('bn-BD')} ${getPackageQuantityUnit(log)}` : '-'}</td>
-                      <td className="py-2 px-3 text-center font-bold text-emerald-700 font-mono">
-                        +{log.quantityPieces}
-                      </td>
                       <td className="py-2 px-3 font-mono text-slate-500">{log.batchNo || '-'}</td>
                       <td className="py-2 px-3 text-slate-600">{log.source}</td>
                       <td className="py-2 px-3 text-slate-500">{log.receivedBy}</td>

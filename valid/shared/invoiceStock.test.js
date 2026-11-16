@@ -5,13 +5,13 @@ import { getInvoiceItemAmounts, getInvoiceSalesAmount } from './invoiceTotals.js
 import { sortInvoiceItems } from './invoiceSorting.js';
 import { getDealerLedgerTransactions, getDealerNetDue } from './dealerLedger.js';
 import { applyInvoiceStockChanges } from './invoiceStock.js';
-import { buildStockLedger } from './stockLedger.js';
+import { buildDailyStockLedger, buildStockLedger } from './stockLedger.js';
 import {
   getInvoiceQuantityParts,
   getPackageQuantityUnit,
   getStockInQuantities,
   getStockInPieceQuantity,
-  getStockCartonEquivalent,
+  getStockPackageCount,
   isValidStockInQuantities
 } from './quantityUnits.js';
 import { normalizeHotlineNumber } from './companyContact.js';
@@ -110,19 +110,33 @@ test('stock-in counts bags and jars directly while carton counts expand by pack 
   });
 });
 
-test('stock-in preview converts jar and bag quantities to carton equivalents', () => {
-  const currentCartons = getStockCartonEquivalent({
+test('package totals include cartons, jars and bags without fractional conversion', () => {
+  const currentCartons = getStockPackageCount({
     productName: 'Product B', size: '১০০ মিলি × ১২', packPerBox: 12, stock: 5676, stockCartons: 473
   });
-  const incomingJars = getStockCartonEquivalent({
+  const incomingJars = getStockPackageCount({
     productName: 'Product A', size: '৫লিটার × ০১', packPerBox: 1
   }, 10);
-  const incomingBags = getStockCartonEquivalent({
+  const incomingBags = getStockPackageCount({
     productName: 'জিপসাম', size: '৫কেজি × ৬', packPerBox: 6
   }, 4);
 
   assert.equal(currentCartons + incomingJars, 483);
-  assert.equal(incomingBags, 4 / 6);
+  assert.equal(incomingBags, 4);
+  assert.equal(getStockPackageCount({
+    productName: 'Product A', size: '৫লিটার × ০১', packPerBox: 1, stock: 12, stockCartons: 12
+  }), 12);
+  assert.equal(getStockPackageCount({
+    productName: 'জিপসাম', size: '৫কেজি × ৬', packPerBox: 6, stock: 8, stockCartons: 1
+  }), 8);
+  assert.equal(getStockPackageCount({
+    productName: 'Loose units', quantityUnit: 'পিস', stock: 120
+  }), 0);
+  const cartonEntries = [4716, 483, 494, 1862]
+    .map((count) => getStockPackageCount({
+      productName: 'Product B', size: '১০০ মিলি × ১২', packPerBox: 12
+    }, count));
+  assert.equal(cartonEntries.reduce((total, cartons) => total + cartons, 0), 7555);
 });
 
 test('stock-in accepts valid entries when existing carton or bag balances are negative', () => {
@@ -156,24 +170,47 @@ test('stock-in report quantities preserve jar and bag units and expand cartons b
   }), 4);
 });
 
-test('stock ledger orders events by date and reconciles selected balances with future movements', () => {
+test('stock ledger combines package units and excludes piece-only movements', () => {
   const events = [
-    { date: '2026-03-03', type: 'future-in', changeCartons: 10 },
-    { date: '2026-03-02', type: 'sale', changeCartons: -5 },
-    { date: '2026-03-01', type: 'stock-in', changeCartons: 20 }
+    { date: '2026-03-03', type: 'future-in', unit: 'কার্টুন', changeCount: 10 },
+    { date: '2026-03-02', type: 'sale', unit: 'কার্টুন', changeCount: -5 },
+    { date: '2026-03-01', type: 'jar-in', unit: 'জার', changeCount: 4 },
+    { date: '2026-03-01', type: 'bag-in', unit: 'বস্তা', changeCount: 2 },
+    { date: '2026-03-01', type: 'other-in', unit: 'বোতল', changeCount: 3 },
+    { date: '2026-03-01', type: 'stock-in', unit: 'কার্টুন', changeCount: 20 },
+    { date: '2026-03-01', type: 'piece-only', unit: 'পিস', changeCount: 99 }
   ];
-  const ledger = buildStockLedger(events, '2026-03-01', '2026-03-03', 50);
+  const ledger = buildStockLedger(events, '2026-03-01', '2026-03-03', 67);
 
-  assert.equal(ledger.openingBalance, 25);
-  assert.deepEqual(ledger.rows.map(({ type, runningTotal }) => [type, runningTotal]), [
-    ['stock-in', 45],
-    ['sale', 40],
-    ['future-in', 50]
+  assert.equal(ledger.openingBalance, 33);
+  assert.deepEqual(ledger.rows.map(({ type, unit, runningTotal }) => [type, unit, runningTotal]), [
+    ['jar-in', 'জার', 37],
+    ['bag-in', 'বস্তা', 39],
+    ['other-in', 'বোতল', 42],
+    ['stock-in', 'কার্টুন', 62],
+    ['sale', 'কার্টুন', 57],
+    ['future-in', 'কার্টুন', 67]
   ]);
-  const singleDayLedger = buildStockLedger(events, '2026-03-02', '2026-03-02', 50);
-  assert.equal(singleDayLedger.openingBalance, 45);
-  assert.deepEqual(singleDayLedger.rows.map(({ type, runningTotal }) => [type, runningTotal]), [
-    ['sale', 40]
+  const singleDayLedger = buildStockLedger(events, '2026-03-02', '2026-03-02', 67);
+  assert.equal(singleDayLedger.openingBalance, 62);
+  assert.deepEqual(singleDayLedger.rows.map(({ type, unit, runningTotal }) => [type, unit, runningTotal]), [
+    ['sale', 'কার্টুন', 57]
+  ]);
+});
+
+test('daily stock ledger separates factory receipts from dealer returns and stock out', () => {
+  const rows = [
+    { date: '2026-03-02', unit: 'কার্টুন', category: 'outflow', changeCount: -5 },
+    { date: '2026-03-01', unit: 'কার্টুন', category: 'factoryIn', changeCount: 20 },
+    { date: '2026-03-02', unit: 'বস্তা', category: 'dealerReturn', changeCount: 2 },
+    { date: '2026-03-01', unit: 'জার', category: 'factoryIn', changeCount: 3 },
+    { date: '2026-03-01', unit: 'বোতল', category: 'factoryIn', changeCount: 4 },
+    { date: '2026-03-01', unit: 'পিস', category: 'factoryIn', changeCount: 99 }
+  ];
+
+  assert.deepEqual(buildDailyStockLedger(rows, 10), [
+    { date: '2026-03-01', factoryIn: 27, stockOut: 0, dealerReturns: 0, runningTotal: 37 },
+    { date: '2026-03-02', factoryIn: 0, stockOut: 5, dealerReturns: 2, runningTotal: 34 }
   ]);
 });
 

@@ -79,15 +79,19 @@ export function getStockInPieceQuantity(entry, fallbackPackPerBox = 1) {
   return packageCount * (quantityUnit === 'কার্টুন' ? packPerBox : 1);
 }
 
-export function getStockCartonEquivalent(item, packageCount) {
+export function getStockPackageCount(item, packageCount) {
+  if (item?.quantityUnit === 'পিস') return 0;
+
   const quantityUnit = getPackageQuantityUnit(item);
   const packPerBox = Number(item?.packPerBox);
   const conversionRate = Number.isFinite(packPerBox) && packPerBox > 0 ? packPerBox : 1;
   const stock = Number(item?.stock) || 0;
-  const count = packageCount == null
-    ? quantityUnit === 'কার্টুন'
-      ? Number(item?.stockCartons ?? Math.floor(stock / conversionRate)) || 0
-      : stock
-    : Number(packageCount) || 0;
-  return quantityUnit === 'কার্টুন' ? count : count / conversionRate;
+  if (packageCount != null) {
+    const count = Number(packageCount);
+    return Number.isSafeInteger(count) ? count : 0;
+  }
+  const storedCount = quantityUnit === 'কার্টুন'
+    ? Number(item?.stockCartons ?? Math.floor(stock / conversionRate))
+    : stock;
+  return Number.isFinite(storedCount) ? Math.trunc(storedCount) : 0;
 }

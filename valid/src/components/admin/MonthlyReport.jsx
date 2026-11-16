@@ -15,10 +15,13 @@ import { useAgro } from '../../context/AgroContext';
 import { toBn, toBnDate } from '../../utils/bengali';
 import { formatDealerCode, formatOfficerCode, normalizeOfficerCode } from '../../../shared/codes';
 import { isDealerCollection, normalizePaymentType, PAYMENT_TYPES } from '../../../shared/paymentMethods';
-import { getPackageQuantityUnit, getStockInPieceQuantity } from '../../../shared/quantityUnits';
+import {
+  getPackageQuantityUnit,
+  getStockPackageCount
+} from '../../../shared/quantityUnits';
 import { getInvoiceCartons, getItemCartons } from '../../../shared/invoiceCartons';
 import { getInvoiceStockChanges } from '../../../shared/invoiceStock';
-import { buildStockLedger } from '../../../shared/stockLedger';
+import { buildDailyStockLedger, buildStockLedger } from '../../../shared/stockLedger';
 import { getInvoiceSalesAmount } from '../../../shared/invoiceTotals';
 import { getInvoiceSessionForDate, INVOICE_SESSIONS, LEGACY_INVOICE_SESSION } from '../../../shared/sessions';
 import SearchableRecordSelect from './SearchableRecordSelect';
@@ -349,99 +352,116 @@ export default function MonthlyReport() {
 
   const stockVariantByKey = new Map(products.flatMap((product) => (product.variants || []).map((variant) => [
     `${product.id}::${variant.sku}`,
-    { ...variant, productName: product.name }
+    { ...variant, productName: product.name, generic: product.generic }
   ])));
+  const getStockInUnit = (entry, variant) => entry.quantityUnit
+    || getPackageQuantityUnit({
+      ...entry,
+      productName: entry.productName || variant?.productName,
+      generic: variant?.generic
+    });
+  const getStockInCount = (entry) => Number(entry.cartons ?? entry.quantity) || 0;
+  const getInvoicePackageCount = (change, quantityUnit) => (
+    Number(quantityUnit === 'কার্টুন' ? change.cartons : change.pieces) || 0
+  );
+  const periodInvoices = invoices.filter((invoice) => (
+    invoice.date >= activeStockStartDate && invoice.date <= activeStockEndDate
+  ));
   const stockReportRows = validStockDateRange ? products.flatMap((product) => (product.variants || []).map((variant) => {
     const productKey = `${product.id}::${variant.sku}`;
-    const packPerBox = Number(variant.packPerBox) || 1;
-    const invoiceMovementPieces = (invoice) => {
-      return [...getInvoiceStockChanges(null, invoice).values()]
-        .filter((change) => change.productId === product.id && change.sku === variant.sku)
-        .reduce((sum, change) => sum + change.pieces, 0);
-    };
-    const periodInvoices = invoices.filter((invoice) => (
-      invoice.date >= activeStockStartDate && invoice.date <= activeStockEndDate
-    ));
-    const stockInsInRange = stockInLogs.filter((entry) => (
+    const itemData = { ...variant, productName: product.name, generic: product.generic };
+    const quantityUnit = getPackageQuantityUnit(itemData);
+    const invoiceMovementQuantity = (invoice) => [...getInvoiceStockChanges(null, invoice).values()]
+      .filter((change) => change.productId === product.id && change.sku === variant.sku)
+      .reduce((sum, change) => sum + getInvoicePackageCount(change, quantityUnit), 0);
+    const stockInQuantity = (entry) => (
+      getStockInUnit(entry, itemData) === 'পিস' ? 0 : getStockInCount(entry)
+    );
+    const isVariantStockIn = (entry) => (
       entry.productId === product.id && entry.sku === variant.sku
+    );
+    const stockInsInRange = stockInLogs.filter((entry) => (
+      isVariantStockIn(entry)
       && entry.date >= activeStockStartDate && entry.date <= activeStockEndDate
     ));
-    const stockInPieces = stockInsInRange.reduce(
-      (sum, entry) => sum + getStockInPieceQuantity(entry, packPerBox),
+    const stockInQuantityInRange = stockInsInRange.reduce(
+      (sum, entry) => sum + stockInQuantity(entry),
       0
     );
     const periodInvoiceMovement = periodInvoices.reduce(
-      (sum, invoice) => sum + invoiceMovementPieces(invoice),
+      (sum, invoice) => sum + invoiceMovementQuantity(invoice),
       0
     );
-    const salesPieces = periodInvoices
+    const salesQuantity = periodInvoices
       .filter((invoice) => !['dealer_return', 'factory_damage', 'depot_factory_return'].includes(invoice.invoiceType))
-      .reduce((sum, invoice) => sum + Math.max(0, -invoiceMovementPieces(invoice)), 0);
-    const dealerReturnPieces = periodInvoices
+      .reduce((sum, invoice) => sum + Math.max(0, -invoiceMovementQuantity(invoice)), 0);
+    const dealerReturnQuantity = periodInvoices
       .filter((invoice) => invoice.invoiceType === 'dealer_return')
-      .reduce((sum, invoice) => sum + Math.max(0, invoiceMovementPieces(invoice)), 0);
-    const factoryReturnPieces = periodInvoices
+      .reduce((sum, invoice) => sum + Math.max(0, invoiceMovementQuantity(invoice)), 0);
+    const factoryReturnQuantity = periodInvoices
       .filter((invoice) => ['factory_damage', 'depot_factory_return'].includes(invoice.invoiceType))
-      .reduce((sum, invoice) => sum + Math.max(0, -invoiceMovementPieces(invoice)), 0);
-    const futureStockInPieces = stockInLogs
-      .filter((entry) => entry.productId === product.id && entry.sku === variant.sku && entry.date > activeStockEndDate)
-      .reduce((sum, entry) => sum + getStockInPieceQuantity(entry, packPerBox), 0);
+      .reduce((sum, invoice) => sum + Math.max(0, -invoiceMovementQuantity(invoice)), 0);
+    const futureStockInQuantity = stockInLogs
+      .filter((entry) => isVariantStockIn(entry) && entry.date > activeStockEndDate)
+      .reduce((sum, entry) => sum + stockInQuantity(entry), 0);
     const futureInvoiceMovement = invoices
       .filter((invoice) => invoice.date > activeStockEndDate)
-      .reduce((sum, invoice) => sum + invoiceMovementPieces(invoice), 0);
-    const currentPieces = variant.stock == null
-      ? (Number(variant.stockCartons) || 0) * packPerBox
-      : Number(variant.stock) || 0;
-    const closingPieces = currentPieces - futureStockInPieces - futureInvoiceMovement;
-    const openingPieces = closingPieces - stockInPieces - periodInvoiceMovement;
+      .reduce((sum, invoice) => sum + invoiceMovementQuantity(invoice), 0);
+    const currentQuantity = getStockPackageCount(itemData);
+    const closingQuantity = currentQuantity - futureStockInQuantity - futureInvoiceMovement;
+    const openingQuantity = closingQuantity - stockInQuantityInRange - periodInvoiceMovement;
     return {
       key: productKey,
       productName: product.name,
       size: variant.size || '',
-      openingCartons: openingPieces / packPerBox,
-      stockInCartons: stockInPieces / packPerBox,
-      dealerReturnCartons: dealerReturnPieces / packPerBox,
-      totalStockCartons: (openingPieces + stockInPieces + dealerReturnPieces) / packPerBox,
-      factoryReturnCartons: factoryReturnPieces / packPerBox,
-      soldCartons: salesPieces / packPerBox,
-      closingCartons: closingPieces / packPerBox
+      quantityUnit,
+      openingQuantity,
+      stockInQuantity: stockInQuantityInRange,
+      dealerReturnQuantity,
+      totalStockQuantity: openingQuantity + stockInQuantityInRange + dealerReturnQuantity,
+      factoryReturnQuantity,
+      soldQuantity: salesQuantity,
+      closingQuantity
     };
   })) : [];
-  const formatStockCartons = (cartons) => toBn(Number(cartons.toFixed(2)));
+  const formatStockQuantity = (quantity) => toBn(Math.trunc(Number(quantity) || 0));
   const stockReportTotals = stockReportRows.reduce((totals, row) => ({
-    openingCartons: totals.openingCartons + row.openingCartons,
-    stockInCartons: totals.stockInCartons + row.stockInCartons,
-    dealerReturnCartons: totals.dealerReturnCartons + row.dealerReturnCartons,
-    totalStockCartons: totals.totalStockCartons + row.totalStockCartons,
-    factoryReturnCartons: totals.factoryReturnCartons + row.factoryReturnCartons,
-    soldCartons: totals.soldCartons + row.soldCartons,
-    closingCartons: totals.closingCartons + row.closingCartons
-  }), {
-    openingCartons: 0,
-    stockInCartons: 0,
-    dealerReturnCartons: 0,
-    totalStockCartons: 0,
-    factoryReturnCartons: 0,
-    soldCartons: 0,
-    closingCartons: 0
-  });
+      openingQuantity: totals.openingQuantity + row.openingQuantity,
+      stockInQuantity: totals.stockInQuantity + row.stockInQuantity,
+      dealerReturnQuantity: totals.dealerReturnQuantity + row.dealerReturnQuantity,
+      totalStockQuantity: totals.totalStockQuantity + row.totalStockQuantity,
+      factoryReturnQuantity: totals.factoryReturnQuantity + row.factoryReturnQuantity,
+      soldQuantity: totals.soldQuantity + row.soldQuantity,
+      closingQuantity: totals.closingQuantity + row.closingQuantity
+    }), {
+      openingQuantity: 0,
+      stockInQuantity: 0,
+      dealerReturnQuantity: 0,
+      totalStockQuantity: 0,
+      factoryReturnQuantity: 0,
+      soldQuantity: 0,
+      closingQuantity: 0
+    });
   const stockLedgerAllEvents = [
     ...stockInLogs.map((entry) => {
       const variant = stockVariantByKey.get(`${entry.productId}::${entry.sku}`);
-      const packPerBox = Number(entry.packPerBox ?? variant?.packPerBox) || 1;
-      const pieces = getStockInPieceQuantity(entry, packPerBox);
+      const quantityUnit = getStockInUnit(entry, variant);
       return {
         date: String(entry.date || ''),
         type: 'স্টক ইন',
+        category: 'factoryIn',
         reference: entry.batchNo || entry.id || '—',
         productName: `${entry.productName || variant?.productName || 'পণ্য'}${entry.size ? ` • ${entry.size}` : ''}`,
-        changeCartons: pieces / packPerBox
+        unit: quantityUnit,
+        changeCount: getStockInCount(entry)
       };
     }),
     ...invoices.flatMap((invoice) => [...getInvoiceStockChanges(null, invoice).values()].map((change) => {
       const variant = stockVariantByKey.get(`${change.productId}::${change.sku}`);
-      const packPerBox = Number(variant?.packPerBox) || 1;
-      const pieces = Number(change.pieces) || 0;
+      const quantityUnit = getPackageQuantityUnit({
+        ...variant,
+        productName: variant?.productName || change.productId
+      });
       const type = invoice.invoiceType === 'dealer_return'
         ? 'ডিলার ফেরত'
         : invoice.invoiceType === 'depot_factory_return'
@@ -452,40 +472,46 @@ export default function MonthlyReport() {
       return {
         date: String(invoice.date || ''),
         type,
+        category: invoice.invoiceType === 'dealer_return' ? 'dealerReturn' : 'outflow',
         reference: invoice.invoiceNo || invoice.id || '—',
         productName: `${variant?.productName || change.productId} • ${variant?.size || change.sku}`,
-        changeCartons: pieces / packPerBox
+        unit: quantityUnit,
+        changeCount: getInvoicePackageCount(change, quantityUnit)
       };
     }))
   ].filter((entry) => (
     /^\d{4}-\d{2}-\d{2}$/.test(entry.date)
-    && Number.isFinite(entry.changeCartons)
-    && entry.changeCartons !== 0
+    && Number.isFinite(entry.changeCount)
+    && entry.changeCount !== 0
   ));
-  const currentStockCartons = products.reduce((total, product) => total + (product.variants || []).reduce((productTotal, variant) => {
-    const packPerBox = Number(variant.packPerBox) || 1;
-    const pieces = variant.stock == null
-      ? (Number(variant.stockCartons) || 0) * packPerBox
-      : Number(variant.stock) || 0;
-    return productTotal + pieces / packPerBox;
-  }, 0), 0);
+  const currentStockPackageCount = products.reduce((total, product) => {
+    (product.variants || []).forEach((variant) => {
+      const itemData = { ...variant, productName: product.name, generic: product.generic };
+      total += getStockPackageCount(itemData);
+    });
+    return total;
+  }, 0);
   const { openingBalance: stockLedgerOpeningBalance, rows: ledgerRows } = buildStockLedger(
     stockLedgerAllEvents,
     activeStockStartDate,
     activeStockEndDate,
-    currentStockCartons
+    currentStockPackageCount
   );
   const stockLedgerRows = ledgerRows.map((entry, index) => ({
     ...entry,
     id: `${entry.date}-${entry.reference}-${index}`
   }));
   const stockLedgerTotals = stockLedgerRows.reduce((totals, entry) => ({
-    stockIn: totals.stockIn + Math.max(0, entry.changeCartons),
-    stockOut: totals.stockOut + Math.max(0, -entry.changeCartons)
+    stockIn: totals.stockIn + (entry.type === 'স্টক ইন' ? Math.max(0, entry.changeCount) : 0),
+    stockOut: totals.stockOut + (entry.changeCount < 0 ? Math.abs(entry.changeCount) : 0)
   }), { stockIn: 0, stockOut: 0 });
   const stockLedgerClosingBalance = stockLedgerRows.length
     ? stockLedgerRows[stockLedgerRows.length - 1].runningTotal
     : stockLedgerOpeningBalance;
+  const stockLedgerDailyRows = buildDailyStockLedger(
+    stockLedgerRows,
+    stockLedgerOpeningBalance
+  );
 
   const printReport = () => {
     const printClass = 'monthly-report-printing';
@@ -1030,32 +1056,63 @@ export default function MonthlyReport() {
               <>
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                   {[
-                    ['শুরুর ব্যালান্স', stockLedgerOpeningBalance],
-                    ['সময়ের মোট স্টক ইন', stockLedgerTotals.stockIn],
-                    ['সময়ের মোট স্টক আউট', stockLedgerTotals.stockOut],
-                    ['শেষ তারিখের ব্যালান্স', stockLedgerClosingBalance]
+                    ['শুরুর প্যাকেজ ব্যালান্স', stockLedgerOpeningBalance],
+                    ['ফ্যাক্টরি থেকে প্যাকেজ ইন', stockLedgerTotals.stockIn],
+                    ['মোট প্যাকেজ স্টক আউট', stockLedgerTotals.stockOut],
+                    ['শেষ প্যাকেজ ব্যালান্স', stockLedgerClosingBalance]
                   ].map(([label, amount]) => (
                     <div key={label} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
                       <p className="text-xs font-semibold text-slate-500">{label}</p>
                       <p className={`mt-1 text-lg font-black ${amount < 0 ? 'text-rose-700' : 'text-emerald-800'}`}>
-                        {formatStockCartons(amount)} কার্টুন
+                        {formatStockQuantity(amount)} প্যাকেজ
                       </p>
                     </div>
                   ))}
                 </div>
                 <div className="overflow-x-auto rounded-lg border border-slate-200">
                   <h4 className="bg-emerald-50 px-3 py-2 text-sm font-black text-emerald-900">
-                    তারিখভিত্তিক কিউমুলেটিভ স্টক লেজার
+                    তারিখভিত্তিক ফ্যাক্টরি ইন ও স্টক আউট
                   </h4>
-                  <table className="w-full min-w-[900px] text-left text-xs">
+                  <table className="w-full min-w-[700px] text-left text-xs">
+                    <thead className="bg-slate-100 text-slate-700">
+                      <tr>
+                        <th className="p-2">তারিখ</th>
+                        <th className="p-2 text-right">ফ্যাক্টরি প্যাকেজ ইন</th>
+                        <th className="p-2 text-right">ডিলার/অন্যান্য প্যাকেজ আউট</th>
+                        <th className="p-2 text-right">ডিলার ফেরত</th>
+                        <th className="p-2 text-right">চলতি প্যাকেজ ব্যালান্স</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {stockLedgerDailyRows.map((row) => (
+                        <tr key={row.date}>
+                          <td className="p-2 whitespace-nowrap">{toBnDate(row.date)}</td>
+                          <td className="p-2 text-right text-emerald-800">{formatStockQuantity(row.factoryIn)}</td>
+                          <td className="p-2 text-right text-rose-700">{formatStockQuantity(row.stockOut)}</td>
+                          <td className="p-2 text-right">{formatStockQuantity(row.dealerReturns)}</td>
+                          <td className="p-2 text-right font-bold">{formatStockQuantity(row.runningTotal)}</td>
+                        </tr>
+                      ))}
+                      {!stockLedgerDailyRows.length && (
+                        <tr><td colSpan={5} className="p-4 text-center text-slate-500">নির্বাচিত সময়ে কোনো প্যাকেজ লেনদেন নেই।</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="overflow-x-auto rounded-lg border border-slate-200">
+                  <h4 className="bg-emerald-50 px-3 py-2 text-sm font-black text-emerald-900">
+                    সম্মিলিত প্যাকেজ লেজার
+                  </h4>
+                  <table className="w-full min-w-[980px] text-left text-xs">
                     <thead className="bg-slate-100 text-slate-700">
                       <tr>
                         <th className="p-2">তারিখ</th>
                         <th className="p-2">লেনদেন</th>
                         <th className="p-2">রেফারেন্স</th>
                         <th className="p-2">পণ্য / প্যাক সাইজ</th>
+                        <th className="p-2">ইউনিট</th>
                         <th className="p-2 text-right">স্টক পরিবর্তন</th>
-                        <th className="p-2 text-right">রানিং মোট</th>
+                        <th className="p-2 text-right">সম্মিলিত প্যাকেজ ব্যালান্স</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -1065,16 +1122,17 @@ export default function MonthlyReport() {
                           <td className="p-2 font-semibold">{row.type}</td>
                           <td className="p-2">{row.reference}</td>
                           <td className="p-2">{row.productName}</td>
-                          <td className={`p-2 text-right font-semibold ${row.changeCartons < 0 ? 'text-rose-700' : 'text-emerald-800'}`}>
-                            {row.changeCartons > 0 ? '+' : ''}{formatStockCartons(row.changeCartons)}
+                          <td className="p-2">{row.unit}</td>
+                          <td className={`p-2 text-right font-semibold ${row.changeCount < 0 ? 'text-rose-700' : 'text-emerald-800'}`}>
+                            {row.changeCount > 0 ? '+' : ''}{formatStockQuantity(row.changeCount)}
                           </td>
                           <td className={`p-2 text-right font-bold ${row.runningTotal < 0 ? 'text-rose-700' : 'text-slate-900'}`}>
-                            {formatStockCartons(row.runningTotal)}
+                            {formatStockQuantity(row.runningTotal)}
                           </td>
                         </tr>
                       ))}
                       {!stockLedgerRows.length && (
-                        <tr><td colSpan={6} className="p-4 text-center text-slate-500">নির্বাচিত সময়ে কোনো স্টক লেনদেন নেই।</td></tr>
+                        <tr><td colSpan={7} className="p-4 text-center text-slate-500">নির্বাচিত সময়ে কোনো স্টক লেনদেন নেই।</td></tr>
                       )}
                     </tbody>
                   </table>
@@ -1085,20 +1143,21 @@ export default function MonthlyReport() {
               <table className="monthly-report-stock-table w-full min-w-[1200px] text-left text-xs">
                 <thead className="bg-slate-100 text-slate-700">
                   <tr className="monthly-report-stock-month-row">
-                    <th colSpan={9} className="monthly-report-stock-continuation">
+                    <th colSpan={10} className="monthly-report-stock-continuation">
                       স্টক রিপোর্টের ধারাবাহিক অংশ
                     </th>
                   </tr>
                   <tr>
                     <th className="p-2">পণ্যের নাম</th>
                     <th className="p-2">প্যাক সাইজ</th>
-                    <th className="p-2 text-right">ওপেনিং স্টক</th>
+                    <th className="p-2">ইউনিট</th>
+                    <th className="p-2 text-right">ওপেনিং পরিমাণ</th>
                     <th className="p-2 text-right">স্টক ইন</th>
                     <th className="p-2 text-right">ডিলার ফেরত</th>
                     <th className="p-2 text-right">মোট স্টক</th>
                     <th className="p-2 text-right">ফ্যাক্টরি ফেরত</th>
                     <th className="p-2 text-right">বিক্রয়</th>
-                    <th className="p-2 text-right">ক্লোজিং স্টক</th>
+                    <th className="p-2 text-right">ক্লোজিং পরিমাণ</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -1106,27 +1165,28 @@ export default function MonthlyReport() {
                     <tr key={row.key}>
                       <td className="p-2 font-semibold">{row.productName}</td>
                       <td className="p-2">{row.size}</td>
-                      <td className="p-2 text-right">{formatStockCartons(row.openingCartons)}</td>
-                      <td className="p-2 text-right">{formatStockCartons(row.stockInCartons)}</td>
-                      <td className="p-2 text-right">{formatStockCartons(row.dealerReturnCartons)}</td>
-                      <td className="p-2 text-right font-semibold">{formatStockCartons(row.totalStockCartons)}</td>
-                      <td className="p-2 text-right text-rose-700">{formatStockCartons(row.factoryReturnCartons)}</td>
-                      <td className="p-2 text-right">{formatStockCartons(row.soldCartons)}</td>
-                      <td className={`p-2 text-right font-bold ${row.closingCartons < 0 ? 'text-rose-700' : 'text-emerald-800'}`}>{formatStockCartons(row.closingCartons)}</td>
+                      <td className="p-2">{row.quantityUnit}</td>
+                      <td className="p-2 text-right">{formatStockQuantity(row.openingQuantity)}</td>
+                      <td className="p-2 text-right">{formatStockQuantity(row.stockInQuantity)}</td>
+                      <td className="p-2 text-right">{formatStockQuantity(row.dealerReturnQuantity)}</td>
+                      <td className="p-2 text-right font-semibold">{formatStockQuantity(row.totalStockQuantity)}</td>
+                      <td className="p-2 text-right text-rose-700">{formatStockQuantity(row.factoryReturnQuantity)}</td>
+                      <td className="p-2 text-right">{formatStockQuantity(row.soldQuantity)}</td>
+                      <td className={`p-2 text-right font-bold ${row.closingQuantity < 0 ? 'text-rose-700' : 'text-emerald-800'}`}>{formatStockQuantity(row.closingQuantity)}</td>
                     </tr>
                   ))}
-                  {!stockReportRows.length && <tr><td colSpan={9} className="p-5 text-center text-slate-500">পণ্যের কোনো তথ্য পাওয়া যায়নি।</td></tr>}
+                  {!stockReportRows.length && <tr><td colSpan={10} className="p-5 text-center text-slate-500">পণ্যের কোনো তথ্য পাওয়া যায়নি।</td></tr>}
                 </tbody>
                 <tfoot className="monthly-report-stock-total bg-slate-100 font-bold">
                   <tr>
-                    <th colSpan={2} className="p-2 text-left">সর্বমোট</th>
-                    <td className="p-2 text-right">{formatStockCartons(stockReportTotals.openingCartons)}</td>
-                    <td className="p-2 text-right">{formatStockCartons(stockReportTotals.stockInCartons)}</td>
-                    <td className="p-2 text-right">{formatStockCartons(stockReportTotals.dealerReturnCartons)}</td>
-                    <td className="p-2 text-right">{formatStockCartons(stockReportTotals.totalStockCartons)}</td>
-                    <td className="p-2 text-right">{formatStockCartons(stockReportTotals.factoryReturnCartons)}</td>
-                    <td className="p-2 text-right">{formatStockCartons(stockReportTotals.soldCartons)}</td>
-                    <td className="p-2 text-right">{formatStockCartons(stockReportTotals.closingCartons)}</td>
+                    <th colSpan={3} className="p-2 text-left">সর্বমোট প্যাকেজ</th>
+                    <td className="p-2 text-right">{formatStockQuantity(stockReportTotals.openingQuantity)}</td>
+                    <td className="p-2 text-right">{formatStockQuantity(stockReportTotals.stockInQuantity)}</td>
+                    <td className="p-2 text-right">{formatStockQuantity(stockReportTotals.dealerReturnQuantity)}</td>
+                    <td className="p-2 text-right">{formatStockQuantity(stockReportTotals.totalStockQuantity)}</td>
+                    <td className="p-2 text-right">{formatStockQuantity(stockReportTotals.factoryReturnQuantity)}</td>
+                    <td className="p-2 text-right">{formatStockQuantity(stockReportTotals.soldQuantity)}</td>
+                    <td className="p-2 text-right">{formatStockQuantity(stockReportTotals.closingQuantity)}</td>
                   </tr>
                 </tfoot>
               </table>
