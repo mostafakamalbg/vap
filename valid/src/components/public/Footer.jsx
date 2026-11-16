@@ -83,11 +83,6 @@ export default function Footer({ onNavigate }) {
                 {t('footer.officerTracking')}
               </button>
             </li>
-            <li>
-              <button onClick={() => onNavigate('monthly-reports')} className="hover:text-emerald-400 transition">
-                {t('footer.monthlyStatement')}
-              </button>
-            </li>
           </ul>
         </div>
 

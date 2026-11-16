@@ -4,7 +4,6 @@ import {
   Package,
   Users,
   UserCheck,
-  BarChart3,
   Home,
   Phone,
   MapPin,
@@ -42,7 +41,6 @@ export default function Navbar({ activeTab, setActiveTab }) {
     { id: 'dealer-ledger', label: t('nav.dealerLedger'), icon: Users },
     { id: 'sales-agreements', label: 'সেলস ও কালেকশন চুক্তি', icon: FileText },
     { id: 'officer-tracking', label: t('nav.officerTracking'), icon: UserCheck },
-    { id: 'monthly-reports', label: t('nav.reports'), icon: BarChart3 },
     { id: 'data-management', label: 'ডেটা এক্সপোর্ট/ইমপোর্ট', icon: Download },
     { id: 'factory-reset', label: 'ফ্যাক্টরি ডেটা রিসেট', icon: RotateCw }
   ];
