@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { getInvoiceCartons, getItemCartons } from './invoiceCartons.js';
+import {
+  getInvoiceCartons,
+  getInvoicePackageCount,
+  getItemCartons,
+  getItemPackageCount
+} from './invoiceCartons.js';
 import { getInvoiceItemAmounts, getInvoiceSalesAmount } from './invoiceTotals.js';
 import { sortInvoiceItems } from './invoiceSorting.js';
 import { getDealerLedgerTransactions, getDealerNetDue } from './dealerLedger.js';
@@ -198,6 +203,15 @@ test('stock ledger combines package units and excludes piece-only movements', ()
   ]);
 });
 
+test('opening stock recorded on the report start date leaves a zero opening balance', () => {
+  const ledger = buildStockLedger([
+    { date: '2026-09-30', type: 'opening-stock-in', unit: 'কার্টুন', changeCount: 4716 }
+  ], '2026-09-30', '2026-11-02', 4716);
+
+  assert.equal(ledger.openingBalance, 0);
+  assert.equal(ledger.rows[0].runningTotal, 4716);
+});
+
 test('daily stock ledger separates factory receipts from dealer returns and stock out', () => {
   const rows = [
     { date: '2026-03-02', unit: 'কার্টুন', category: 'outflow', changeCount: -5 },
@@ -223,6 +237,21 @@ test('invoice carton totals fall back to item quantities when the stored total i
       { totalPieces: 24, packPerBox: 12 }
     ]
   }), 7);
+});
+
+test('invoice package totals exclude retail-piece fractions and piece-only lines', () => {
+  assert.equal(getItemPackageCount({ cartons: 2, retailPieces: 3, packPerBox: 12 }), 2);
+  assert.equal(getItemPackageCount({ unitType: 'piece', cartons: 0, retailPieces: 8 }), 0);
+  assert.equal(getItemPackageCount({ quantity: 8, unit: 'পিস' }), 0);
+  assert.equal(getInvoicePackageCount({
+    totalCartons: 2.5,
+    items: [
+      { cartons: 2, retailPieces: 3, packPerBox: 12 },
+      { unitType: 'piece', cartons: 0, retailPieces: 6 },
+      { cartons: 1, quantityUnit: 'জার' }
+    ]
+  }), 3);
+  assert.equal(getInvoicePackageCount({ totalCartons: 5993.933 }), 5993);
 });
 
 test('retail pieces contribute to carton equivalents while retaining exact piece quantity', () => {

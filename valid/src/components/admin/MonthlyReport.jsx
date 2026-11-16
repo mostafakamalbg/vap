@@ -19,7 +19,10 @@ import {
   getPackageQuantityUnit,
   getStockPackageCount
 } from '../../../shared/quantityUnits';
-import { getInvoiceCartons, getItemCartons } from '../../../shared/invoiceCartons';
+import {
+  getInvoicePackageCount as getInvoicePackageTotal,
+  getItemPackageCount as getItemPackageTotal
+} from '../../../shared/invoiceCartons';
 import { getInvoiceStockChanges } from '../../../shared/invoiceStock';
 import { buildDailyStockLedger, buildStockLedger } from '../../../shared/stockLedger';
 import { getInvoiceSalesAmount } from '../../../shared/invoiceTotals';
@@ -215,7 +218,7 @@ export default function MonthlyReport() {
   const productCartonStockChange = {};
 
   filteredInvoices.forEach((inv) => {
-    const cartons = getInvoiceCartons(inv);
+    const cartons = getInvoicePackageTotal(inv);
     const isDealerReturn = inv.invoiceType === 'dealer_return';
     const isFactoryReturn = ['factory_damage', 'depot_factory_return'].includes(inv.invoiceType);
 
@@ -236,7 +239,7 @@ export default function MonthlyReport() {
         && ['dealer_return', 'depot_factory_return'].includes(inv.invoiceType)) return;
       const direction = isDealerReturn ? 1 : -1;
       productCartonStockChange[key] =
-        (productCartonStockChange[key] || 0) + direction * getItemCartons(item);
+        (productCartonStockChange[key] || 0) + direction * getItemPackageTotal(item);
     });
   });
 
@@ -339,9 +342,9 @@ export default function MonthlyReport() {
           cartons: 0,
           pieces: 0
         };
-        summary.cartons += getItemCartons(item);
+        summary.cartons += getItemPackageTotal(item);
         summary.pieces += Number(item.totalPieces)
-          || getItemCartons(item) * (Number(item.packPerBox) || 1);
+          || getItemPackageTotal(item) * (Number(item.packPerBox) || 1);
         totals.set(key, summary);
       });
     });
@@ -484,6 +487,11 @@ export default function MonthlyReport() {
     && Number.isFinite(entry.changeCount)
     && entry.changeCount !== 0
   ));
+  const stockLedgerBeforeRangeRows = stockLedgerAllEvents
+    .filter((entry) => entry.date < activeStockStartDate && entry.unit !== 'পিস')
+    .sort((left, right) => left.date.localeCompare(right.date));
+  const stockLedgerBeforeRangeNetChange = stockLedgerBeforeRangeRows
+    .reduce((sum, entry) => sum + entry.changeCount, 0);
   const currentStockPackageCount = products.reduce((total, product) => {
     (product.variants || []).forEach((variant) => {
       const itemData = { ...variant, productName: product.name, generic: product.generic };
@@ -503,8 +511,9 @@ export default function MonthlyReport() {
   }));
   const stockLedgerTotals = stockLedgerRows.reduce((totals, entry) => ({
     stockIn: totals.stockIn + (entry.type === 'স্টক ইন' ? Math.max(0, entry.changeCount) : 0),
+    dealerReturns: totals.dealerReturns + (entry.category === 'dealerReturn' ? Math.max(0, entry.changeCount) : 0),
     stockOut: totals.stockOut + (entry.changeCount < 0 ? Math.abs(entry.changeCount) : 0)
-  }), { stockIn: 0, stockOut: 0 });
+  }), { stockIn: 0, dealerReturns: 0, stockOut: 0 });
   const stockLedgerClosingBalance = stockLedgerRows.length
     ? stockLedgerRows[stockLedgerRows.length - 1].runningTotal
     : stockLedgerOpeningBalance;
@@ -512,6 +521,16 @@ export default function MonthlyReport() {
     stockLedgerRows,
     stockLedgerOpeningBalance
   );
+  const stockLedgerDailyTotals = stockLedgerDailyRows.reduce((totals, row) => ({
+    factoryIn: totals.factoryIn + row.factoryIn,
+    stockOut: totals.stockOut + row.stockOut,
+    dealerReturns: totals.dealerReturns + row.dealerReturns
+  }), { factoryIn: 0, stockOut: 0, dealerReturns: 0 });
+  const stockLedgerExpectedClosingBalance = stockLedgerOpeningBalance
+    + stockLedgerTotals.stockIn
+    + stockLedgerTotals.dealerReturns
+    - stockLedgerTotals.stockOut;
+  const stockLedgerBalancesReconcile = stockLedgerExpectedClosingBalance === stockLedgerClosingBalance;
 
   const printReport = () => {
     const printClass = 'monthly-report-printing';
@@ -1054,10 +1073,11 @@ export default function MonthlyReport() {
             )}
             {validStockDateRange && (
               <>
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
                   {[
                     ['শুরুর প্যাকেজ ব্যালান্স', stockLedgerOpeningBalance],
                     ['ফ্যাক্টরি থেকে প্যাকেজ ইন', stockLedgerTotals.stockIn],
+                    ['মোট ডিলার ফেরত', stockLedgerTotals.dealerReturns],
                     ['মোট প্যাকেজ স্টক আউট', stockLedgerTotals.stockOut],
                     ['শেষ প্যাকেজ ব্যালান্স', stockLedgerClosingBalance]
                   ].map(([label, amount]) => (
@@ -1069,6 +1089,54 @@ export default function MonthlyReport() {
                     </div>
                   ))}
                 </div>
+                <p className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs font-semibold text-slate-700">
+                  হিসাব: {formatStockQuantity(stockLedgerOpeningBalance)} + {formatStockQuantity(stockLedgerTotals.stockIn)}
+                  {' + '}{formatStockQuantity(stockLedgerTotals.dealerReturns)} - {formatStockQuantity(stockLedgerTotals.stockOut)}
+                  {' = '}{formatStockQuantity(stockLedgerExpectedClosingBalance)} প্যাকেজ
+                  {stockLedgerBalancesReconcile
+                    ? ' (শেষ ব্যালান্সের সঙ্গে মিলে গেছে)'
+                    : ` (লেজারের শেষ ব্যালান্স ${formatStockQuantity(stockLedgerClosingBalance)}; পার্থক্য আছে)`}
+                </p>
+                {activeStockStartDate === '2026-09-30' && stockLedgerOpeningBalance !== 0 && (
+                  <p role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs font-semibold text-amber-900">
+                    ৩০-০৯-২০২৬-এ ৪৭১৬ প্যাকেজকে স্টক-ইন ধরা হলে শুরুর ব্যালান্স ০ হওয়ার কথা; বর্তমান হিসাব {formatStockQuantity(stockLedgerOpeningBalance)}।
+                    শুরুর আগের লেনদেনগুলো যাচাই করুন—সেগুলো স্বয়ংক্রিয়ভাবে মুছে বা বাদ দেওয়া হয়নি।
+                  </p>
+                )}
+                {stockLedgerBeforeRangeRows.length > 0 && (
+                  <details className="rounded-lg border border-amber-200 bg-amber-50/60 p-3">
+                    <summary className="cursor-pointer text-xs font-bold text-amber-900">
+                      নির্বাচিত শুরুর তারিখের আগের {toBn(stockLedgerBeforeRangeRows.length)}টি প্যাকেজ লেনদেন দেখুন
+                      {' • '}নিট পরিবর্তন {formatStockQuantity(stockLedgerBeforeRangeNetChange)}
+                    </summary>
+                    <div className="mt-3 overflow-x-auto rounded border border-amber-100 bg-white">
+                      <table className="w-full min-w-[760px] text-left text-xs">
+                        <thead className="bg-slate-100 text-slate-700">
+                          <tr>
+                            <th className="p-2">তারিখ</th>
+                            <th className="p-2">লেনদেন</th>
+                            <th className="p-2">রেফারেন্স</th>
+                            <th className="p-2">পণ্য</th>
+                            <th className="p-2">ইউনিট</th>
+                            <th className="p-2 text-right">পরিমাণ</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {stockLedgerBeforeRangeRows.map((row, index) => (
+                            <tr key={`${row.date}-${row.reference}-${index}`}>
+                              <td className="p-2 whitespace-nowrap">{toBnDate(row.date)}</td>
+                              <td className="p-2">{row.type}</td>
+                              <td className="p-2">{row.reference}</td>
+                              <td className="p-2">{row.productName}</td>
+                              <td className="p-2">{row.unit}</td>
+                              <td className="p-2 text-right">{formatStockQuantity(row.changeCount)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </details>
+                )}
                 <div className="overflow-x-auto rounded-lg border border-slate-200">
                   <h4 className="bg-emerald-50 px-3 py-2 text-sm font-black text-emerald-900">
                     তারিখভিত্তিক ফ্যাক্টরি ইন ও স্টক আউট
@@ -1097,6 +1165,15 @@ export default function MonthlyReport() {
                         <tr><td colSpan={5} className="p-4 text-center text-slate-500">নির্বাচিত সময়ে কোনো প্যাকেজ লেনদেন নেই।</td></tr>
                       )}
                     </tbody>
+                    <tfoot className="border-t-2 border-slate-300 bg-slate-100 font-black">
+                      <tr>
+                        <th className="p-2 text-left">সর্বমোট</th>
+                        <td className="p-2 text-right">{formatStockQuantity(stockLedgerDailyTotals.factoryIn)}</td>
+                        <td className="p-2 text-right">{formatStockQuantity(stockLedgerDailyTotals.stockOut)}</td>
+                        <td className="p-2 text-right">{formatStockQuantity(stockLedgerDailyTotals.dealerReturns)}</td>
+                        <td className="p-2 text-right">{formatStockQuantity(stockLedgerClosingBalance)} (শেষ ব্যালান্স)</td>
+                      </tr>
+                    </tfoot>
                   </table>
                 </div>
                 <div className="overflow-x-auto rounded-lg border border-slate-200">
@@ -1278,7 +1355,7 @@ export default function MonthlyReport() {
                         কোড: {formatOfficerCode(inv.officerCode)}
                       </span>
                     </td>
-                    <td className="p-2 text-center font-bold text-emerald-800 font-mono">{getInvoiceCartons(inv)}</td>
+                    <td className="p-2 text-center font-bold text-emerald-800 font-mono">{getInvoicePackageTotal(inv)}</td>
                     <td className="p-2 text-right font-mono font-bold">৳{getInvoiceSalesAmount(inv).toLocaleString()}</td>
                     <td className="p-2 text-right font-mono text-emerald-700 font-bold">৳{(Number(inv.paidAmount) || 0).toLocaleString()}</td>
                     <td className="p-2 text-right font-mono text-rose-700 font-bold">৳{(Number(inv.currentDue ?? inv.dueAmount) || 0).toLocaleString()}</td>

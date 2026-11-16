@@ -30,3 +30,24 @@ export function getInvoiceCartons(invoice) {
 
   return (invoice?.items || []).reduce((sum, item) => sum + getItemCartons(item), 0);
 }
+
+export function getItemPackageCount(item) {
+  const unit = String(item?.quantityUnit ?? item?.unit ?? '').trim().toLowerCase();
+  if (
+    item?.unitType === 'piece'
+    || item?.isRetailOnly
+    || ['পিস', 'piece', 'pieces', 'pc', 'pcs'].includes(unit)
+  ) return 0;
+
+  const packageCount = Number(item?.cartons ?? item?.quantity);
+  return Number.isSafeInteger(packageCount) && packageCount > 0 ? packageCount : 0;
+}
+
+export function getInvoicePackageCount(invoice) {
+  if (Array.isArray(invoice?.items) && invoice.items.length > 0) {
+    return invoice.items.reduce((sum, item) => sum + getItemPackageCount(item), 0);
+  }
+
+  const storedTotal = Number(invoice?.totalCartons);
+  return Number.isFinite(storedTotal) && storedTotal > 0 ? Math.trunc(storedTotal) : 0;
+}
