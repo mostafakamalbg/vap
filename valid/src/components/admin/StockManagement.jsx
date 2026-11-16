@@ -73,6 +73,7 @@ export default function StockManagement() {
   const [activeTab, setActiveTab] = useState('inventory'); // 'inventory', 'stock-in', 'new-product'
 
   const [stockInItems, setStockInItems] = useState(() => getStockInRows(products));
+  const [activeStockInRow, setActiveStockInRow] = useState(null);
   const [stockInPreview, setStockInPreview] = useState(null);
   const [stockInSaving, setStockInSaving] = useState(false);
   const [stockInSaveError, setStockInSaveError] = useState('');
@@ -619,14 +620,22 @@ export default function StockManagement() {
                       const product = products.find((entry) => entry.id === item.productId);
                       const variant = product?.variants.find((entry) => entry.sku === item.sku);
                       const quantityUnit = getPackageQuantityUnit({ ...variant, productName: product?.name });
+                      const rowKey = `${item.productId}-${item.sku}`;
                       return (
-                        <tr key={`${item.productId}-${item.sku}`} className="bg-white hover:bg-slate-50">
-                          <td className="px-2 py-1.5 font-semibold text-slate-800">{product?.name || 'পণ্য'}</td>
-                          <td className="px-2 py-1.5 text-slate-600">
+                        <tr
+                          key={rowKey}
+                          onFocus={() => setActiveStockInRow(rowKey)}
+                          onBlur={(event) => {
+                            if (!event.currentTarget.contains(event.relatedTarget)) setActiveStockInRow(null);
+                          }}
+                          className={`h-8 transition-colors ${activeStockInRow === rowKey ? 'bg-amber-50' : 'bg-white hover:bg-slate-50'}`}
+                        >
+                          <td className="px-2 py-0.5 font-semibold text-slate-800">{product?.name || 'পণ্য'}</td>
+                          <td className="px-2 py-0.5 text-slate-600">
                             {variant?.size}
                             <span className="ml-1 text-[10px] text-slate-400">• {variant?.packPerBox} {variant?.unit} / {quantityUnit}</span>
                           </td>
-                          <td className="px-2 py-1.5 text-right">
+                          <td className="px-2 py-0.5 text-right">
                             <label className="inline-flex items-center gap-2 font-semibold text-slate-700">
                               <span>{quantityUnit}</span>
                               <input
@@ -639,7 +648,7 @@ export default function StockManagement() {
                                 onChange={(event) => setStockInItems((previous) => previous.map((row, rowIndex) => (
                                   rowIndex === index ? { ...row, quantity: event.target.value } : row
                                 )))}
-                                className="w-20 rounded border border-slate-300 bg-white px-2 py-1 text-center text-sm font-bold text-emerald-800"
+                                className="h-7 w-20 rounded border border-slate-300 bg-white px-2 text-center text-xs font-bold text-emerald-800 focus:bg-amber-50 focus:outline-none focus:ring-1 focus:ring-amber-400"
                               />
                             </label>
                           </td>
