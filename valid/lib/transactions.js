@@ -4,6 +4,7 @@ function doesNotSupportTransactions(error) {
   const message = String(error?.message || '').toLowerCase();
   return error?.code === 20
     || message.includes('transaction numbers are only allowed')
+    || message.includes('only servers in a sharded cluster can start a new transaction')
     || message.includes('transactions are not supported');
 }
 
