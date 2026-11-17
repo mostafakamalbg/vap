@@ -42,6 +42,7 @@ export default function Navbar({ activeTab, setActiveTab }) {
     { id: 'sales-agreements', label: 'সেলস ও কালেকশন চুক্তি', icon: FileText },
     { id: 'monthly-sales-reports', label: 'মাসিক বিক্রয় ও টার্গেট', icon: FileText },
     { id: 'officer-tracking', label: t('nav.officerTracking'), icon: UserCheck },
+    { id: 'dashboard-reports', label: 'লাইভ ড্যাশবোর্ড রিপোর্ট', icon: FileText },
     { id: 'data-management', label: 'ডেটা এক্সপোর্ট/ইমপোর্ট', icon: Download },
     { id: 'factory-reset', label: 'ফ্যাক্টরি ডেটা রিসেট', icon: RotateCw }
   ];

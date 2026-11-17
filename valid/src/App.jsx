@@ -16,6 +16,7 @@ import InvoiceList from './components/admin/InvoiceList';
 import StockManagement from './components/admin/StockManagement';
 import DealerLedger from './components/admin/DealerLedger';
 import OfficerPerformance from './components/admin/OfficerPerformance';
+import DashboardReports from './components/admin/DashboardReports';
 import SalesAgreement from './components/admin/SalesAgreement';
 import MonthlySalesReports from './components/admin/MonthlySalesReports';
 import AdminDataManagement from './components/admin/AdminDataManagement';
@@ -132,6 +133,7 @@ function AppContent() {
     if (activeTab === 'inventory') return <StockManagement />;
     if (activeTab === 'dealer-ledger') return <DealerLedger />;
     if (activeTab === 'officer-tracking') return <OfficerPerformance />;
+    if (activeTab === 'dashboard-reports') return <DashboardReports />;
     if (activeTab === 'data-management') return <AdminDataManagement />;
     if (activeTab === 'factory-reset') return <FactoryDataReset />;
     if (activeTab === 'sales-agreements') return <SalesAgreement />;

@@ -16,7 +16,7 @@ import { calculateOfficerFinancials } from '../../shared/officerFinancials';
 import { getInvoiceSalesAmount } from '../../shared/invoiceTotals';
 
 async function requestJson(url, options) {
-  const response = await fetch(url, options);
+  const response = await fetch(url, { cache: 'no-store', ...options });
   const result = await response.json();
   if (!response.ok) throw new Error(result.error || 'অনুরোধ সম্পন্ন করা যায়নি।');
   return result;
@@ -80,20 +80,26 @@ export default function OfficerDashboard() {
     if (monthFilter !== 'ALL') query.set('month', monthFilter);
     setPeriodInvoices([]);
     setPeriodPayments([]);
-    Promise.all([
+    const loadPeriodRecords = () => Promise.all([
       requestJson(`/api/invoices?${query}`),
       requestJson(`/api/records?type=payments&${query}`)
     ]).then(([invoiceRecords, paymentRecords]) => {
       if (cancelled) return;
       setPeriodInvoices(Array.isArray(invoiceRecords) ? invoiceRecords : []);
       setPeriodPayments(Array.isArray(paymentRecords) ? paymentRecords : []);
+      setError('');
     }).catch((requestError) => {
       if (cancelled) return;
       setPeriodInvoices([]);
       setPeriodPayments([]);
       setError(requestError.message);
     });
-    return () => { cancelled = true; };
+    loadPeriodRecords();
+    const intervalId = window.setInterval(loadPeriodRecords, 30000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
   }, [monthFilter, sessionFilter]);
 
   const isOfficerInvoice = useCallback((invoice) => (
@@ -174,6 +180,25 @@ export default function OfficerDashboard() {
     ...(salesOfficerSummary || {}),
     code: currentOfficer?.code || currentUser?.officerCode
   }, 'জানুয়ারি - জুন 2027');
+  const targetYear = sessionFilter.match(/\d{4}/)?.[0] || String(new Date().getFullYear());
+  const yearlyTarget = getOfficerSalesTarget({
+    ...currentOfficer,
+    ...(salesOfficerSummary || {}),
+    code: currentOfficer?.code || currentUser?.officerCode
+  }, `জানুয়ারি - জুন ${targetYear}`) + getOfficerSalesTarget({
+    ...currentOfficer,
+    ...(salesOfficerSummary || {}),
+    code: currentOfficer?.code || currentUser?.officerCode
+  }, `জুলাই - ডিসেম্বর ${targetYear}`);
+  const yearlySalesAmount = salesInvoices
+    .filter((invoice) => String(invoice.date || '').startsWith(targetYear))
+    .reduce((sum, invoice) => sum + getInvoiceSalesAmount(invoice), 0)
+    - returnInvoices
+      .filter((invoice) => String(invoice.date || '').startsWith(targetYear))
+      .reduce((sum, invoice) => sum + getInvoiceSalesAmount(invoice), 0);
+  const yearlyAchievement = yearlyTarget
+    ? Math.round(yearlySalesAmount / yearlyTarget * 100)
+    : 0;
   const targetAchievement = sessionSalesTarget
     ? Math.round((sessionSalesAmount / sessionSalesTarget) * 100)
     : 0;
@@ -288,8 +313,13 @@ export default function OfficerDashboard() {
 
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {[
-          { label: t('officer.invoiceCount'), value: filteredSalesInvoices.length.toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US'), Icon: ClipboardList },
+          { label: t('officer.invoiceCount'), value: periodInvoices.length.toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US'), Icon: ClipboardList },
           { label: t('officer.salesAmount'), value: `৳${totalSales.toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}`, Icon: TrendingUp },
+          {
+            label: 'মোট নিট বিক্রয়',
+            value: `৳${financeSummary.totalNetSales.toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}`,
+            Icon: TrendingUp
+          },
           {
             label: 'মোট আদায়',
             value: `৳${financeSummary.totalReceivedAmount.toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}`,
@@ -312,7 +342,17 @@ export default function OfficerDashboard() {
             detail: `খরচের হার ${financeSummary.expensePercentage}%`,
             Icon: TrendingUp
           },
+          { label: 'অফিস / ডিপো পে', value: `৳${financeSummary.paymentAndExpense.officePay.toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}`, Icon: TrendingUp },
+          { label: 'ভাড়া / Fare', value: `৳${financeSummary.paymentAndExpense.fare.toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}`, Icon: TrendingUp },
+          { label: 'বেতন / Salary', value: `৳${financeSummary.paymentAndExpense.salary.toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}`, Icon: TrendingUp },
+          { label: 'L/C খরচ', value: `৳${financeSummary.paymentAndExpense.lc.toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}`, Icon: TrendingUp },
           { label: 'মোট বিক্রিত প্যাক / কার্টুন', value: Math.round(totalCartonsSold).toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US'), Icon: PackageCheck },
+          {
+            label: `${targetYear} বার্ষিক টার্গেট`,
+            value: `৳${yearlyTarget.toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}`,
+            detail: `অর্জন ৳${Math.round(yearlySalesAmount).toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')} • ${yearlyAchievement}%`,
+            Icon: Target
+          },
           {
             label: 'জুলাই–ডিসেম্বর ২০২৬ টার্গেট',
             value: `৳${targetJulyDec2026.toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}`,
