@@ -340,7 +340,7 @@ export default async function handler(req, res) {
           dealerId: dealer.dealerId || '',
           dealerName: dealer.dealerName || dealer.dealerCode || 'নাম নেই',
           mobileNo: dealer.mobileNo || '',
-          previousDue: roundAmount(dealer.openingDue || dealer.recordedPreviousDue),
+          previousDue: roundAmount(dealer.openingDue ?? dealer.recordedPreviousDue),
           sales: 0,
           returns: 0,
           invoicePaid: 0,
@@ -384,7 +384,13 @@ export default async function handler(req, res) {
             lc: 0,
             collection: 0
           };
-          if (isPrior) party.previousDue -= roundAmount(row.collection);
+          if (isPrior) {
+            party.previousDue -= roundAmount(row.collection)
+              + roundAmount(row.officePay)
+              + roundAmount(row.salary)
+              + roundAmount(row.fare)
+              + roundAmount(row.lc);
+          }
           else {
             party.collection += roundAmount(row.collection);
             party.officePay += roundAmount(row.officePay);
@@ -406,9 +412,10 @@ export default async function handler(req, res) {
 
       const parties = [...partyMap.values()].map((party, partyIndex) => {
         const netSales = party.sales - party.returns;
-        const actualReceived = party.invoicePaid + party.collection;
+        const expensesForParty = party.officePay + party.salary + party.fare + party.lc;
+        const actualReceived = party.invoicePaid + party.collection + expensesForParty;
         const previousPlusNetSales = party.previousDue + netSales;
-        const totalCollection = party.salary + party.collection + party.fare + party.lc;
+        const totalCollection = expensesForParty + party.collection;
         return {
           ...party,
           slNo: partyIndex + 1,
@@ -427,12 +434,14 @@ export default async function handler(req, res) {
       const returnAmount = parties.reduce((sum, party) => sum + party.returns, 0);
       const totalNetSales = salesAmount - returnAmount;
       const derivedPreviousDue = parties.reduce((sum, party) => sum + party.previousDue, 0);
-      const previousDue = officer.lastSessionDue != null && officer.lastSessionDue !== ''
-        ? roundAmount(officer.lastSessionDue)
-        : derivedPreviousDue;
+      const previousDue = derivedPreviousDue || roundAmount(officer.lastSessionDue);
       const previousPlusNetSales = previousDue + totalNetSales;
       const totalExpenses = Object.values(expenses).reduce((sum, amount) => sum + amount, 0);
-      const totalReceivedAmount = roundAmount(totalExpenses);
+      const actualCollections = parties.reduce(
+        (sum, party) => sum + party.invoicePaid + party.collection,
+        0
+      );
+      const totalReceivedAmount = roundAmount(totalExpenses + actualCollections);
       const session = period === 'session'
         ? value
         : period === 'month'

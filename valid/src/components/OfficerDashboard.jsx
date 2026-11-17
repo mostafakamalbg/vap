@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ClipboardList, PackageCheck, Plus, Send, ShoppingCart, Target, TrendingUp } from 'lucide-react';
+import { ClipboardList, Plus, Send, ShoppingCart, Target, TrendingUp } from 'lucide-react';
 import { useAgro } from '../context/AgroContext';
 import { useUiPreferences } from '../context/UiPreferencesContext';
 import {
@@ -10,17 +10,38 @@ import {
 } from '../../shared/codes';
 import { getPackageQuantityUnit } from '../../shared/quantityUnits';
 import { getInvoicePackageCount, getItemPackageCount } from '../../shared/invoiceCartons';
-import { getInvoiceSessionForDate } from '../../shared/sessions';
+import {
+  getInvoiceSessionForDate,
+  isCurrentSession,
+  sortSessionsNewestFirst
+} from '../../shared/sessions';
 import { getOfficerSalesTarget, OFFICER_TARGET_SESSIONS } from '../../shared/officerSalesTargets';
-import { calculateOfficerFinancials } from '../../shared/officerFinancials';
+import { calculateOfficerFinancials, filterOfficerRecordsByPeriod } from '../../shared/officerFinancials';
 import { getInvoiceSalesAmount } from '../../shared/invoiceTotals';
-import { isDealerCollection } from '../../shared/paymentMethods';
+import { isDealerBalanceCredit } from '../../shared/paymentMethods';
 
 async function requestJson(url, options) {
   const response = await fetch(url, { cache: 'no-store', ...options });
   const result = await response.json();
   if (!response.ok) throw new Error(result.error || 'অনুরোধ সম্পন্ন করা যায়নি।');
   return result;
+}
+
+function printDashboardSection(sectionId) {
+  const section = document.querySelector(`[data-dashboard-print="${sectionId}"]`);
+  if (!section) return;
+  const printable = section.cloneNode(true);
+  printable.classList.add('officer-dashboard-print', 'dashboard-section-print');
+  printable.querySelectorAll('.no-print').forEach((element) => element.remove());
+  document.body.appendChild(printable);
+  document.body.classList.add('dashboard-section-printing');
+  const cleanup = () => {
+    printable.remove();
+    document.body.classList.remove('dashboard-section-printing');
+  };
+  window.addEventListener('afterprint', cleanup, { once: true });
+  window.print();
+  window.setTimeout(cleanup, 1000);
 }
 
 export default function OfficerDashboard() {
@@ -57,11 +78,14 @@ export default function OfficerDashboard() {
     requestJson('/api/orders')
       .then((data) => { if (!cancelled) setOrders(data); })
       .catch((requestError) => { if (!cancelled) setError(requestError.message); });
-    requestJson('/api/sales-officers')
+    const query = new URLSearchParams();
+    if (sessionFilter !== 'ALL') query.set('session', sessionFilter);
+    if (monthFilter !== 'ALL') query.set('month', monthFilter);
+    requestJson(`/api/sales-officers?${query}`)
       .then((data) => { if (!cancelled) setSalesOfficerSummaries(Array.isArray(data) ? data : []); })
       .catch((requestError) => { if (!cancelled) setError(requestError.message); });
     return () => { cancelled = true; };
-  }, []);
+  }, [monthFilter, sessionFilter]);
 
   useEffect(() => {
     let cancelled = false;
@@ -132,102 +156,75 @@ export default function OfficerDashboard() {
     }
   }, [availableDealers, dealerId]);
   const sessions = useMemo(
-    () => [...new Set([
+    () => sortSessionsNewestFirst([
       ...OFFICER_TARGET_SESSIONS,
       ...salesInvoices.map((invoice) => invoice.session).filter(Boolean),
       ...monthlyReports.map((report) => report.session).filter(Boolean)
-    ])].sort().reverse(),
+    ].filter(isCurrentSession)),
     [monthlyReports, salesInvoices]
   );
   const months = useMemo(
     () => [...new Set([
       ...salesInvoices.map((invoice) => String(invoice.date || '').slice(0, 7)),
       ...monthlyReports.map((report) => String(report.reportingDate || '').slice(0, 7))
-    ].filter((month) => /^\d{4}-\d{2}$/.test(month)))].sort().reverse(),
+    ].filter((month) => /^\d{4}-\d{2}$/.test(month) && month >= '2025-07'))].sort().reverse(),
     [monthlyReports, salesInvoices]
   );
   const filteredSalesInvoices = periodInvoices.filter((invoice) => (
     !['dealer_return', 'factory_damage', 'depot_factory_return'].includes(invoice.invoiceType)
   ));
-  const filteredReturnInvoices = periodInvoices.filter((invoice) => invoice.invoiceType === 'dealer_return');
-  const totalSales = Math.round(filteredSalesInvoices.reduce(
-    (sum, invoice) => sum + getInvoiceSalesAmount(invoice),
-    0
-  ) - filteredReturnInvoices.reduce(
-    (sum, invoice) => sum + getInvoiceSalesAmount(invoice),
-    0
-  ));
   const targetSalesInvoices = periodInvoices.filter((invoice) => (
     !['factory_damage', 'depot_factory_return'].includes(invoice.invoiceType)
   ));
-  const sessionSalesAmount = Math.round(targetSalesInvoices.reduce(
-    (sum, invoice) => sum + getInvoiceSalesAmount(invoice),
-    0
-  ) - targetSalesInvoices
-    .filter((invoice) => invoice.invoiceType === 'dealer_return')
-    .reduce((sum, invoice) => sum + getInvoiceSalesAmount(invoice), 0));
   const sessionSalesTarget = getOfficerSalesTarget({
     ...currentOfficer,
     ...(salesOfficerSummary || {}),
     code: currentOfficer?.code || currentUser?.officerCode
   }, sessionFilter);
-  const targetYear = sessionFilter.match(/\d{4}/)?.[0] || String(new Date().getFullYear());
-  const targetJulyDec = getOfficerSalesTarget({
+  const targetJulyDec2026 = getOfficerSalesTarget({
     ...currentOfficer,
     ...(salesOfficerSummary || {}),
     code: currentOfficer?.code || currentUser?.officerCode
-  }, `জুলাই - ডিসেম্বর ${targetYear}`);
-  const targetJanJune = getOfficerSalesTarget({
+  }, 'জুলাই - ডিসেম্বর 2026');
+  const targetJanJune2027 = getOfficerSalesTarget({
     ...currentOfficer,
     ...(salesOfficerSummary || {}),
     code: currentOfficer?.code || currentUser?.officerCode
-  }, `জানুয়ারি - জুন ${targetYear}`);
-  const yearlyTarget = targetJanJune + targetJulyDec;
-  const yearlySalesAmount = salesInvoices
-    .filter((invoice) => String(invoice.date || '').startsWith(targetYear))
-    .reduce((sum, invoice) => sum + getInvoiceSalesAmount(invoice), 0)
-    - returnInvoices
-      .filter((invoice) => String(invoice.date || '').startsWith(targetYear))
-      .reduce((sum, invoice) => sum + getInvoiceSalesAmount(invoice), 0);
+  }, 'জানুয়ারি - জুন 2027');
+  const yearlyTarget = targetJanJune2027 + targetJulyDec2026;
+  const targetProgressForSession = (session) => filterOfficerRecordsByPeriod(
+    targetSalesInvoices,
+    { session }
+  ).reduce((sum, invoice) => sum + (invoice.invoiceType === 'dealer_return'
+    ? -getInvoiceSalesAmount(invoice)
+    : getInvoiceSalesAmount(invoice)), 0);
+  const salesJulyDec2026 = targetProgressForSession('জুলাই - ডিসেম্বর 2026');
+  const salesJanJune2027 = targetProgressForSession('জানুয়ারি - জুন 2027');
+  const yearlySalesAmount = salesJulyDec2026 + salesJanJune2027;
+  const julyDecAchievement = targetJulyDec2026
+    ? Math.round(salesJulyDec2026 / targetJulyDec2026 * 100)
+    : 0;
+  const janJuneAchievement = targetJanJune2027
+    ? Math.round(salesJanJune2027 / targetJanJune2027 * 100)
+    : 0;
   const yearlyAchievement = yearlyTarget
     ? Math.round(yearlySalesAmount / yearlyTarget * 100)
     : 0;
-  const targetAchievement = sessionSalesTarget
-    ? Math.round((sessionSalesAmount / sessionSalesTarget) * 100)
-    : 0;
-  const reportSummary = monthlyReports.reduce((summary, report) => (
-    (report.parties || []).reduce((totals, party) => ({
-      sales: totals.sales + (Number(party.presentMonth?.sales) || 0),
-      returns: totals.returns + (Number(party.presentMonth?.return) || 0),
-      netSales: totals.netSales + (Number(party.presentMonth?.netSales) || 0),
-      previousPlusNetSales: totals.previousPlusNetSales + (Number(party.lastAndPresent?.netSales) || 0),
-      salary: totals.salary + (Number(party.lastAndPresent?.salary) || 0),
-      collection: totals.collection + (Number(party.lastAndPresent?.collection) || 0),
-      fare: totals.fare + (Number(party.lastAndPresent?.fare) || 0),
-      lc: totals.lc + (Number(party.lastAndPresent?.l_c) || 0),
-      lastMonthDues: totals.lastMonthDues + (Number(party.lastMonthDues) || 0),
-      collections: totals.collections + (Number(party.presentMonthTotalCollection) || 0),
-      dues: totals.dues + (Number(party.presentMonthNetDues) || 0)
-    }), summary)
-  ), {
-    sales: 0,
-    returns: 0,
-    netSales: 0,
-    previousPlusNetSales: 0,
-    salary: 0,
-    collection: 0,
-    fare: 0,
-    lc: 0,
-    lastMonthDues: 0,
-    collections: 0,
-    dues: 0
-  });
+  const latestMonthlyReport = monthlyReports.reduce((latest, report) => (
+    !latest || String(report.reportingDate || '') > String(latest.reportingDate || '')
+      ? report
+      : latest
+  ), null);
+  const latestReportOpeningDue = (latestMonthlyReport?.parties || []).reduce(
+    (sum, party) => sum + (Number(party.lastMonthDues) || 0),
+    0
+  );
   const financeSummary = calculateOfficerFinancials({
     invoices: periodInvoices,
     payments: periodPayments,
     salesTarget: sessionSalesTarget,
-    lastSessionDue: monthlyReports.length
-      ? reportSummary.lastMonthDues
+    lastSessionDue: latestMonthlyReport
+      ? latestReportOpeningDue
       : monthFilter === 'ALL' ? currentOfficer?.lastSessionDue : 0
   });
   const officerProductSales = useMemo(() => {
@@ -258,7 +255,6 @@ export default function OfficerDashboard() {
     });
     return [...sales.values()];
   }, [filteredSalesInvoices]);
-  const totalCartonsSold = officerProductSales.reduce((sum, item) => sum + item.cartons, 0);
   const visibleInvoices = periodInvoices.filter((invoice) => (
     !['factory_damage', 'depot_factory_return'].includes(invoice.invoiceType)
   ));
@@ -277,9 +273,8 @@ export default function OfficerDashboard() {
     const ledgers = new Map(availableDealers.map((dealer) => [dealer.id, {
       dealerId: dealer.id,
       dealerName: dealer.shopName || dealer.id,
-      lastSessionDue: monthFilter === 'ALL'
-        ? Number(dealer.lastSessionDue ?? dealer.openingDue) || 0
-        : reportDueByName.get(String(dealer.shopName || '').trim().toLowerCase())?.amount || 0,
+      lastSessionDue: reportDueByName.get(String(dealer.shopName || '').trim().toLowerCase())?.amount
+        ?? (monthFilter === 'ALL' ? Number(dealer.lastSessionDue ?? dealer.openingDue) || 0 : 0),
       sales: 0,
       returns: 0,
       invoiceReceived: 0,
@@ -315,7 +310,7 @@ export default function OfficerDashboard() {
     });
     periodPayments.forEach((payment) => {
       if (payment.sourceInvoiceId || /(?:invoice|চালান)\s*#/i.test(String(payment.reference || ''))) return;
-      if (!isDealerCollection(payment)) return;
+      if (!isDealerBalanceCredit(payment)) return;
       const ledger = getLedger(payment);
       if (ledger) ledger.collection += Number(payment.amount) || 0;
     });
@@ -327,6 +322,31 @@ export default function OfficerDashboard() {
         - ledger.invoiceReceived - ledger.collection
     })).sort((left, right) => left.dealerName.localeCompare(right.dealerName));
   }, [availableDealers, monthFilter, monthlyReports, periodInvoices, periodPayments]);
+  const dealerLedgerTotals = officerDealerLedgers.reduce((totals, ledger) => ({
+    lastSessionDue: totals.lastSessionDue + ledger.lastSessionDue,
+    sales: totals.sales + ledger.sales,
+    returns: totals.returns + ledger.returns,
+    received: totals.received + ledger.received,
+    due: totals.due + ledger.due
+  }), { lastSessionDue: 0, sales: 0, returns: 0, received: 0, due: 0 });
+  const salesHistoryTotals = visibleInvoices.reduce((totals, invoice) => {
+    const amount = getInvoiceSalesAmount(invoice);
+    const cartons = getInvoicePackageCount(invoice);
+    if (invoice.invoiceType === 'dealer_return') {
+      totals.cartons -= cartons;
+      totals.sales -= amount;
+      return totals;
+    }
+    totals.cartons += cartons;
+    totals.sales += amount;
+    totals.due += Math.max(0, amount - (Number(invoice.paidAmount) || 0));
+    return totals;
+  }, { cartons: 0, sales: 0, due: 0 });
+  const productSalesTotals = officerProductSales.reduce((totals, item) => ({
+    cartons: totals.cartons + item.cartons,
+    units: totals.units + item.pieces,
+    amount: totals.amount + item.amount
+  }), { cartons: 0, units: 0, amount: 0 });
   const officerOrders = orders.filter((order) => order.officerId === currentUser?.officerId);
   const getVariantShortage = (variant) => {
     const orderedCartons = items
@@ -363,6 +383,39 @@ export default function OfficerDashboard() {
       setBusy(false);
     }
   };
+  const formatMoney = (value) => `৳${Math.round(Number(value) || 0).toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}`;
+  const targetSummaryCards = [
+    { label: 'জুলাই–ডিসেম্বর 2026 টার্গেট ও অর্জন', value: formatMoney(targetJulyDec2026), detail: `অর্জন ${formatMoney(salesJulyDec2026)} • ${julyDecAchievement}%`, Icon: Target },
+    { label: 'জানুয়ারি–জুন 2027 টার্গেট ও অর্জন', value: formatMoney(targetJanJune2027), detail: `অর্জন ${formatMoney(salesJanJune2027)} • ${janJuneAchievement}%`, Icon: Target },
+    { label: 'টোটাল বার্ষিক টার্গেট ও অর্জন', value: formatMoney(yearlyTarget), detail: `অর্জন ${formatMoney(yearlySalesAmount)} • ${yearlyAchievement}%`, Icon: Target }
+  ];
+  const transactionSummaryCards = [
+    { label: 'মোট বিক্রয় চালান', value: filteredSalesInvoices.length.toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US'), Icon: ClipboardList },
+    { label: 'মোট বিক্রয় মূল্য', value: formatMoney(financeSummary.salesAmount), Icon: TrendingUp },
+    { label: 'মোট ফেরত মূল্য', value: formatMoney(financeSummary.returnAmount), Icon: TrendingUp },
+    { label: 'মোট নিট বিক্রয়', value: formatMoney(financeSummary.totalNetSales), Icon: TrendingUp },
+    { label: 'মোট পাওনা', value: formatMoney(financeSummary.totalAmountDues), Icon: TrendingUp }
+  ];
+  const expenseSummaryCards = [
+    { label: 'অফিস / ডিপো', value: formatMoney(financeSummary.paymentAndExpense.officePay), Icon: TrendingUp },
+    { label: 'ভাড়া / Fare', value: formatMoney(financeSummary.paymentAndExpense.fare), Icon: TrendingUp },
+    { label: 'বেতন / Salary', value: formatMoney(financeSummary.paymentAndExpense.salary), Icon: TrendingUp },
+    { label: 'L/C খরচ', value: formatMoney(financeSummary.paymentAndExpense.lc), Icon: TrendingUp }
+  ];
+  const paymentSummaryCards = [
+    { label: 'মোট পেমেন্ট', value: formatMoney(financeSummary.totalReceivedAmount), Icon: TrendingUp },
+    { label: 'মোট পেমেন্ট অর্জন', value: `${financeSummary.paymentPercentage}%`, Icon: Target }
+  ];
+  const renderSummaryCards = (cards) => cards.map(({ label, value, detail, Icon }) => (
+    <div key={label} className="flex items-center gap-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+      <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700"><Icon className="h-5 w-5" /></span>
+      <div>
+        <p className="text-xs font-semibold text-slate-500">{label}</p>
+        <p className="text-xl font-black text-slate-900">{value}</p>
+        {detail && <p className="text-[11px] font-semibold text-emerald-700">{detail}</p>}
+      </div>
+    </div>
+  ));
 
   return (
     <div className="officer-dashboard-print mx-auto max-w-7xl space-y-8 px-4 py-8">
@@ -377,82 +430,24 @@ export default function OfficerDashboard() {
         </button>
       </header>
 
-      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {[
-          { label: t('officer.invoiceCount'), value: periodInvoices.length.toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US'), Icon: ClipboardList },
-          { label: t('officer.salesAmount'), value: `৳${totalSales.toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}`, Icon: TrendingUp },
-          {
-            label: 'মোট নিট বিক্রয়',
-            value: `৳${financeSummary.totalNetSales.toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}`,
-            Icon: TrendingUp
-          },
-          {
-            label: 'মোট আদায়',
-            value: `৳${financeSummary.totalReceivedAmount.toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}`,
-            detail: `পেমেন্ট অর্জন ${financeSummary.paymentPercentage}%`,
-            Icon: TrendingUp
-          },
-          {
-            label: 'মোট পাওনা',
-            value: `৳${financeSummary.totalAmountDues.toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}`,
-            Icon: TrendingUp
-          },
-          {
-            label: 'বর্তমান বিক্রয় বকেয়া',
-            value: `৳${financeSummary.totalSalesDues.toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}`,
-            Icon: TrendingUp
-          },
-          {
-            label: 'মোট খরচ',
-            value: `৳${financeSummary.totalExpenses.toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}`,
-            detail: `খরচের হার ${financeSummary.expensePercentage}%`,
-            Icon: TrendingUp
-          },
-          { label: 'অফিস / ডিপো পে', value: `৳${financeSummary.paymentAndExpense.officePay.toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}`, Icon: TrendingUp },
-          { label: 'ভাড়া / Fare', value: `৳${financeSummary.paymentAndExpense.fare.toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}`, Icon: TrendingUp },
-          { label: 'বেতন / Salary', value: `৳${financeSummary.paymentAndExpense.salary.toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}`, Icon: TrendingUp },
-          { label: 'L/C খরচ', value: `৳${financeSummary.paymentAndExpense.lc.toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}`, Icon: TrendingUp },
-          { label: 'মোট বিক্রিত প্যাক / কার্টুন', value: Math.round(totalCartonsSold).toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US'), Icon: PackageCheck },
-          {
-            label: `${targetYear} দুই-সেশন সম্মিলিত / বার্ষিক টার্গেট`,
-            value: `৳${yearlyTarget.toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}`,
-            detail: `অর্জন ৳${Math.round(yearlySalesAmount).toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')} • ${yearlyAchievement}%`,
-            Icon: Target
-          },
-          {
-            label: `জুলাই–ডিসেম্বর ${targetYear} টার্গেট`,
-            value: `৳${targetJulyDec.toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}`,
-            Icon: Target
-          },
-          {
-            label: `জানুয়ারি–জুন ${targetYear} টার্গেট`,
-            value: `৳${targetJanJune.toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}`,
-            Icon: Target
-          },
-          {
-            label: `সেশন টার্গেট • ${sessionFilter === 'ALL' ? 'সব সেশন' : sessionFilter}`,
-            value: `৳${sessionSalesTarget.toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}`,
-            detail: `অর্জন ৳${sessionSalesAmount.toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')} • ${targetAchievement}%`,
-            Icon: Target
-          }
-        ].map(({ label, value, detail, Icon }) => (
-          <div key={label} className="flex items-center gap-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-            <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700"><Icon className="h-5 w-5" /></span>
-            <div>
-              <p className="text-xs font-semibold text-slate-500">{label}</p>
-              <p className="text-xl font-black text-slate-900">{value}</p>
-              {detail && <p className="text-[11px] font-semibold text-emerald-700">{detail}</p>}
-            </div>
-          </div>
-        ))}
+      <section className="space-y-5">
+        <div><h2 className="mb-2 text-sm font-black text-slate-800">টার্গেট সারাংশ</h2><div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{renderSummaryCards(targetSummaryCards)}</div></div>
+        <div><h2 className="mb-2 text-sm font-black text-slate-800">লেনদেন সারাংশ</h2><div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">{renderSummaryCards(transactionSummaryCards)}</div></div>
+        <div><h2 className="mb-2 text-sm font-black text-slate-800">খরচের বিবরণ</h2><div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">{renderSummaryCards(expenseSummaryCards)}</div></div>
+        <div><h2 className="mb-2 text-sm font-black text-slate-800">পেমেন্ট সারাংশ</h2><div className="grid gap-4 sm:grid-cols-2">{renderSummaryCards(paymentSummaryCards)}</div></div>
       </section>
 
       <section className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
         <div className="space-y-6">
-          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+          <div data-dashboard-print="sales-history" className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
             <div className="border-b border-slate-100 px-5 py-4">
-              <h2 className="font-black text-slate-900">{t('officer.salesSummary')}</h2>
-              <p className="text-xs text-slate-500">{t('officer.approvedInvoices')}</p>
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <h2 className="font-black text-slate-900">{t('officer.salesSummary')}</h2>
+                  <p className="text-xs text-slate-500">{t('officer.approvedInvoices')}</p>
+                </div>
+                <button type="button" onClick={() => printDashboardSection('sales-history')} className="no-print inline-flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-bold text-slate-700">প্রিন্ট</button>
+              </div>
               <div className="no-print mt-3 grid gap-2 sm:grid-cols-2">
                 <label className="text-xs font-semibold text-slate-600">
                   সেশন
@@ -478,7 +473,7 @@ export default function OfficerDashboard() {
                 <tbody className="divide-y divide-slate-100">
                   {visibleInvoices.map((invoice) => {
                     const isReturn = invoice.invoiceType === 'dealer_return';
-                    const salesAmount = Math.round(Number(invoice.totalAmount ?? invoice.grandTotal) || 0);
+                    const salesAmount = getInvoiceSalesAmount(invoice);
                     return (
                     <tr key={invoice.id} className={isReturn ? 'bg-rose-50' : ''}>
                       <td className="px-4 py-3 font-bold text-emerald-800">{invoice.id}</td>
@@ -486,19 +481,28 @@ export default function OfficerDashboard() {
                       <td className="px-4 py-3">{invoice.dealerName || '—'}</td>
                       <td className="px-4 py-3 text-right">{getInvoicePackageCount(invoice).toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')} প্যাক</td>
                       <td className={`px-4 py-3 text-right font-bold ${isReturn ? 'text-rose-700' : ''}`}>{isReturn ? '− ' : ''}৳{salesAmount.toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}</td>
-                      <td className="px-4 py-3 text-right font-semibold text-rose-700">৳{isReturn ? '0' : Math.round(Number(invoice.dueAmount ?? invoice.currentDue) || 0).toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}</td>
+                      <td className="px-4 py-3 text-right font-semibold text-rose-700">৳{isReturn ? '0' : Math.max(0, salesAmount - (Number(invoice.paidAmount) || 0)).toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}</td>
                     </tr>
                   );})}
                   {!visibleInvoices.length && <tr><td colSpan="6" className="px-4 py-8 text-center text-slate-500">{t('officer.noInvoices')}</td></tr>}
+                  <tr className="bg-emerald-50 font-black text-slate-900">
+                    <td colSpan="3" className="px-4 py-2 text-right">মোট</td>
+                    <td className="px-4 py-2 text-right">{Math.round(salesHistoryTotals.cartons).toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}</td>
+                    <td className="px-4 py-2 text-right">৳{Math.round(salesHistoryTotals.sales).toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}</td>
+                    <td className="px-4 py-2 text-right">৳{Math.round(salesHistoryTotals.due).toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}</td>
+                  </tr>
                 </tbody>
               </table>
             </div>
           </div>
 
-          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-            <div className="border-b border-slate-100 px-5 py-4">
-              <h2 className="font-black text-slate-900">ফিল্টার করা ডিলার লেজার</h2>
-              <p className="text-xs text-slate-500">নির্বাচিত সেশন/মাসের ইনভয়েস, পণ্য ফেরত ও কালেকশন</p>
+          <div data-dashboard-print="dealer-ledger" className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+            <div className="flex items-center justify-between gap-2 border-b border-slate-100 px-5 py-4">
+              <div>
+                <h2 className="font-black text-slate-900">ফিল্টার করা ডিলার লেজার</h2>
+                <p className="text-xs text-slate-500">নির্বাচিত সেশন/মাসের ইনভয়েস, পণ্য ফেরত ও কালেকশন</p>
+              </div>
+              <button type="button" onClick={() => printDashboardSection('dealer-ledger')} className="no-print inline-flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-bold text-slate-700">প্রিন্ট</button>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[760px] text-left text-xs">
@@ -522,37 +526,44 @@ export default function OfficerDashboard() {
                     </tr>
                   ))}
                   {!officerDealerLedgers.length && <tr><td colSpan="6" className="px-3 py-6 text-center text-slate-500">এই সময়সীমায় কোনো ডিলার হিসাব নেই।</td></tr>}
+                  <tr className="bg-emerald-50 font-black">
+                    <td className="px-3 py-2">মোট</td>
+                    <td className="px-3 py-2 text-right">৳{Math.round(dealerLedgerTotals.lastSessionDue).toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}</td>
+                    <td className="px-3 py-2 text-right">৳{Math.round(dealerLedgerTotals.sales).toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}</td>
+                    <td className="px-3 py-2 text-right">৳{Math.round(dealerLedgerTotals.returns).toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}</td>
+                    <td className="px-3 py-2 text-right">৳{Math.round(dealerLedgerTotals.received).toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}</td>
+                    <td className="px-3 py-2 text-right">৳{Math.round(dealerLedgerTotals.due).toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}</td>
+                  </tr>
                 </tbody>
               </table>
             </div>
           </div>
 
-          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-            <div className="border-b border-slate-100 px-5 py-4">
-              <h2 className="font-black text-slate-900">ফিল্টার করা মাসিক রিপোর্টের সারাংশ</h2>
-              <p className="text-xs text-slate-500">নির্বাচিত সেশন এবং মাস অনুযায়ী সার্ভার থেকে পাওয়া রিপোর্ট</p>
+          <div data-dashboard-print="monthly-summary" className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+            <div className="flex items-center justify-between gap-2 border-b border-slate-100 px-5 py-4">
+              <div>
+                <h2 className="font-black text-slate-900">ফিল্টার করা মাসিক রিপোর্টের সারাংশ</h2>
+                <p className="text-xs text-slate-500">নির্বাচিত সেশন এবং মাস অনুযায়ী সার্ভার থেকে পাওয়া রিপোর্ট</p>
+              </div>
+              <button type="button" onClick={() => printDashboardSection('monthly-summary')} className="no-print inline-flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-bold text-slate-700">প্রিন্ট</button>
             </div>
             <div className="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-4">
               {[
-                ['বিক্রয়', reportSummary.sales],
-                ['রিটার্ন', reportSummary.returns],
-                ['রিটার্ন বাদে নিট বিক্রয়', reportSummary.netSales],
-                ['গত বকেয়াসহ নিট বিক্রয়', reportSummary.previousPlusNetSales],
-                ['গত মাসের বকেয়া', reportSummary.lastMonthDues],
-                ['বেতন', reportSummary.salary],
-                ['কালেকশন', reportSummary.collection],
-                ['ভাড়া', reportSummary.fare],
-                ['L.C', reportSummary.lc],
-                ['অফিস খরচ', salesOfficerSummary?.paymentAndExpense?.officePay || 0],
-                ['মোট গৃহীত', reportSummary.collections],
-                ['মোট বিক্রয় বকেয়া', reportSummary.dues],
-                ['খরচের হার', `${financeSummary.expensePercentage}%`],
-                ['বিক্রয় অর্জন', `${financeSummary.salesPercentage}%`],
+                ['ইনভয়েস', visibleInvoices.length],
+                ['সেলস', financeSummary.salesAmount],
+                ['রিটার্ন', financeSummary.returnAmount],
+                ['নিট সেলস', financeSummary.totalNetSales],
+                ['বকেয়া', financeSummary.totalAmountDues],
+                ['অফিস / ডিপো', financeSummary.paymentAndExpense.officePay],
+                ['বেতন', financeSummary.paymentAndExpense.salary],
+                ['ভাড়া / Fare', financeSummary.paymentAndExpense.fare],
+                ['L/C খরচ', financeSummary.paymentAndExpense.lc],
+                ['মোট পেমেন্ট', financeSummary.totalReceivedAmount],
                 ['পেমেন্ট হার', `${financeSummary.paymentPercentage}%`]
               ].map(([label, value]) => (
                 <div key={label} className="rounded-lg bg-slate-50 p-3">
                   <p className="text-xs font-semibold text-slate-500">{label}</p>
-                  <p className="mt-1 font-black text-slate-900">{typeof value === 'string' ? value : `৳${Math.round(value).toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}`}</p>
+                  <p className="mt-1 font-black text-slate-900">{label === 'ইনভয়েস' || label === 'পেমেন্ট হার' ? value : `৳${Math.round(Number(value) || 0).toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}`}</p>
                 </div>
               ))}
             </div>
@@ -575,16 +586,26 @@ export default function OfficerDashboard() {
                       </tr>
                     );
                   })}
+                  <tr className="bg-emerald-50 font-black">
+                    <td className="px-4 py-3">মোট</td>
+                    <td className="px-4 py-3">—</td>
+                    <td className="px-4 py-3 text-right">{monthlyReports.reduce((sum, report) => sum + (report.parties?.length || 0), 0)}</td>
+                    <td className="px-4 py-3 text-right">৳{Math.round(monthlyReports.reduce((sum, report) => sum + (report.parties || []).reduce((partySum, party) => partySum + (Number(party.presentMonth?.netSales) || 0), 0), 0)).toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}</td>
+                    <td className="px-4 py-3 text-right">৳{Math.round(monthlyReports.reduce((sum, report) => sum + (report.parties || []).reduce((partySum, party) => partySum + (Number(party.presentMonthNetDues) || 0), 0), 0)).toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}</td>
+                  </tr>
                   {!monthlyReports.length && <tr><td colSpan="5" className="px-4 py-6 text-center text-slate-500">এই সেশন/মাসে কোনো রিপোর্ট নেই।</td></tr>}
                 </tbody>
               </table>
             </div>
           </div>
 
-          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-            <div className="border-b border-slate-100 px-5 py-4">
-              <h2 className="font-black text-slate-900">{t('officer.productsSold')}</h2>
-              <p className="text-xs text-slate-500">{t('officer.productCartonSummary')}</p>
+          <div data-dashboard-print="sold-products" className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+            <div className="flex items-center justify-between gap-2 border-b border-slate-100 px-5 py-4">
+              <div>
+                <h2 className="font-black text-slate-900">{t('officer.productsSold')}</h2>
+                <p className="text-xs text-slate-500">{t('officer.productCartonSummary')}</p>
+              </div>
+              <button type="button" onClick={() => printDashboardSection('sold-products')} className="no-print inline-flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-bold text-slate-700">প্রিন্ট</button>
             </div>
             <div className="max-h-[28rem] overflow-auto">
               <table className="w-full min-w-[520px] text-left text-xs">
@@ -602,6 +623,12 @@ export default function OfficerDashboard() {
                     </tr>
                   ))}
                   {!officerProductSales.length && <tr><td colSpan="5" className="px-4 py-8 text-center text-slate-500">{t('officer.noProductSales')}</td></tr>}
+                  <tr className="bg-emerald-50 font-black">
+                    <td colSpan="2" className="px-4 py-2">মোট</td>
+                    <td className="px-4 py-2 text-right">{Math.round(productSalesTotals.cartons).toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}</td>
+                    <td className="px-4 py-2 text-right">{Math.round(productSalesTotals.units).toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}</td>
+                    <td className="px-4 py-2 text-right">৳{Math.round(productSalesTotals.amount).toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}</td>
+                  </tr>
                 </tbody>
               </table>
             </div>

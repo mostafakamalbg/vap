@@ -22,16 +22,16 @@ test('officer summary deducts return invoices and classifies payment categories'
   });
 
   assert.equal(summary.totalNetSales, 9380);
-  assert.equal(summary.totalReceivedAmount, 3500);
+  assert.equal(summary.totalReceivedAmount, 4500);
   assert.equal(summary.paymentAndExpense.officePay, 100);
   assert.equal(summary.paymentAndExpense.fare, 300);
   assert.equal(summary.paymentAndExpense.salary, 200);
   assert.equal(summary.paymentAndExpense.lc, 400);
-  assert.equal(summary.totalAmountDues, 7880);
+  assert.equal(summary.totalAmountDues, 6880);
   assert.equal(summary.totalSalesDues, -1380);
   assert.equal(summary.expensePercentage, 11);
   assert.equal(summary.salesPercentage, 114);
-  assert.equal(summary.paymentPercentage, 31);
+  assert.equal(summary.paymentPercentage, 40);
 });
 
 test('period filtering does not mix months or sessions', () => {

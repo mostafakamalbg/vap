@@ -129,7 +129,6 @@ export default function DealerLedger() {
   const totalPaidByDealers = dealerSummaries.reduce((acc, curr) => acc + (curr?.totalPaid || 0), 0);
   const totalOutstandingDue = dealerSummaries.reduce((acc, curr) => acc + (curr?.currentDue || 0), 0);
   const totalLastSessionDue = dealerSummaries.reduce((acc, curr) => acc + (curr?.lastSessionDue || 0), 0);
-  const totalDamageCredits = dealerSummaries.reduce((acc, curr) => acc + (curr?.damageCredits || 0), 0);
 
   // Filter dealers
   const filteredSummaries = dealerSummaries.filter((d) => {
@@ -158,7 +157,7 @@ export default function DealerLedger() {
   };
 
   // Submit Payment
-  const handlePaymentSubmit = (e) => {
+  const handlePaymentSubmit = async (e) => {
     e.preventDefault();
     const invalidEntry = paymentForm.entries.some((entry) => (
       !Number.isFinite(Number(entry.amount)) || Number(entry.amount) < 0
@@ -172,10 +171,9 @@ export default function DealerLedger() {
     const d = dealers.find((dl) => dl.id === paymentForm.dealerId);
     const o = officers.find((of) => of.id === paymentForm.officerId);
 
-    try {
-      entriesToSave.forEach((entry) => {
-        const paymentType = normalizePaymentType(entry.paymentType);
-        addDealerPayment({
+    const newPayments = entriesToSave.map((entry) => {
+      const paymentType = normalizePaymentType(entry.paymentType);
+      return {
           date: paymentForm.date,
           paymentType,
           dealerId: paymentForm.dealerId,
@@ -188,8 +186,10 @@ export default function DealerLedger() {
           reference: paymentForm.reference || 'নগদ রসিদ',
           receivedBy: paymentForm.receivedBy,
           note: paymentForm.note || PAYMENT_TYPES.find((type) => type.value === paymentType)?.label || ''
-        });
-      });
+        };
+    });
+    try {
+      await addDealerPayment(newPayments);
     } catch (error) {
       window.alert(error.message || 'পেমেন্ট সংরক্ষণ করা যায়নি।');
       return;
@@ -332,7 +332,7 @@ export default function DealerLedger() {
         </div>
       </div>
       <p className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-xs font-semibold text-slate-700 dealer-ledger-equation">
-        মোট ইনভয়েস বিক্রি ৳{totalSalesToDealers.toLocaleString()} + Last Session Due ৳{totalLastSessionDue.toLocaleString()} − ফেরত ৳{totalReturnCredits.toLocaleString()} − ডেমেজ ক্রেডিট ৳{totalDamageCredits.toLocaleString()} = আদায় ৳{totalPaidByDealers.toLocaleString()} + নিট বকেয়া ৳{totalOutstandingDue.toLocaleString()}
+        মোট ইনভয়েস বিক্রি ৳{totalSalesToDealers.toLocaleString()} + Last Session Due ৳{totalLastSessionDue.toLocaleString()} − ফেরত ৳{totalReturnCredits.toLocaleString()} = আদায়/ব্যয় সমন্বয় ৳{totalPaidByDealers.toLocaleString()} + নিট বকেয়া ৳{totalOutstandingDue.toLocaleString()} • ডেমেজ মূল্য লেজার থেকে বাদ নয়
       </p>
 
       {/* Dealers Table Card */}
@@ -359,8 +359,8 @@ export default function DealerLedger() {
                 <th className="py-3 px-3">ঠিকানা ও মোবাইল</th>
                 <th className="py-3 px-3">দায়িত্বপ্রাপ্ত অফিসার</th>
                 <th className="py-3 px-3 text-right">মোট ক্রয় (৳)</th>
+                <th className="py-3 px-3 text-right">মোট ফেরত (৳)</th>
                 <th className="py-3 px-3 text-right">মোট পরিশোধ (৳)</th>
-                <th className="py-3 px-3 text-right">ডেমেজ সমন্বয় (৳)</th>
                 <th className="py-3 px-3 text-right">বকেয়া / পাওনা (৳)</th>
                 <th className="no-print py-3 px-3 text-center">অ্যাকশন</th>
               </tr>
@@ -398,12 +398,12 @@ export default function DealerLedger() {
                       ৳{d.totalPurchases.toLocaleString()}
                     </td>
 
-                    <td className="py-3 px-3 text-right font-mono font-bold text-emerald-700">
-                      ৳{d.totalPaid.toLocaleString()}
+                    <td className="py-3 px-3 text-right font-mono font-bold text-rose-700">
+                      ৳{d.totalReturnCredits.toLocaleString()}
                     </td>
 
-                    <td className="py-3 px-3 text-right font-mono text-slate-500">
-                      {d.damageCredits > 0 ? `৳${d.damageCredits.toLocaleString()}` : '-'}
+                    <td className="py-3 px-3 text-right font-mono font-bold text-emerald-700">
+                      ৳{d.totalPaid.toLocaleString()}
                     </td>
 
                     <td className="py-3 px-3 text-right font-mono">
@@ -771,9 +771,9 @@ export default function DealerLedger() {
                 </button>
                 <button
                   onClick={() => setSelectedDealerForLedger(null)}
-                  className="text-slate-400 hover:text-slate-600 p-1"
+                  className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-100"
                 >
-                  <X className="w-5 h-5" />
+                  <X className="h-4 w-4" /> বন্ধ করুন / ফিরে যান
                 </button>
               </div>
             </div>

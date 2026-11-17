@@ -14,7 +14,11 @@ import {
   normalizeDealerAssignment,
   normalizeOfficerCode
 } from '../../shared/codes';
-import { isDealerCollection, normalizePaymentMethod } from '../../shared/paymentMethods';
+import {
+  isDealerBalanceCredit,
+  isDealerCollection,
+  normalizePaymentMethod
+} from '../../shared/paymentMethods';
 import { applyInvoiceStockChanges } from '../../shared/invoiceStock';
 import { getInvoicePackageCount, getItemCartons } from '../../shared/invoiceCartons';
 import { getInvoiceSalesAmount, roundCurrency } from '../../shared/invoiceTotals';
@@ -430,7 +434,6 @@ export function AgroProvider({ children }) {
     syncRecords('dealers', dealers);
     syncRecords('stockInLogs', stockInLogs);
     syncRecords('damageLogs', damageLogs);
-    syncRecords('payments', payments);
     syncRecords('salesAgreements', salesAgreements);
   }, [
     currentUser,
@@ -440,7 +443,6 @@ export function AgroProvider({ children }) {
     dealers,
     stockInLogs,
     damageLogs,
-    payments,
     salesAgreements
   ]);
 
@@ -706,23 +708,43 @@ export function AgroProvider({ children }) {
   };
 
   // Record Damage / Return Log
-  const recordDamageReturn = (damageEntry) => {
-    const entry = {
-      ...damageEntry,
-      id: `DMG-${globalThis.crypto.randomUUID()}`,
-      status: 'গৃহীত'
-    };
-    setDamageLogs((prev) => [entry, ...prev]);
+  const recordDamageReturn = async (damageEntry) => {
+    const response = await fetch('/api/damage-returns', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ...damageEntry,
+        id: `DMG-${globalThis.crypto.randomUUID()}`
+      })
+    });
+    const { entry, product } = await readJsonResponse(response);
+    if (!entry || !product) throw new Error('সার্ভার থেকে ডেমেজ ফেরত নিশ্চিত করা যায়নি।');
+    setProducts((previous) => previous.map((item) => (
+      item.id === product.id ? { ...item, variants: product.variants } : item
+    )));
+    setDamageLogs((previous) => [entry, ...previous.filter((item) => item.id !== entry.id)]);
+    return entry;
   };
 
   // Record Payment
-  const addDealerPayment = (paymentData) => {
-    const newPayment = {
-      ...paymentData,
-      id: `PAY-${globalThis.crypto.randomUUID()}`,
-      amount: roundCurrency(paymentData.amount),
-    };
-    setPayments((prev) => [newPayment, ...prev]);
+  const addDealerPayment = async (paymentData) => {
+    const inputPayments = (Array.isArray(paymentData) ? paymentData : [paymentData]).map((payment) => ({
+      ...payment,
+      id: payment.id || `PAY-${globalThis.crypto.randomUUID()}`,
+      amount: roundCurrency(payment.amount)
+    }));
+    const response = await fetch('/api/payments', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ payments: inputPayments })
+    });
+    const savedPayments = await readJsonResponse(response);
+    if (!Array.isArray(savedPayments)) throw new Error('সার্ভার থেকে পেমেন্ট নিশ্চিত করা যায়নি।');
+    setPayments((previous) => [
+      ...savedPayments.filter((saved) => !previous.some((entry) => entry.id === saved.id)),
+      ...previous
+    ]);
+    return savedPayments;
   };
 
   const saveSalesAgreement = (agreement) => {
@@ -819,8 +841,9 @@ export function AgroProvider({ children }) {
     const dealerPayments = payments.filter((p) => (
       p.dealerId === dealer.id || p.dealerName === dealer.shopName
     ));
-    const dealerReceipts = dealerPayments.filter(isDealerCollection);
-    const totalPaid = roundCurrency(dealerReceipts.reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0));
+    const totalPaid = roundCurrency(dealerPayments
+      .filter(isDealerBalanceCredit)
+      .reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0));
 
     const damageCredits = roundCurrency(damageLogs
       .filter((d) => (d.dealerId === dealer.id || d.dealerName === dealer.shopName) && d.actionType === 'ledger_credit' && !d.invoiceRef)
@@ -830,8 +853,7 @@ export function AgroProvider({ children }) {
       openingDue,
       totalBillAmount: totalPurchases,
       totalReturnAmount: totalReturnCredits,
-      totalPaidAmount: totalPaid,
-      damageCredits
+      totalPaidAmount: totalPaid
     });
 
     return {

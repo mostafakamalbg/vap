@@ -3,9 +3,16 @@ import { FilePlus2, Pencil, Printer, Search, Trash2 } from 'lucide-react';
 import { useAgro } from '../../context/AgroContext';
 import { toBn, toBnCurrency, toBnDate } from '../../utils/bengali';
 import { formatInvoiceNumber } from '../../../shared/codes';
-import { getInvoiceSessionForDate, INVOICE_SESSIONS, LEGACY_INVOICE_SESSION } from '../../../shared/sessions';
+import {
+  getInvoiceSessionForDate,
+  INVOICE_SESSIONS,
+  isCurrentSession,
+  LEGACY_INVOICE_SESSION,
+  sortSessionsNewestFirst
+} from '../../../shared/sessions';
 import { getPackageQuantityUnit } from '../../../shared/quantityUnits';
 import { getInvoicePackageCount } from '../../../shared/invoiceCartons';
+import { getInvoiceSalesAmount } from '../../../shared/invoiceTotals';
 import { printInvoiceSheet } from '../../utils/printInvoice';
 import InvoicePrintHeader from './InvoicePrintHeader';
 
@@ -66,14 +73,14 @@ export default function InvoiceList({ onNewInvoiceClick, onEditInvoice, initialI
   const [printInvoice, setPrintInvoice] = useState(null);
   const [deletingId, setDeletingId] = useState('');
   const hasPeriodFilter = sessionFilter !== 'ALL' || monthFilter !== 'ALL' || Boolean(dateFilter);
-  const sessions = useMemo(() => [...new Set([
+  const sessions = useMemo(() => sortSessionsNewestFirst([
     ...INVOICE_SESSIONS,
     ...invoices.map((invoice) => invoice.session).filter(Boolean)
-  ])].sort().reverse(), [invoices]);
+  ].filter(isCurrentSession)), [invoices]);
   const months = useMemo(() => [...new Set([
     ...invoices.map((invoice) => String(invoice.date || '').slice(0, 7)),
     ...damageLogs.map((entry) => String(entry.date || '').slice(0, 7))
-  ].filter((month) => /^\d{4}-\d{2}$/.test(month)))].sort().reverse(), [damageLogs, invoices]);
+  ].filter((month) => /^\d{4}-\d{2}$/.test(month) && month >= '2025-07'))].sort().reverse(), [damageLogs, invoices]);
 
   useEffect(() => {
     if (!hasPeriodFilter) {
@@ -146,14 +153,17 @@ export default function InvoiceList({ onNewInvoiceClick, onEditInvoice, initialI
     ].some((value) => String(value || '').toLowerCase().includes(term)));
   }, [historyRecords, search]);
   const listedInvoices = filteredRecords.filter(({ type }) => type === 'invoice').map(({ record }) => record);
-  const totalRegularInvoices = listedInvoices.filter((invoice) => (
+  const totalRegularAmount = listedInvoices.filter((invoice) => (
     !invoice.invoiceType || invoice.invoiceType === 'regular'
-  )).length;
-  const totalReturnInvoices = listedInvoices.filter((invoice) => invoice.invoiceType === 'dealer_return').length;
+  )).reduce((sum, invoice) => sum + getInvoiceSalesAmount(invoice), 0);
+  const totalReturnAmount = listedInvoices.filter((invoice) => invoice.invoiceType === 'dealer_return')
+    .reduce((sum, invoice) => sum + getInvoiceSalesAmount(invoice), 0);
   const totalPackages = listedInvoices.reduce((sum, invoice) => sum + getInvoicePackageCount(invoice), 0);
   const totalDue = listedInvoices
     .filter((invoice) => !['dealer_return', 'factory_damage', 'depot_factory_return'].includes(invoice.invoiceType))
-    .reduce((sum, invoice) => sum + (Number(invoice.dueAmount ?? invoice.currentDue) || 0), 0);
+    .reduce((sum, invoice) => (
+      sum + Math.max(0, getInvoiceSalesAmount(invoice) - (Number(invoice.paidAmount) || 0))
+    ), 0);
 
   useEffect(() => {
     if (!initialInvoiceId) return;
@@ -204,7 +214,7 @@ export default function InvoiceList({ onNewInvoiceClick, onEditInvoice, initialI
       <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">ইনভয়েস তালিকা</h1>
-          <p className="mt-1 text-sm text-slate-500">মোট ইনভয়েস: {toBn(invoices.length)} • মোট ফেরত ইনভয়েস: {toBn(invoices.filter((invoice) => invoice.invoiceType === 'dealer_return').length)} • ডেমেজ: {toBn(damageLogs.length)}</p>
+          <p className="mt-1 text-sm text-slate-500">মোট ইনভয়েস: {toBn(listedInvoices.length)} • মোট রেগুলার চালান: {toBn(listedInvoices.filter((invoice) => !invoice.invoiceType || invoice.invoiceType === 'regular').length)} • মোট ফেরত চালান: {toBn(listedInvoices.filter((invoice) => invoice.invoiceType === 'dealer_return').length)} • ডেমেজ: {toBn(damageLogs.length)}</p>
         </div>
         <div className="no-print flex gap-2">
           <button type="button" onClick={printInvoiceList} className="rounded-lg border border-slate-300 px-4 py-2 font-semibold text-slate-700">
@@ -218,9 +228,9 @@ export default function InvoiceList({ onNewInvoiceClick, onEditInvoice, initialI
 
       <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         {[
-          ['মোট ইনভয়েস', listedInvoices.length],
-          ['মোট রেগুলার ইনভয়েস', totalRegularInvoices],
-          ['মোট ফেরত ইনভয়েস', totalReturnInvoices],
+          ['মোট ইনভয়েস (চালান সংখ্যা)', listedInvoices.length],
+          ['মোট রেগুলার ইনভয়েস (৳)', `৳${toBnCurrency(totalRegularAmount)}`],
+          ['মোট ফেরত ইনভয়েস (৳)', `৳${toBnCurrency(totalReturnAmount)}`],
           ['মোট প্যাকেজ', totalPackages],
           ['বকেয়া', `৳${toBnCurrency(totalDue)}`]
         ].map(([label, value]) => (
@@ -261,7 +271,7 @@ export default function InvoiceList({ onNewInvoiceClick, onEditInvoice, initialI
           <thead className="bg-slate-100 text-slate-600">
             <tr>
               <th className="p-2">ইনভয়েস / তারিখ</th><th className="p-2">সেশন</th><th className="p-2">ডিলার</th>
-              <th className="p-2">অফিসার</th><th className="p-2 text-right">মোট প্যাকেজ</th><th className="p-2 text-right">মোট রেগুলার ইনভয়েস</th><th className="p-2 text-right">মোট ফেরত ইনভয়েস</th><th className="p-2 text-right">মোট</th><th className="p-2 text-right">বকেয়া</th><th className="no-print p-2">কাজ</th>
+              <th className="p-2">অফিসার</th><th className="p-2 text-right">মোট প্যাকেজ</th><th className="p-2 text-right">রেগুলার ইনভয়েস মূল্য (৳)</th><th className="p-2 text-right">ফেরত ইনভয়েস মূল্য (৳)</th><th className="p-2 text-right">চালানের মূল্য (৳)</th><th className="p-2 text-right">চালানের বকেয়া (৳)</th><th className="no-print p-2">কাজ</th>
             </tr>
           </thead>
           <tbody>
@@ -288,10 +298,10 @@ export default function InvoiceList({ onNewInvoiceClick, onEditInvoice, initialI
                     ? quantity
                     : `${toBn(quantity)}${retailPieces ? ` (${toBn(retailPieces)} পিস)` : ''}`}
                 </td>
-                <td className="p-2 text-right">{isRegularInvoice ? toBn(1) : '—'}</td>
-                <td className="p-2 text-right">{isReturnInvoice ? toBn(1) : '—'}</td>
+                <td className="p-2 text-right">{isRegularInvoice ? `৳${toBnCurrency(getInvoiceSalesAmount(invoice))}` : '—'}</td>
+                <td className="p-2 text-right text-rose-700">{isReturnInvoice ? `৳${toBnCurrency(getInvoiceSalesAmount(invoice))}` : '—'}</td>
                 <td className="p-2 text-right">৳{toBnCurrency(isDamage ? record.totalDamageValue : invoice.totalAmount ?? invoice.grandTotal)}</td>
-                <td className="p-2 text-right text-rose-700">৳{toBnCurrency(isDamage ? 0 : invoice.dueAmount ?? invoice.currentDue)}</td>
+                <td className="p-2 text-right text-rose-700">৳{toBnCurrency(isDamage || isReturnInvoice ? 0 : Math.max(0, getInvoiceSalesAmount(invoice) - (Number(invoice.paidAmount) || 0)))}</td>
                 <td className="no-print p-2">
                   <div className="flex gap-1">
                     <button type="button" title="প্রিন্ট" onClick={() => setPrintInvoice(invoice)} className="rounded p-2 text-slate-600 hover:bg-slate-100"><Printer className="h-4 w-4" /></button>

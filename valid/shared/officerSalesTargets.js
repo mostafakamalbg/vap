@@ -26,6 +26,15 @@ export const OFFICER_TARGET_SESSIONS = Object.freeze([
 
 function getSessionTarget(officer, session) {
   const sessionText = String(session || '');
+  const storedTargets = officer?.salesTargets || {};
+  const year = sessionText.match(/\b(20\d{2})\b/)?.[1];
+  const canonical = year
+    ? /জানুয়ারি|january/i.test(sessionText)
+      ? `জানুয়ারি - জুন ${year}`
+      : /জুলাই|july/i.test(sessionText) ? `জুলাই - ডিসেম্বর ${year}` : ''
+    : '';
+  const stored = storedTargets[session] ?? storedTargets[canonical];
+  if (stored != null) return Math.round(Number(stored) || 0);
   const isJanuaryJune2027 = /2027/.test(sessionText) && /জানুয়ারি|January/i.test(sessionText);
   const isJulyDecember2026 = /2026/.test(sessionText) && /জুলাই|July/i.test(sessionText);
   const targetField = isJanuaryJune2027
@@ -34,9 +43,6 @@ function getSessionTarget(officer, session) {
   if (targetField && officer?.[targetField] != null) {
     return Math.round(Number(officer[targetField]) || 0);
   }
-  const storedTargets = officer?.salesTargets || {};
-  const stored = storedTargets[session];
-  if (stored != null) return Math.round(Number(stored) || 0);
   const legacySession = isJanuaryJune2027
     ? OFFICER_TARGET_SESSIONS[1]
     : isJulyDecember2026 ? OFFICER_TARGET_SESSIONS[0] : '';

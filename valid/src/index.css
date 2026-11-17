@@ -1744,6 +1744,17 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
 }
 
 @media print {
+  body.dashboard-section-printing > *:not(.dashboard-section-print),
+  body.report-section-printing > *:not(.report-section-print) {
+    display: none !important;
+  }
+
+  body.dashboard-section-printing > .dashboard-section-print,
+  body.report-section-printing > .report-section-print {
+    display: block !important;
+    visibility: visible !important;
+  }
+
   @page report-landscape {
     size: A4 landscape;
     margin: 5mm;

@@ -14,6 +14,15 @@ export const PAYMENT_TYPES = [
   { value: 'lc_commission', label: 'লেস কমিশন (LC)' }
 ];
 
+export const DEALER_BALANCE_CREDIT_TYPES = new Set([
+  'dealer_collection',
+  'company_transfer',
+  'office_pay',
+  'salary',
+  'vehicle_rent',
+  'lc_commission'
+]);
+
 export const LEDGER_PAYMENT_TYPES = PAYMENT_TYPES.filter((entry) => (
   entry.value !== 'dealer_collection'
 ));
@@ -28,6 +37,11 @@ export function normalizePaymentType(type) {
 export function isDealerCollection(payment) {
   const type = String(payment?.paymentType || 'dealer_collection');
   return type === 'dealer_collection' || type === 'company_transfer';
+}
+
+export function isDealerBalanceCredit(payment) {
+  const type = String(payment?.paymentType || 'dealer_collection');
+  return DEALER_BALANCE_CREDIT_TYPES.has(type);
 }
 
 export function normalizePaymentMethod(method) {

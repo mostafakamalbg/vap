@@ -50,9 +50,6 @@ export function calculateOfficerFinancials({
     (sum, invoice) => sum + (Number(invoice.paidAmount) || 0), 0
   ));
   const standalone = payments.filter((payment) => !isInvoicePayment(payment));
-  const totalReceivedAmount = roundCurrency(invoiceReceipts + standalone
-    .filter((payment) => RECEIPTS.has(String(payment.paymentType || 'dealer_collection')))
-    .reduce((sum, payment) => sum + (Number(payment.amount) || 0), 0));
   const paymentAndExpense = { officePay: 0, fare: 0, salary: 0, lc: 0 };
   standalone.forEach((payment) => {
     const field = EXPENSE_FIELDS[String(payment.paymentType || '')];
@@ -61,6 +58,10 @@ export function calculateOfficerFinancials({
   Object.keys(paymentAndExpense).forEach((key) => {
     paymentAndExpense[key] = roundCurrency(paymentAndExpense[key]);
   });
+  const totalReceivedAmount = roundCurrency(invoiceReceipts + standalone
+    .filter((payment) => RECEIPTS.has(String(payment.paymentType || 'dealer_collection')))
+    .reduce((sum, payment) => sum + (Number(payment.amount) || 0), 0)
+    + Object.values(paymentAndExpense).reduce((sum, value) => sum + value, 0));
   const totalExpenses = Object.values(paymentAndExpense).reduce((sum, value) => sum + value, 0);
   const previousPlusNetSales = roundCurrency(lastSessionDue) + totalNetSales;
   return {

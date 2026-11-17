@@ -29,6 +29,7 @@ export default function DamageReturns() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedDealerFilter, setSelectedDealerFilter] = useState('ALL');
   const [successMsg, setSuccessMsg] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
 
   // Form State
   const [form, setForm] = useState({
@@ -39,7 +40,7 @@ export default function DamageReturns() {
     sku: products[0]?.variants[0]?.sku || '',
     quantityPieces: 2,
     reason: 'পরিবহনে বোতলের ক্যাপ ফেটে লিকেজ হয়েছিল',
-    actionType: 'ledger_credit', // 'ledger_credit' or 'replaced_stock' or 'write_off'
+    actionType: 'damage_stock',
     note: ''
   });
 
@@ -68,7 +69,7 @@ export default function DamageReturns() {
   };
 
   // Submit Damage Entry
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     const dealer = dealers.find((d) => d.id === form.dealerId);
     const officer = officers.find((o) => o.id === form.officerId);
@@ -78,7 +79,7 @@ export default function DamageReturns() {
     const unitPrice = variant ? variant.tp : 0;
     const totalDamageValue = Number(form.quantityPieces) * unitPrice;
 
-    let actionLabel = 'ডিলার লেজারে টাকা ক্রেডিট/মাইনাস করা হয়েছে';
+    let actionLabel = 'ডেমেজ পণ্যের রেকর্ড; ডিলার লেজারে কোনো টাকা বাদ নয়';
     if (form.actionType === 'replaced_stock') {
       actionLabel = 'নতুন ফ্রেশ পন্য দিয়ে রিপ্লেসমেন্ট প্রদান করা হয়েছে';
     } else if (form.actionType === 'write_off') {
@@ -106,11 +107,15 @@ export default function DamageReturns() {
       note: form.note || 'ডিস্ট্রিবিউশন অফিসে ডেমেজ মাল জমা গৃহীত।'
     };
 
-    recordDamageReturn(damageRecord);
-    setSuccessMsg(`ডিলার ${dealer?.shopName} এর ${form.quantityPieces} টি ক্ষতিগ্রস্ত পণ্যের ফেরত সফলভাবে সংরক্ষিত হয়েছে!`);
-    setTimeout(() => setSuccessMsg(''), 4500);
-
-    setShowAddForm(false);
+    setErrorMsg('');
+    try {
+      await recordDamageReturn(damageRecord);
+      setSuccessMsg(`ডিলার ${dealer?.shopName} এর ${form.quantityPieces} টি ক্ষতিগ্রস্ত পণ্যের ফেরত সফলভাবে সংরক্ষিত হয়েছে!`);
+      setTimeout(() => setSuccessMsg(''), 4500);
+      setShowAddForm(false);
+    } catch (error) {
+      setErrorMsg(error.message || 'ডেমেজ ফেরত সংরক্ষণ করা যায়নি।');
+    }
   };
 
   // Filter logs
@@ -134,10 +139,6 @@ export default function DamageReturns() {
     return totals;
   }, { cartons: 0, looseUnits: 0 });
   const totalDamageFinancialValue = damageLogs.reduce((acc, curr) => acc + (Number(curr.totalDamageValue) || 0), 0);
-  const totalAdjustedCredits = damageLogs
-    .filter((d) => d.actionType === 'ledger_credit')
-    .reduce((acc, curr) => acc + (Number(curr.totalDamageValue) || 0), 0);
-
   return (
     <div className="py-6 px-4 max-w-7xl mx-auto space-y-6">
       {/* Header */}
@@ -197,8 +198,8 @@ export default function DamageReturns() {
 
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
           <div>
-            <p className="text-xs font-semibold text-slate-500 uppercase">ডিলার লেজারে সমন্বয়কৃত</p>
-            <p className="text-2xl font-black text-emerald-700 mt-1">৳{totalAdjustedCredits.toLocaleString()}</p>
+            <p className="text-xs font-semibold text-slate-500 uppercase">ডিলার লেজারে প্রভাব নেই</p>
+            <p className="text-2xl font-black text-slate-700 mt-1">{damageLogs.length.toLocaleString('bn-BD')} টি রেকর্ড</p>
           </div>
           <div className="w-10 h-10 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
             <CheckCircle className="w-5 h-5" />
@@ -334,12 +335,13 @@ export default function DamageReturns() {
                   onChange={(e) => setForm({ ...form, actionType: e.target.value })}
                   className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm font-semibold"
                 >
-                  <option value="ledger_credit">ডিলার লেজারে টাকা ক্রেডিট / বাকি থেকে মাইনাস</option>
+                  <option value="damage_stock">ডেমেজ স্টকে সংরক্ষণ (লেজার অপরিবর্তিত)</option>
                   <option value="replaced_stock">নতুন ফ্রেশ পণ্য রিপ্লেসমেন্ট প্রদান (স্টক থেকে)</option>
                   <option value="write_off">কোম্পানির ড্যামেজ খাতে অবলোপন (Write-off)</option>
                 </select>
               </div>
             </div>
+            {errorMsg && <p role="alert" className="text-sm font-semibold text-rose-700">{errorMsg}</p>}
 
             <div>
               <label className="block text-xs font-semibold text-slate-600 mb-1">অতিরিক্ত নোট / গোডাউন মন্তব্য</label>
@@ -444,7 +446,7 @@ export default function DamageReturns() {
                   <td className="py-3 px-3">
                     <span
                       className={`inline-block px-2 py-0.5 rounded text-[11px] font-semibold ${
-                        log.actionType === 'ledger_credit'
+                        log.actionType === 'damage_stock'
                           ? 'bg-emerald-100 text-emerald-800'
                           : 'bg-blue-100 text-blue-800'
                       }`}

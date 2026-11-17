@@ -48,7 +48,7 @@ export default async function handler(req, res) {
       const session = String(req.query?.session || 'ALL');
       const month = String(req.query?.month || 'ALL');
       const date = String(req.query?.date || 'ALL');
-      if (session !== 'ALL' && !parseSessionDateRange(session) && session.length > 100) {
+      if (session !== 'ALL' && (!parseSessionDateRange(session) || session.length > 100)) {
         return res.status(400).json({ error: 'সঠিক সেশন নির্বাচন করুন।' });
       }
       if (month !== 'ALL' && !parseReportMonth(month)) {
@@ -134,6 +134,21 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'খরচের পরিমাণ সঠিক নয়।' });
       }
       values.paymentAndExpense[field] = roundAmount(body.paymentAndExpense?.[field]);
+    }
+
+    if (body.salesTargets != null && (
+      !body.salesTargets
+      || typeof body.salesTargets !== 'object'
+      || Array.isArray(body.salesTargets)
+    )) {
+      return res.status(400).json({ error: 'সেশন টার্গেটের তালিকা সঠিক নয়।' });
+    }
+    values.salesTargets = {};
+    for (const [session, target] of Object.entries(body.salesTargets || {})) {
+      if (!parseSessionDateRange(session) || !Number.isFinite(Number(target)) || Number(target) < 0) {
+        return res.status(400).json({ error: 'সেশন টার্গেটের পরিমাণ সঠিক নয়।' });
+      }
+      values.salesTargets[session] = roundAmount(target);
     }
 
     const saved = await SalesOfficer.findOneAndUpdate(

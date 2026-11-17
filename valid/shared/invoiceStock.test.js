@@ -403,9 +403,8 @@ test('dealer returns preserve negative balances as dealer advances', () => {
     openingDue: 10000,
     totalBillAmount: 3000,
     totalReturnAmount: 5000,
-    totalPaidAmount: 2000,
-    damageCredits: 500
-  }), 5500);
+    totalPaidAmount: 2000
+  }), 6000);
 });
 
 test('dealer ledger transactions apply return and payment credits with a running balance', () => {
@@ -433,8 +432,7 @@ test('dealer ledger transactions apply return and payment credits with a running
     { sourceType: 'invoice', debit: 100, credit: 0, balance: 200 },
     { sourceType: 'invoice', debit: 0, credit: 5, balance: 195 },
     { sourceType: 'payment', debit: 0, credit: 20, balance: 175 },
-    { sourceType: 'invoice', debit: 0, credit: 40, balance: 135 },
-    { sourceType: 'damage', debit: 0, credit: 10, balance: 125 }
+    { sourceType: 'invoice', debit: 0, credit: 40, balance: 135 }
   ]);
 });
 

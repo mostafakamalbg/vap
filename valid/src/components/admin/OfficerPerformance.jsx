@@ -59,6 +59,21 @@ export default function OfficerPerformance() {
   const totalCompanyReturns = officerSummaries.reduce((acc, curr) => acc + (curr?.returnAmount || 0), 0);
   const totalCompanyCartons = officerSummaries.reduce((acc, curr) => acc + (curr?.totalCartonsSold || 0), 0);
   const totalCompanyCollected = officerSummaries.reduce((acc, curr) => acc + (curr?.totalCollected || 0), 0);
+  const tableTotals = filteredOfficers.reduce((totals, officer) => ({
+    invoices: totals.invoices + officer.invoiceCount,
+    cartons: totals.cartons + officer.totalCartonsSold,
+    sales: totals.sales + officer.salesAmount,
+    returns: totals.returns + officer.returnAmount,
+    collected: totals.collected + officer.totalCollected,
+    officePay: totals.officePay + officer.paymentAndExpense.officePay,
+    salary: totals.salary + officer.paymentAndExpense.salary,
+    fare: totals.fare + officer.paymentAndExpense.fare,
+    lc: totals.lc + officer.paymentAndExpense.lc,
+    due: totals.due + officer.totalAmountDues
+  }), {
+    invoices: 0, cartons: 0, sales: 0, returns: 0, collected: 0,
+    officePay: 0, salary: 0, fare: 0, lc: 0, due: 0
+  });
 
   const handleSubmitNewOfficer = (e) => {
     e.preventDefault();
@@ -321,6 +336,23 @@ export default function OfficerPerformance() {
                 </tr>
               ))}
             </tbody>
+            <tfoot className="bg-emerald-50 font-black text-slate-900">
+              <tr>
+                <td colSpan="5" className="px-1.5 py-1 text-right">মোট</td>
+                <td className="px-1.5 py-1 text-center">{tableTotals.invoices}</td>
+                <td className="px-1.5 py-1 text-center">{Math.round(tableTotals.cartons)}</td>
+                <td className="px-1.5 py-1 text-right">৳{Math.round(tableTotals.sales).toLocaleString()}</td>
+                <td className="px-1.5 py-1 text-right">৳{Math.round(tableTotals.returns).toLocaleString()}</td>
+                <td className="px-1.5 py-1 text-right">৳{Math.round(tableTotals.collected).toLocaleString()}</td>
+                <td className="px-1.5 py-1 text-right">৳{Math.round(tableTotals.officePay).toLocaleString()}</td>
+                <td className="px-1.5 py-1 text-right">৳{Math.round(tableTotals.salary).toLocaleString()}</td>
+                <td className="px-1.5 py-1 text-right">৳{Math.round(tableTotals.fare).toLocaleString()}</td>
+                <td className="px-1.5 py-1 text-right">৳{Math.round(tableTotals.lc).toLocaleString()}</td>
+                <td className="px-1.5 py-1 text-right">৳{Math.round(tableTotals.due).toLocaleString()}</td>
+                <td className="px-1.5 py-1 text-center">—</td>
+                <td className="no-print px-1.5 py-1">—</td>
+              </tr>
+            </tfoot>
           </table>
         </div>
       </div>
@@ -374,11 +406,18 @@ export default function OfficerPerformance() {
                   {selectedOfficerDetail.salesPercentage}% / {selectedOfficerDetail.expensePercentage}% / {selectedOfficerDetail.paymentPercentage}%
                 </p>
               </div>
-              <div className="col-span-2 sm:col-span-3">
-                <p className="text-slate-500 font-medium">খরচের খাত: অফিস / বেতন / ভাড়া / LC</p>
-                <p className="font-bold text-slate-800">
-                  {Object.values(selectedOfficerDetail.paymentAndExpense).map((amount) => `৳${Math.round(amount).toLocaleString()}`).join(' / ')}
-                </p>
+              <div className="col-span-2 grid grid-cols-2 gap-2 sm:col-span-3 sm:grid-cols-4">
+                {[
+                  ['অফিস / ডিপো', selectedOfficerDetail.paymentAndExpense.officePay],
+                  ['বেতন', selectedOfficerDetail.paymentAndExpense.salary],
+                  ['ভাড়া', selectedOfficerDetail.paymentAndExpense.fare],
+                  ['LC', selectedOfficerDetail.paymentAndExpense.lc]
+                ].map(([label, amount]) => (
+                  <div key={label} className="rounded border border-emerald-200 bg-white p-2">
+                    <p className="text-slate-500">{label}</p>
+                    <p className="font-bold text-slate-800">৳{Math.round(amount).toLocaleString()}</p>
+                  </div>
+                ))}
               </div>
             </div>
 

@@ -48,3 +48,12 @@ test('officer target fields override defaults for Bengali and English session la
   assert.equal(getOfficerSalesTarget(officer, 'January-June 2027'), 5400000);
   assert.equal(getOfficerSalesTarget({ ...officer, salesTargetJanJune2027: 0 }, 'January-June 2027'), 0);
 });
+
+test('dynamic session targets override legacy session defaults', () => {
+  const officer = {
+    code: '05',
+    salesTargetJanJune2027: 5400000,
+    salesTargets: { 'জানুয়ারি - জুন 2027': 6100000 }
+  };
+  assert.equal(getOfficerSalesTarget(officer, 'January-June 2027'), 6100000);
+});

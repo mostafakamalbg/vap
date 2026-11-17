@@ -2,15 +2,15 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Printer, Save, Trash2 } from 'lucide-react';
 import { useAgro } from '../../context/AgroContext';
 import { getOfficerSalesTarget } from '../../../shared/officerSalesTargets';
-import { INVOICE_SESSIONS } from '../../../shared/sessions';
+import {
+  getInvoiceSessionForDate,
+  INVOICE_SESSIONS,
+  isCurrentSession,
+  sortSessionsNewestFirst
+} from '../../../shared/sessions';
 import { normalizeOfficerCode } from '../../../shared/codes';
 import { roundAmount } from '../../../shared/salesReports';
 
-const SESSION_OPTIONS = [
-  'January-June 2027',
-  'July-December 2026',
-  ...INVOICE_SESSIONS
-];
 const amount = (value) => Math.round(Number(value) || 0).toLocaleString('en-US');
 const emptyParty = () => ({
   slNo: 1,
@@ -30,7 +30,7 @@ function createReportDraft() {
     areaName: '',
     mobileNo: '',
     monthOfReport: `${new Intl.DateTimeFormat('en', { month: 'long' }).format(now)}/${String(now.getFullYear()).slice(-2)}`,
-    session: 'January-June 2027',
+    session: getInvoiceSessionForDate(now.toISOString().slice(0, 10)),
     reportingDate: now.toISOString().slice(0, 10),
     officerId: '',
     officerCode: '',
@@ -134,8 +134,16 @@ export default function MonthlySalesReports() {
   }, [monthFilter, selectedReportId, sessionFilter]);
 
   const availableMonths = useMemo(() => (
-    [...new Set(allReports.map((report) => report.monthOfReport).filter(Boolean))]
+    [...new Set(allReports
+      .filter((report) => isCurrentSession(report.session))
+      .map((report) => report.monthOfReport)
+      .filter(Boolean))]
   ), [allReports]);
+  const availableSessions = useMemo(() => sortSessionsNewestFirst([
+    ...INVOICE_SESSIONS,
+    ...allReports.map((report) => report.session),
+    ...targetRecords.flatMap((record) => Object.keys(record.salesTargets || {}))
+  ].filter(isCurrentSession)), [allReports, targetRecords]);
   const selectedReport = reports.find((report) => report._id === selectedReportId);
 
   const updateParty = (index, path, value) => {
@@ -225,6 +233,11 @@ export default function MonthlySalesReports() {
         ?? getOfficerSalesTarget(officer, 'জুলাই - ডিসেম্বর 2026'),
       salesTargetJanJune2027: targetDrafts[key]?.salesTargetJanJune2027
         ?? getOfficerSalesTarget(officer, 'জানুয়ারি - জুন 2027'),
+      salesTargets: Object.fromEntries(availableSessions.map((session) => [
+        session,
+        roundAmount(targetDrafts[key]?.salesTargets?.[session]
+          ?? getOfficerSalesTarget({ ...officer, ...previous }, session))
+      ])),
       lastSessionDue: roundAmount(
         targetDrafts[key]?.lastSessionDue ?? previous.lastSessionDue ?? officer.lastSessionDue
       )
@@ -251,7 +264,7 @@ export default function MonthlySalesReports() {
     }
   };
 
-  const setTarget = (key, field, value, officer) => {
+  const setTarget = (key, session, value, officer) => {
     const existing = targetDrafts[key] || targetRecords.find((record) => (
       normalizeOfficerCode(record.officerCode) === key
     )) || {};
@@ -259,16 +272,10 @@ export default function MonthlySalesReports() {
       ...current,
       [key]: {
         ...existing,
-        [field]: value,
-        salesTargetJulyDec2026: field === 'salesTargetJulyDec2026'
-          ? value
-          : existing.salesTargetJulyDec2026 ?? getOfficerSalesTarget(officer, 'জুলাই - ডিসেম্বর 2026'),
-        salesTargetJanJune2027: field === 'salesTargetJanJune2027'
-          ? value
-          : existing.salesTargetJanJune2027 ?? getOfficerSalesTarget(officer, 'জানুয়ারি - জুন 2027'),
-        lastSessionDue: field === 'lastSessionDue'
-          ? value
-          : existing.lastSessionDue ?? officer.lastSessionDue ?? 0
+        salesTargets: {
+          ...existing.salesTargets,
+          [session]: value
+        }
       }
     }));
   };
@@ -291,14 +298,13 @@ export default function MonthlySalesReports() {
       <section className="no-print overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-100 p-5">
           <h2 className="font-black text-slate-900">অফিসার সেশন টার্গেট</h2>
-          <p className="text-xs text-slate-500">ড্যাশবোর্ডের ২০২৬ ও ২০২৭ সেশন টার্গেট এখান থেকে সংরক্ষিত হয়।</p>
+          <p className="text-xs text-slate-500">নতুন সেশন যোগ হলে নতুন টার্গেট কলাম এখানে স্বয়ংক্রিয়ভাবে সম্পাদনাযোগ্য হবে।</p>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[760px] text-left text-sm">
+          <table className="w-full min-w-[980px] text-left text-sm">
             <thead className="bg-slate-50 text-xs text-slate-600"><tr>
               <th className="px-4 py-3">অফিসার</th>
-              <th className="px-4 py-3">জুলাই–ডিসেম্বর ২০২৬</th>
-              <th className="px-4 py-3">জানুয়ারি–জুন ২০২৭</th>
+              {availableSessions.map((session) => <th key={session} className="px-4 py-3">{session}</th>)}
               <th className="px-4 py-3">Last Session Due (৳)</th>
               <th className="px-4 py-3">সংরক্ষণ</th>
             </tr></thead>
@@ -308,17 +314,41 @@ export default function MonthlySalesReports() {
                 const existing = targetDrafts[key] || targetRecords.find((record) => (
                   normalizeOfficerCode(record.officerCode) === key
                 )) || {};
-                const target1 = existing.salesTargetJulyDec2026
-                  ?? getOfficerSalesTarget(officer, 'জুলাই - ডিসেম্বর 2026');
-                const target2 = existing.salesTargetJanJune2027
-                  ?? getOfficerSalesTarget(officer, 'জানুয়ারি - জুন 2027');
                 const lastSessionDue = existing.lastSessionDue ?? officer.lastSessionDue ?? 0;
                 return (
                   <tr key={officer.id}>
                     <td className="px-4 py-3 font-semibold">{officer.name}<span className="ml-2 text-xs text-slate-500">{key}</span></td>
-                    <td className="px-4 py-3"><input type="number" min="0" step="1" value={target1} onChange={(event) => setTarget(key, 'salesTargetJulyDec2026', event.target.value, officer)} onBlur={(event) => setTarget(key, 'salesTargetJulyDec2026', String(roundAmount(event.target.value)), officer)} className="w-44 rounded-lg border border-slate-300 px-3 py-2" /></td>
-                    <td className="px-4 py-3"><input type="number" min="0" step="1" value={target2} onChange={(event) => setTarget(key, 'salesTargetJanJune2027', event.target.value, officer)} onBlur={(event) => setTarget(key, 'salesTargetJanJune2027', String(roundAmount(event.target.value)), officer)} className="w-44 rounded-lg border border-slate-300 px-3 py-2" /></td>
-                    <td className="px-4 py-3"><input type="number" step="1" value={lastSessionDue} onChange={(event) => setTarget(key, 'lastSessionDue', event.target.value, officer)} onBlur={(event) => setTarget(key, 'lastSessionDue', String(roundAmount(event.target.value)), officer)} className="w-40 rounded-lg border border-slate-300 px-3 py-2" aria-label={`${officer.name} Last Session Due`} /></td>
+                    {availableSessions.map((session) => (
+                      <td key={session} className="px-4 py-3">
+                        <input
+                          type="number"
+                          min="0"
+                          step="1"
+                          value={existing.salesTargets?.[session] ?? getOfficerSalesTarget({ ...officer, ...existing }, session)}
+                          onChange={(event) => setTarget(key, session, event.target.value, officer)}
+                          onBlur={(event) => setTarget(key, session, String(roundAmount(event.target.value)), officer)}
+                          className="w-36 rounded-lg border border-slate-300 px-3 py-2"
+                          aria-label={`${officer.name} ${session} target`}
+                        />
+                      </td>
+                    ))}
+                    <td className="px-4 py-3">
+                      <input
+                        type="number"
+                        step="1"
+                        value={lastSessionDue}
+                        onChange={(event) => setTargetDrafts((current) => ({
+                          ...current,
+                          [key]: { ...existing, lastSessionDue: event.target.value }
+                        }))}
+                        onBlur={(event) => setTargetDrafts((current) => ({
+                          ...current,
+                          [key]: { ...existing, lastSessionDue: String(roundAmount(event.target.value)) }
+                        }))}
+                        className="w-40 rounded-lg border border-slate-300 px-3 py-2"
+                        aria-label={`${officer.name} Last Session Due`}
+                      />
+                    </td>
                     <td className="px-4 py-3"><button type="button" disabled={busy} onClick={() => saveTargets(officer)} className="inline-flex items-center gap-1 rounded-lg bg-emerald-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50"><Save className="h-4 w-4" /> সংরক্ষণ</button></td>
                   </tr>
                 );
@@ -338,7 +368,7 @@ export default function MonthlySalesReports() {
             <label className="text-xs font-semibold text-slate-600">সেশন
               <select value={sessionFilter} onChange={(event) => setSessionFilter(event.target.value)} className="ml-2 rounded-lg border border-slate-300 bg-white px-3 py-2">
                 <option value="ALL">সকল সেশন</option>
-                {[...new Set(SESSION_OPTIONS)].map((session) => <option key={session} value={session}>{session}</option>)}
+                {availableSessions.map((session) => <option key={session} value={session}>{session}</option>)}
               </select>
             </label>
             <label className="text-xs font-semibold text-slate-600">মাস

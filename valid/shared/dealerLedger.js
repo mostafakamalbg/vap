@@ -1,4 +1,4 @@
-import { isDealerCollection } from './paymentMethods.js';
+import { isDealerBalanceCredit, PAYMENT_TYPES } from './paymentMethods.js';
 
 function amountOrZero(value) {
   const amount = Number(value);
@@ -9,14 +9,12 @@ export function getDealerNetDue({
   openingDue,
   totalBillAmount,
   totalReturnAmount,
-  totalPaidAmount,
-  damageCredits
+  totalPaidAmount
 } = {}) {
   return amountOrZero(openingDue)
     + amountOrZero(totalBillAmount)
     - amountOrZero(totalReturnAmount)
-    - amountOrZero(totalPaidAmount)
-    - amountOrZero(damageCredits);
+    - amountOrZero(totalPaidAmount);
 }
 
 export function getDealerLedgerTransactions(summary = {}) {
@@ -64,36 +62,22 @@ export function getDealerLedgerTransactions(summary = {}) {
   });
 
   (summary.payments || []).forEach((payment, index) => {
-    const isReceipt = isDealerCollection(payment);
-    if (!isReceipt) return;
+    if (!isDealerBalanceCredit(payment)) return;
+    const paymentType = String(payment.paymentType || 'dealer_collection');
+    const paymentLabel = PAYMENT_TYPES.find((type) => type.value === paymentType)?.label
+      || 'ডিলার কালেকশন';
     addTransaction({
       id: `payment-${payment.id || index}`,
       date: payment.date || '',
       reference: payment.sourceInvoiceId || payment.reference || 'জমার রশিদ',
       sourceType: 'payment',
       source: payment,
-      description: 'ডিলার কালেকশন',
+      description: paymentLabel,
       debit: 0,
       credit: Math.abs(amountOrZero(payment.amount)),
       priority: 3
     });
   });
-
-  (summary.damages || [])
-    .filter((damage) => damage.actionType === 'ledger_credit' && !damage.invoiceRef)
-    .forEach((damage, index) => {
-      addTransaction({
-        id: `damage-credit-${damage.id || index}`,
-        date: damage.date || '',
-        reference: damage.invoiceRef || 'ড্যামেজ ক্রেডিট',
-        sourceType: 'damage',
-        source: damage,
-        description: damage.reason || 'ক্ষতিগ্রস্ত পণ্যের ক্রেডিট',
-        debit: 0,
-        credit: Math.abs(amountOrZero(damage.totalDamageValue)),
-        priority: 4
-      });
-    });
 
   transactions.sort((left, right) => (
     (left.sourceType === 'opening' ? -1 : 0) - (right.sourceType === 'opening' ? -1 : 0)

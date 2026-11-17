@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { getDealerLedgerTransactions } from './dealerLedger.js';
 
-test('expense payments do not reduce dealer balance', () => {
+test('expense postings and receipts both reduce dealer balance', () => {
   const transactions = getDealerLedgerTransactions({
     openingDue: 500,
     payments: [
@@ -11,8 +11,8 @@ test('expense payments do not reduce dealer balance', () => {
     ]
   });
   const balance = transactions[transactions.length - 1].balance;
-  assert.equal(balance, 400);
-  assert.equal(transactions.some((entry) => entry.id === 'payment-expense'), false);
+  assert.equal(balance, 360);
+  assert.equal(transactions.find((entry) => entry.id === 'payment-expense').credit, 40);
 });
 
 test('last session due is used as the ledger opening balance', () => {
