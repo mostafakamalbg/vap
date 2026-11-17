@@ -9,11 +9,12 @@ import {
   normalizeOfficerCode
 } from '../../shared/codes';
 import { getPackageQuantityUnit } from '../../shared/quantityUnits';
-import { getItemCartons, getInvoiceCartons } from '../../shared/invoiceCartons';
+import { getInvoicePackageCount, getItemPackageCount } from '../../shared/invoiceCartons';
 import { getInvoiceSessionForDate } from '../../shared/sessions';
 import { getOfficerSalesTarget, OFFICER_TARGET_SESSIONS } from '../../shared/officerSalesTargets';
 import { calculateOfficerFinancials } from '../../shared/officerFinancials';
 import { getInvoiceSalesAmount } from '../../shared/invoiceTotals';
+import { isDealerCollection } from '../../shared/paymentMethods';
 
 async function requestJson(url, options) {
   const response = await fetch(url, { cache: 'no-store', ...options });
@@ -170,26 +171,18 @@ export default function OfficerDashboard() {
     ...(salesOfficerSummary || {}),
     code: currentOfficer?.code || currentUser?.officerCode
   }, sessionFilter);
-  const targetJulyDec2026 = getOfficerSalesTarget({
-    ...currentOfficer,
-    ...(salesOfficerSummary || {}),
-    code: currentOfficer?.code || currentUser?.officerCode
-  }, 'জুলাই - ডিসেম্বর 2026');
-  const targetJanJune2027 = getOfficerSalesTarget({
-    ...currentOfficer,
-    ...(salesOfficerSummary || {}),
-    code: currentOfficer?.code || currentUser?.officerCode
-  }, 'জানুয়ারি - জুন 2027');
   const targetYear = sessionFilter.match(/\d{4}/)?.[0] || String(new Date().getFullYear());
-  const yearlyTarget = getOfficerSalesTarget({
-    ...currentOfficer,
-    ...(salesOfficerSummary || {}),
-    code: currentOfficer?.code || currentUser?.officerCode
-  }, `জানুয়ারি - জুন ${targetYear}`) + getOfficerSalesTarget({
+  const targetJulyDec = getOfficerSalesTarget({
     ...currentOfficer,
     ...(salesOfficerSummary || {}),
     code: currentOfficer?.code || currentUser?.officerCode
   }, `জুলাই - ডিসেম্বর ${targetYear}`);
+  const targetJanJune = getOfficerSalesTarget({
+    ...currentOfficer,
+    ...(salesOfficerSummary || {}),
+    code: currentOfficer?.code || currentUser?.officerCode
+  }, `জানুয়ারি - জুন ${targetYear}`);
+  const yearlyTarget = targetJanJune + targetJulyDec;
   const yearlySalesAmount = salesInvoices
     .filter((invoice) => String(invoice.date || '').startsWith(targetYear))
     .reduce((sum, invoice) => sum + getInvoiceSalesAmount(invoice), 0)
@@ -252,7 +245,7 @@ export default function OfficerDashboard() {
           pieces: 0,
           amount: 0
         };
-        const cartons = getItemCartons(item);
+        const cartons = getItemPackageCount(item);
         const pieces = item.totalPieces != null
           ? Number(item.totalPieces) || 0
           : cartons * (Number(item.packPerBox) || 1);
@@ -266,6 +259,74 @@ export default function OfficerDashboard() {
     return [...sales.values()];
   }, [filteredSalesInvoices]);
   const totalCartonsSold = officerProductSales.reduce((sum, item) => sum + item.cartons, 0);
+  const visibleInvoices = periodInvoices.filter((invoice) => (
+    !['factory_damage', 'depot_factory_return'].includes(invoice.invoiceType)
+  ));
+  const officerDealerLedgers = useMemo(() => {
+    const reportDueByName = new Map();
+    monthlyReports.forEach((report) => (report.parties || []).forEach((party) => {
+      const key = String(party.nameOfTheParty || '').trim().toLowerCase();
+      const current = reportDueByName.get(key);
+      if (key && (!current || String(report.reportingDate || '') > current.reportingDate)) {
+        reportDueByName.set(key, {
+          reportingDate: String(report.reportingDate || ''),
+          amount: Number(party.lastMonthDues) || 0
+        });
+      }
+    }));
+    const ledgers = new Map(availableDealers.map((dealer) => [dealer.id, {
+      dealerId: dealer.id,
+      dealerName: dealer.shopName || dealer.id,
+      lastSessionDue: monthFilter === 'ALL'
+        ? Number(dealer.lastSessionDue ?? dealer.openingDue) || 0
+        : reportDueByName.get(String(dealer.shopName || '').trim().toLowerCase())?.amount || 0,
+      sales: 0,
+      returns: 0,
+      invoiceReceived: 0,
+      collection: 0
+    }]));
+    const getLedger = (record) => {
+      const key = record.dealerId || record.dealerName || '';
+      if (!key) return null;
+      if (!ledgers.has(key)) {
+        ledgers.set(key, {
+          dealerId: record.dealerId || key,
+          dealerName: record.dealerName || key,
+          lastSessionDue: 0,
+          sales: 0,
+          returns: 0,
+          invoiceReceived: 0,
+          collection: 0
+        });
+      }
+      return ledgers.get(key);
+    };
+
+    periodInvoices.forEach((invoice) => {
+      if (['factory_damage', 'depot_factory_return'].includes(invoice.invoiceType)) return;
+      const ledger = getLedger(invoice);
+      if (!ledger) return;
+      const amount = Math.abs(getInvoiceSalesAmount(invoice));
+      if (invoice.invoiceType === 'dealer_return') ledger.returns += amount;
+      else {
+        ledger.sales += amount;
+        ledger.invoiceReceived += Number(invoice.paidAmount) || 0;
+      }
+    });
+    periodPayments.forEach((payment) => {
+      if (payment.sourceInvoiceId || /(?:invoice|চালান)\s*#/i.test(String(payment.reference || ''))) return;
+      if (!isDealerCollection(payment)) return;
+      const ledger = getLedger(payment);
+      if (ledger) ledger.collection += Number(payment.amount) || 0;
+    });
+
+    return [...ledgers.values()].map((ledger) => ({
+      ...ledger,
+      received: ledger.invoiceReceived + ledger.collection,
+      due: ledger.lastSessionDue + ledger.sales - ledger.returns
+        - ledger.invoiceReceived - ledger.collection
+    })).sort((left, right) => left.dealerName.localeCompare(right.dealerName));
+  }, [availableDealers, monthFilter, monthlyReports, periodInvoices, periodPayments]);
   const officerOrders = orders.filter((order) => order.officerId === currentUser?.officerId);
   const getVariantShortage = (variant) => {
     const orderedCartons = items
@@ -304,11 +365,16 @@ export default function OfficerDashboard() {
   };
 
   return (
-    <div className="mx-auto max-w-7xl space-y-8 px-4 py-8">
-      <header className="rounded-2xl bg-gradient-to-r from-emerald-900 to-emerald-700 p-6 text-white shadow-lg sm:p-8">
-        <p className="text-xs font-bold uppercase tracking-wider text-emerald-200">{t('officer.dashboard')}</p>
-        <h1 className="mt-1 text-2xl font-black">{t('officer.welcome')} {currentUser?.name}</h1>
-        <p className="mt-1 text-sm text-emerald-100">{t('officer.code')} {formatOfficerCode(currentUser?.officerCode) || '—'} • {t('officer.onlineSales')}</p>
+    <div className="officer-dashboard-print mx-auto max-w-7xl space-y-8 px-4 py-8">
+      <header className="flex items-center justify-between rounded-2xl bg-gradient-to-r from-emerald-900 to-emerald-700 p-6 text-white shadow-lg sm:p-8">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wider text-emerald-200">{t('officer.dashboard')}</p>
+          <h1 className="mt-1 text-2xl font-black">{t('officer.welcome')} {currentUser?.name}</h1>
+          <p className="mt-1 text-sm text-emerald-100">{t('officer.code')} {formatOfficerCode(currentUser?.officerCode) || '—'} • {t('officer.onlineSales')}</p>
+        </div>
+        <button type="button" onClick={() => window.print()} className="no-print rounded-lg bg-white/10 px-4 py-2 text-sm font-bold hover:bg-white/20">
+          প্রিন্ট
+        </button>
       </header>
 
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -348,19 +414,19 @@ export default function OfficerDashboard() {
           { label: 'L/C খরচ', value: `৳${financeSummary.paymentAndExpense.lc.toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}`, Icon: TrendingUp },
           { label: 'মোট বিক্রিত প্যাক / কার্টুন', value: Math.round(totalCartonsSold).toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US'), Icon: PackageCheck },
           {
-            label: `${targetYear} বার্ষিক টার্গেট`,
+            label: `${targetYear} দুই-সেশন সম্মিলিত / বার্ষিক টার্গেট`,
             value: `৳${yearlyTarget.toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}`,
             detail: `অর্জন ৳${Math.round(yearlySalesAmount).toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')} • ${yearlyAchievement}%`,
             Icon: Target
           },
           {
-            label: 'জুলাই–ডিসেম্বর ২০২৬ টার্গেট',
-            value: `৳${targetJulyDec2026.toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}`,
+            label: `জুলাই–ডিসেম্বর ${targetYear} টার্গেট`,
+            value: `৳${targetJulyDec.toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}`,
             Icon: Target
           },
           {
-            label: 'জানুয়ারি–জুন ২০২৭ টার্গেট',
-            value: `৳${targetJanJune2027.toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}`,
+            label: `জানুয়ারি–জুন ${targetYear} টার্গেট`,
+            value: `৳${targetJanJune.toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}`,
             Icon: Target
           },
           {
@@ -387,7 +453,7 @@ export default function OfficerDashboard() {
             <div className="border-b border-slate-100 px-5 py-4">
               <h2 className="font-black text-slate-900">{t('officer.salesSummary')}</h2>
               <p className="text-xs text-slate-500">{t('officer.approvedInvoices')}</p>
-              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              <div className="no-print mt-3 grid gap-2 sm:grid-cols-2">
                 <label className="text-xs font-semibold text-slate-600">
                   সেশন
                   <select value={sessionFilter} onChange={(event) => setSessionFilter(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2">
@@ -410,17 +476,52 @@ export default function OfficerDashboard() {
                   <th className="px-4 py-3">{t('officer.invoice')}</th><th className="px-4 py-3">{t('officer.date')} / সেশন</th><th className="px-4 py-3">{t('officer.dealer')}</th><th className="px-4 py-3 text-right">কার্টুন</th><th className="px-4 py-3 text-right">{t('officer.sales')}</th><th className="px-4 py-3 text-right">বকেয়া</th>
                 </tr></thead>
                 <tbody className="divide-y divide-slate-100">
-                  {filteredSalesInvoices.map((invoice) => (
-                    <tr key={invoice.id}>
+                  {visibleInvoices.map((invoice) => {
+                    const isReturn = invoice.invoiceType === 'dealer_return';
+                    const salesAmount = Math.round(Number(invoice.totalAmount ?? invoice.grandTotal) || 0);
+                    return (
+                    <tr key={invoice.id} className={isReturn ? 'bg-rose-50' : ''}>
                       <td className="px-4 py-3 font-bold text-emerald-800">{invoice.id}</td>
-                      <td className="px-4 py-3">{invoice.date}<p className="text-[10px] text-slate-500">{invoice.session}</p></td>
+                      <td className="px-4 py-3">{invoice.date}<p className="text-[10px] text-slate-500">{invoice.session}</p>{isReturn && <span className="text-[10px] font-bold text-rose-700">পণ্য ফেরত</span>}</td>
                       <td className="px-4 py-3">{invoice.dealerName || '—'}</td>
-                      <td className="px-4 py-3 text-right">{Math.round(getInvoiceCartons(invoice)).toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')} প্যাক</td>
-                      <td className="px-4 py-3 text-right font-bold">৳{Math.round(Number(invoice.totalAmount ?? invoice.grandTotal) || 0).toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}</td>
-                      <td className="px-4 py-3 text-right font-semibold text-rose-700">৳{Math.round(Number(invoice.dueAmount ?? invoice.currentDue) || 0).toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}</td>
+                      <td className="px-4 py-3 text-right">{getInvoicePackageCount(invoice).toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')} প্যাক</td>
+                      <td className={`px-4 py-3 text-right font-bold ${isReturn ? 'text-rose-700' : ''}`}>{isReturn ? '− ' : ''}৳{salesAmount.toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}</td>
+                      <td className="px-4 py-3 text-right font-semibold text-rose-700">৳{isReturn ? '0' : Math.round(Number(invoice.dueAmount ?? invoice.currentDue) || 0).toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}</td>
+                    </tr>
+                  );})}
+                  {!visibleInvoices.length && <tr><td colSpan="6" className="px-4 py-8 text-center text-slate-500">{t('officer.noInvoices')}</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+            <div className="border-b border-slate-100 px-5 py-4">
+              <h2 className="font-black text-slate-900">ফিল্টার করা ডিলার লেজার</h2>
+              <p className="text-xs text-slate-500">নির্বাচিত সেশন/মাসের ইনভয়েস, পণ্য ফেরত ও কালেকশন</p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[760px] text-left text-xs">
+                <thead className="bg-emerald-900 text-white"><tr>
+                  <th className="px-3 py-2">ডিলারের নাম</th>
+                  <th className="px-3 py-2 text-right">Last Session Due</th>
+                  <th className="px-3 py-2 text-right">পণ্য বিক্রি</th>
+                  <th className="px-3 py-2 text-right">পণ্য ফেরত</th>
+                  <th className="px-3 py-2 text-right">মোট আদায়</th>
+                  <th className="px-3 py-2 text-right">নিট বকেয়া</th>
+                </tr></thead>
+                <tbody className="divide-y divide-slate-100">
+                  {officerDealerLedgers.map((ledger) => (
+                    <tr key={ledger.dealerId}>
+                      <td className="px-3 py-2 font-semibold">{ledger.dealerName}</td>
+                      <td className="px-3 py-2 text-right">৳{Math.round(ledger.lastSessionDue).toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}</td>
+                      <td className="px-3 py-2 text-right">৳{Math.round(ledger.sales).toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}</td>
+                      <td className="px-3 py-2 text-right text-rose-700">৳{Math.round(ledger.returns).toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}</td>
+                      <td className="px-3 py-2 text-right text-emerald-800">৳{Math.round(ledger.received).toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}</td>
+                      <td className="px-3 py-2 text-right font-bold text-rose-700">৳{Math.round(ledger.due).toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}</td>
                     </tr>
                   ))}
-                  {!filteredSalesInvoices.length && <tr><td colSpan="6" className="px-4 py-8 text-center text-slate-500">{t('officer.noInvoices')}</td></tr>}
+                  {!officerDealerLedgers.length && <tr><td colSpan="6" className="px-3 py-6 text-center text-slate-500">এই সময়সীমায় কোনো ডিলার হিসাব নেই।</td></tr>}
                 </tbody>
               </table>
             </div>
@@ -507,7 +608,7 @@ export default function OfficerDashboard() {
           </div>
         </div>
 
-        <div className="space-y-6">
+        <div className="no-print space-y-6">
           <form onSubmit={submitOrder} className="space-y-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
             <div>
               <h2 className="flex items-center gap-2 font-black text-slate-900"><ShoppingCart className="h-5 w-5 text-emerald-700" /> {t('officer.newOrder')}</h2>

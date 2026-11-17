@@ -43,7 +43,7 @@ export function dateRangeCondition(field, range) {
   return range ? { [field]: { $gte: range.start, $lt: range.end } } : null;
 }
 
-export function invoiceSessionCondition(value) {
+export function invoiceSessionCondition(value, dateField = 'date') {
   const session = String(value || '').trim();
   const range = parseSessionDateRange(session);
   if (!range) return { session };
@@ -52,9 +52,10 @@ export function invoiceSessionCondition(value) {
     ? `জানুয়ারি - জুন ${year}`
     : `জুলাই - ডিসেম্বর ${year}`;
   return {
-    $and: [
-      dateRangeCondition('date', range),
-      { $or: [{ session }, { session: canonical }] }
+    $or: [
+      { session },
+      { session: canonical },
+      dateRangeCondition(dateField, range)
     ]
   };
 }

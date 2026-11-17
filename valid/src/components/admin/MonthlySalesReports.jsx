@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Save, Trash2 } from 'lucide-react';
+import { Printer, Save, Trash2 } from 'lucide-react';
 import { useAgro } from '../../context/AgroContext';
 import { getOfficerSalesTarget } from '../../../shared/officerSalesTargets';
 import { INVOICE_SESSIONS } from '../../../shared/sessions';
@@ -98,13 +98,20 @@ export default function MonthlySalesReports() {
         setTargetRecords(records);
         const drafts = Object.fromEntries(records.map((record) => [
           normalizeOfficerCode(record.officerCode) || record.officerId,
-          record
+          {
+            ...record,
+            lastSessionDue: officers.find((officer) => (
+              (record.officerId && officer.id === record.officerId)
+              || normalizeOfficerCode(officer.code, officer.designation)
+                === normalizeOfficerCode(record.officerCode)
+            ))?.lastSessionDue ?? record.lastSessionDue
+          }
         ]));
         setTargetDrafts(drafts);
       })
       .catch((requestError) => { if (!cancelled) setError(requestError.message); });
     return () => { cancelled = true; };
-  }, []);
+  }, [officers]);
 
   useEffect(() => {
     let cancelled = false;
@@ -217,7 +224,10 @@ export default function MonthlySalesReports() {
       salesTargetJulyDec2026: targetDrafts[key]?.salesTargetJulyDec2026
         ?? getOfficerSalesTarget(officer, 'জুলাই - ডিসেম্বর 2026'),
       salesTargetJanJune2027: targetDrafts[key]?.salesTargetJanJune2027
-        ?? getOfficerSalesTarget(officer, 'জানুয়ারি - জুন 2027')
+        ?? getOfficerSalesTarget(officer, 'জানুয়ারি - জুন 2027'),
+      lastSessionDue: roundAmount(
+        targetDrafts[key]?.lastSessionDue ?? previous.lastSessionDue ?? officer.lastSessionDue
+      )
     };
     setBusy(true);
     setError('');
@@ -255,22 +265,30 @@ export default function MonthlySalesReports() {
           : existing.salesTargetJulyDec2026 ?? getOfficerSalesTarget(officer, 'জুলাই - ডিসেম্বর 2026'),
         salesTargetJanJune2027: field === 'salesTargetJanJune2027'
           ? value
-          : existing.salesTargetJanJune2027 ?? getOfficerSalesTarget(officer, 'জানুয়ারি - জুন 2027')
+          : existing.salesTargetJanJune2027 ?? getOfficerSalesTarget(officer, 'জানুয়ারি - জুন 2027'),
+        lastSessionDue: field === 'lastSessionDue'
+          ? value
+          : existing.lastSessionDue ?? officer.lastSessionDue ?? 0
       }
     }));
   };
 
   return (
-    <main className="mx-auto max-w-7xl space-y-6 px-4 py-8">
-      <header className="rounded-2xl bg-gradient-to-r from-emerald-900 to-emerald-700 p-6 text-white">
-        <h1 className="text-2xl font-black">মাসিক বিক্রয়, কালেকশন ও টার্গেট</h1>
-        <p className="mt-1 text-sm text-emerald-100">রিটার্ন বাদ দিয়ে নিট বিক্রয় এবং পূর্ণাঙ্গ মাসিক রিপোর্ট পরিচালনা করুন।</p>
+    <main className="report-print mx-auto max-w-7xl space-y-6 px-4 py-8">
+      <header className="flex items-center justify-between rounded-2xl bg-gradient-to-r from-emerald-900 to-emerald-700 p-6 text-white">
+        <div>
+          <h1 className="text-2xl font-black">মাসিক বিক্রয়, কালেকশন ও টার্গেট</h1>
+          <p className="mt-1 text-sm text-emerald-100">রিটার্ন বাদ দিয়ে নিট বিক্রয় এবং পূর্ণাঙ্গ মাসিক রিপোর্ট পরিচালনা করুন।</p>
+        </div>
+        <button type="button" onClick={() => window.print()} className="no-print inline-flex items-center gap-2 rounded-lg bg-white/10 px-4 py-2 text-sm font-bold">
+          <Printer className="h-4 w-4" /> প্রিন্ট
+        </button>
       </header>
 
-      {error && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm font-semibold text-rose-700">{error}</p>}
-      {message && <p role="status" className="rounded-lg bg-emerald-50 p-3 text-sm font-semibold text-emerald-800">{message}</p>}
+      {error && <p role="alert" className="no-print rounded-lg bg-rose-50 p-3 text-sm font-semibold text-rose-700">{error}</p>}
+      {message && <p role="status" className="no-print rounded-lg bg-emerald-50 p-3 text-sm font-semibold text-emerald-800">{message}</p>}
 
-      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <section className="no-print overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-100 p-5">
           <h2 className="font-black text-slate-900">অফিসার সেশন টার্গেট</h2>
           <p className="text-xs text-slate-500">ড্যাশবোর্ডের ২০২৬ ও ২০২৭ সেশন টার্গেট এখান থেকে সংরক্ষিত হয়।</p>
@@ -281,6 +299,7 @@ export default function MonthlySalesReports() {
               <th className="px-4 py-3">অফিসার</th>
               <th className="px-4 py-3">জুলাই–ডিসেম্বর ২০২৬</th>
               <th className="px-4 py-3">জানুয়ারি–জুন ২০২৭</th>
+              <th className="px-4 py-3">Last Session Due (৳)</th>
               <th className="px-4 py-3">সংরক্ষণ</th>
             </tr></thead>
             <tbody className="divide-y divide-slate-100">
@@ -293,11 +312,13 @@ export default function MonthlySalesReports() {
                   ?? getOfficerSalesTarget(officer, 'জুলাই - ডিসেম্বর 2026');
                 const target2 = existing.salesTargetJanJune2027
                   ?? getOfficerSalesTarget(officer, 'জানুয়ারি - জুন 2027');
+                const lastSessionDue = existing.lastSessionDue ?? officer.lastSessionDue ?? 0;
                 return (
                   <tr key={officer.id}>
                     <td className="px-4 py-3 font-semibold">{officer.name}<span className="ml-2 text-xs text-slate-500">{key}</span></td>
                     <td className="px-4 py-3"><input type="number" min="0" step="1" value={target1} onChange={(event) => setTarget(key, 'salesTargetJulyDec2026', event.target.value, officer)} onBlur={(event) => setTarget(key, 'salesTargetJulyDec2026', String(roundAmount(event.target.value)), officer)} className="w-44 rounded-lg border border-slate-300 px-3 py-2" /></td>
                     <td className="px-4 py-3"><input type="number" min="0" step="1" value={target2} onChange={(event) => setTarget(key, 'salesTargetJanJune2027', event.target.value, officer)} onBlur={(event) => setTarget(key, 'salesTargetJanJune2027', String(roundAmount(event.target.value)), officer)} className="w-44 rounded-lg border border-slate-300 px-3 py-2" /></td>
+                    <td className="px-4 py-3"><input type="number" step="1" value={lastSessionDue} onChange={(event) => setTarget(key, 'lastSessionDue', event.target.value, officer)} onBlur={(event) => setTarget(key, 'lastSessionDue', String(roundAmount(event.target.value)), officer)} className="w-40 rounded-lg border border-slate-300 px-3 py-2" aria-label={`${officer.name} Last Session Due`} /></td>
                     <td className="px-4 py-3"><button type="button" disabled={busy} onClick={() => saveTargets(officer)} className="inline-flex items-center gap-1 rounded-lg bg-emerald-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50"><Save className="h-4 w-4" /> সংরক্ষণ</button></td>
                   </tr>
                 );
@@ -308,7 +329,7 @@ export default function MonthlySalesReports() {
       </section>
 
       <section className="space-y-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="no-print flex flex-wrap items-end justify-between gap-3">
           <div>
             <h2 className="font-black text-slate-900">মাসিক রিপোর্ট</h2>
             <p className="text-xs text-slate-500">সেশন এবং মাস/তারিখ—দুটি ফিল্টারই সার্ভারে প্রয়োগ হয়।</p>
@@ -330,7 +351,7 @@ export default function MonthlySalesReports() {
           </div>
         </div>
 
-        <label className="block max-w-xl text-xs font-semibold text-slate-600">সংরক্ষিত রিপোর্ট
+        <label className="no-print block max-w-xl text-xs font-semibold text-slate-600">সংরক্ষিত রিপোর্ট
           <select value={selectedReportId} onChange={(event) => {
             const report = reports.find((item) => item._id === event.target.value);
             if (report) loadReport(report);
@@ -399,7 +420,7 @@ export default function MonthlySalesReports() {
               </tbody>
             </table>
           </div>
-          <div className="flex flex-wrap justify-between gap-3">
+          <div className="no-print flex flex-wrap justify-between gap-3">
             <button type="button" onClick={() => setReportDraft((current) => ({ ...current, parties: [...current.parties, { ...emptyParty(), slNo: current.parties.length + 1 }] }))} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700">+ পার্টি যোগ করুন</button>
             <div className="flex gap-2">
               {reportDraft._id && <button type="button" disabled={busy} onClick={deleteReport} className="rounded-lg border border-rose-300 px-4 py-2 text-sm font-bold text-rose-700 disabled:opacity-50">রিপোর্ট মুছুন</button>}

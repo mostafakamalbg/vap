@@ -16,7 +16,7 @@ import {
 } from '../../shared/codes';
 import { isDealerCollection, normalizePaymentMethod } from '../../shared/paymentMethods';
 import { applyInvoiceStockChanges } from '../../shared/invoiceStock';
-import { getInvoiceCartons, getItemCartons } from '../../shared/invoiceCartons';
+import { getInvoicePackageCount, getItemCartons } from '../../shared/invoiceCartons';
 import { getInvoiceSalesAmount, roundCurrency } from '../../shared/invoiceTotals';
 import { calculateOfficerFinancials, filterOfficerRecordsByPeriod } from '../../shared/officerFinancials';
 import { getDealerNetDue } from '../../shared/dealerLedger';
@@ -802,7 +802,7 @@ export function AgroProvider({ children }) {
     const dealer = dealers.find((d) => d.id === dealerId || d.code === dealerId);
     if (!dealer) return null;
 
-    const openingDue = Number(dealer.openingDue) || 0;
+    const openingDue = Number(dealer.lastSessionDue ?? dealer.openingDue) || 0;
     const dealerInvoices = invoices.filter((inv) => inv.dealerId === dealer.id || inv.dealerCode === dealer.code);
     
     // Total purchases from regular invoices
@@ -837,6 +837,7 @@ export function AgroProvider({ children }) {
     return {
       ...dealer,
       openingDue,
+      lastSessionDue: openingDue,
       totalPurchases,
       totalReturnCredits,
       totalPaid,
@@ -867,7 +868,7 @@ export function AgroProvider({ children }) {
     const officerPayments = filterOfficerRecordsByPeriod(allPayments, filters);
     const totalCartonsSold = officerInvoices
       .filter(isSalesInvoice)
-      .reduce((sum, invoice) => sum + getInvoiceCartons(invoice), 0);
+      .reduce((sum, invoice) => sum + getInvoicePackageCount(invoice), 0);
     const financials = calculateOfficerFinancials({
       invoices: officerInvoices,
       payments: officerPayments,

@@ -4,6 +4,7 @@ import { MonthlySalesCollection } from '../lib/models.js';
 import { authorize } from '../lib/auth.js';
 import { normalizeMonthlySalesReport, validateMonthlySalesReport } from '../shared/salesReports.js';
 import { normalizeOfficerCode } from '../shared/codes.js';
+import { invoiceSessionCondition } from '../shared/reportDateFilters.js';
 
 function getMonthFilter(value) {
   const month = String(value || '').trim();
@@ -33,7 +34,9 @@ export default async function handler(req, res) {
   try {
     if (req.method === 'GET') {
       const filters = [];
-      if (req.query?.session) filters.push({ session: String(req.query.session) });
+      if (req.query?.session) {
+        filters.push(invoiceSessionCondition(String(req.query.session), 'reportingDate'));
+      }
       if (req.query?.month) filters.push(getMonthFilter(req.query.month));
       if (req.query?.date) filters.push(getMonthFilter(req.query.date));
       if (user.role !== 'admin') {

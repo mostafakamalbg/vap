@@ -71,10 +71,10 @@ export function calculateOfficerFinancials({
     paymentAndExpense,
     totalReceivedAmount,
     totalAmountDues: previousPlusNetSales - totalReceivedAmount,
-    totalSalesDues: totalNetSales - totalReceivedAmount,
+    totalSalesDues: roundCurrency(salesTarget) - previousPlusNetSales,
     totalExpenses,
     expensePercentage: totalNetSales ? roundCurrency(totalExpenses / totalNetSales * 100) : 0,
-    salesPercentage: salesTarget ? roundCurrency(totalNetSales / salesTarget * 100) : 0,
+    salesPercentage: salesTarget ? roundCurrency(previousPlusNetSales / salesTarget * 100) : 0,
     paymentPercentage: previousPlusNetSales
       ? roundCurrency(totalReceivedAmount / previousPlusNetSales * 100)
       : 0

@@ -24,12 +24,10 @@ test('maps English and Bengali sessions to date ranges', () => {
     end: '2027-01-01'
   });
   assert.deepEqual(invoiceSessionCondition('January-June 2027'), {
-    $and: [
-      { date: { $gte: '2027-01-01', $lt: '2027-07-01' } },
-      { $or: [
-        { session: 'January-June 2027' },
-        { session: 'জানুয়ারি - জুন 2027' }
-      ] }
+    $or: [
+      { session: 'January-June 2027' },
+      { session: 'জানুয়ারি - জুন 2027' },
+      { date: { $gte: '2027-01-01', $lt: '2027-07-01' } }
     ]
   });
 });

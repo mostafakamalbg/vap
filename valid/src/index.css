@@ -1742,3 +1742,150 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
     page-break-inside: avoid;
   }
 }
+
+@media print {
+  @page report-landscape {
+    size: A4 landscape;
+    margin: 5mm;
+  }
+
+  @page ledger-portrait {
+    size: A4 portrait;
+    margin: 7mm;
+  }
+
+  body.print-invoice-only .invoice-list-print,
+  body.print-invoice-only .invoice-list-print *,
+  body.print-invoice-list-only .invoice-print-sheet,
+  body.print-invoice-list-only .invoice-print-sheet *,
+  body.print-invoice-list-only .invoice-print-preview,
+  body.print-invoice-list-only .invoice-print-preview * {
+    visibility: hidden !important;
+  }
+
+  .report-print,
+  .report-print *,
+  .invoice-list-print,
+  .invoice-list-print *,
+  .dealer-ledger-list-print,
+  .dealer-ledger-list-print *,
+  .officer-performance-print,
+  .officer-performance-print *,
+  .officer-dashboard-print,
+  .officer-dashboard-print * {
+    visibility: visible !important;
+  }
+
+  .report-print,
+  .invoice-list-print,
+  .dealer-ledger-list-print,
+  .officer-dashboard-print {
+    page: report-landscape;
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    color: #000 !important;
+    background: #fff !important;
+    font-size: 7pt !important;
+  }
+
+  .officer-performance-print {
+    page: ledger-portrait;
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    color: #000 !important;
+    background: #fff !important;
+    font-size: 6pt !important;
+  }
+
+  .report-print .max-h-\[34rem\],
+  .report-print .max-h-\[28rem\],
+  .officer-dashboard-print .max-h-\[28rem\],
+  .invoice-list-print .overflow-x-auto,
+  .dealer-ledger-list-print .overflow-x-auto {
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  .report-print table,
+  .invoice-list-print table,
+  .dealer-ledger-list-print table,
+  .officer-dashboard-print table {
+    width: 100% !important;
+    min-width: 0 !important;
+    table-layout: auto !important;
+    border-collapse: collapse !important;
+    font-size: 6pt !important;
+  }
+
+  .report-print th,
+  .report-print td,
+  .invoice-list-print th,
+  .invoice-list-print td,
+  .dealer-ledger-list-print th,
+  .dealer-ledger-list-print td,
+  .officer-dashboard-print th,
+  .officer-dashboard-print td {
+    padding: 1mm !important;
+    border: 0.2mm solid #333 !important;
+    color: #000 !important;
+    line-height: 1.15 !important;
+    white-space: normal !important;
+  }
+
+  .officer-performance-print table {
+    width: 100% !important;
+    min-width: 0 !important;
+    table-layout: fixed !important;
+    border-collapse: collapse !important;
+    font-size: 5pt !important;
+  }
+
+  .officer-performance-print th,
+  .officer-performance-print td {
+    padding: 0.6mm !important;
+    border: 0.15mm solid #333 !important;
+    color: #000 !important;
+    line-height: 1.05 !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+  }
+
+  .officer-monthly-party-table th,
+  .officer-monthly-party-table td {
+    border: 0.2mm solid #000 !important;
+  }
+
+  .dealer-ledger-print {
+    page: ledger-portrait;
+  }
+
+  .dealer-ledger-list-print .no-print,
+  .report-print .no-print,
+  .invoice-list-print .no-print,
+  .officer-performance-print .no-print,
+  .officer-dashboard-print .no-print {
+    display: none !important;
+  }
+
+  .report-print section,
+  .invoice-list-print section,
+  .dealer-ledger-list-print section,
+  .officer-performance-print section,
+  .officer-dashboard-print section {
+    break-inside: auto;
+    page-break-inside: auto;
+  }
+
+  .report-print tr,
+  .invoice-list-print tr,
+  .dealer-ledger-list-print tr,
+  .officer-performance-print tr,
+  .officer-dashboard-print tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}

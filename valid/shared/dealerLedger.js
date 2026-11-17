@@ -25,7 +25,7 @@ export function getDealerLedgerTransactions(summary = {}) {
   const addTransaction = (transaction) => {
     transactions.push({ ...transaction, sequence: sequence++ });
   };
-  const openingDue = amountOrZero(summary.openingDue);
+  const openingDue = amountOrZero(summary.lastSessionDue ?? summary.openingDue);
 
   if (openingDue !== 0) {
     addTransaction({

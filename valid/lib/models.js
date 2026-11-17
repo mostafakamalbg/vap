@@ -38,7 +38,8 @@ const dealerSchema = new Schema({
   id: { type: String, required: true, unique: true, index: true },
   code: { type: String, default: '' },
   shopName: { type: String, default: '' },
-  openingDue: { type: Number, default: 0 }
+  openingDue: { type: Number, default: 0 },
+  lastSessionDue: { type: Number, default: null }
 }, flexibleOptions);
 
 const invoiceItemSchema = new Schema({

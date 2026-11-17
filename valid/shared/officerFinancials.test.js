@@ -28,8 +28,9 @@ test('officer summary deducts return invoices and classifies payment categories'
   assert.equal(summary.paymentAndExpense.salary, 200);
   assert.equal(summary.paymentAndExpense.lc, 400);
   assert.equal(summary.totalAmountDues, 7880);
+  assert.equal(summary.totalSalesDues, -1380);
   assert.equal(summary.expensePercentage, 11);
-  assert.equal(summary.salesPercentage, 94);
+  assert.equal(summary.salesPercentage, 114);
   assert.equal(summary.paymentPercentage, 31);
 });
 

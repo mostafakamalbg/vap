@@ -89,7 +89,9 @@ function invoicePipeline(match) {
               { $ifNull: ['$dealerProfile.phone', '$dealerProfile.mobile'] }
             ]
           },
-          openingDue: '$dealerProfile.openingDue'
+          openingDue: {
+            $ifNull: ['$dealerProfile.lastSessionDue', '$dealerProfile.openingDue']
+          }
         },
         salesAmount: {
           $sum: { $cond: [{ $eq: ['$invoiceType', 'dealer_return'] }, 0, '$reportAmount'] }
@@ -154,7 +156,9 @@ function paymentPipeline(match) {
               { $ifNull: ['$dealerProfile.phone', '$dealerProfile.mobile'] }
             ]
           },
-          openingDue: '$dealerProfile.openingDue'
+          openingDue: {
+            $ifNull: ['$dealerProfile.lastSessionDue', '$dealerProfile.openingDue']
+          }
         },
         collection: {
           $sum: {
@@ -422,13 +426,13 @@ export default async function handler(req, res) {
       const salesAmount = parties.reduce((sum, party) => sum + party.sales, 0);
       const returnAmount = parties.reduce((sum, party) => sum + party.returns, 0);
       const totalNetSales = salesAmount - returnAmount;
-      const totalReceivedAmount = parties.reduce((sum, party) => sum + party.actualReceived, 0)
-        + periodOfficerPayments.filter((row) => (
-          !row._id.dealerId && !row._id.dealerName && !row._id.mobileNo
-        )).reduce((sum, row) => sum + roundAmount(row.collection), 0);
-      const previousDue = parties.reduce((sum, party) => sum + party.previousDue, 0);
+      const derivedPreviousDue = parties.reduce((sum, party) => sum + party.previousDue, 0);
+      const previousDue = officer.lastSessionDue != null && officer.lastSessionDue !== ''
+        ? roundAmount(officer.lastSessionDue)
+        : derivedPreviousDue;
       const previousPlusNetSales = previousDue + totalNetSales;
       const totalExpenses = Object.values(expenses).reduce((sum, amount) => sum + amount, 0);
+      const totalReceivedAmount = roundAmount(totalExpenses);
       const session = period === 'session'
         ? value
         : period === 'month'
@@ -461,11 +465,11 @@ export default async function handler(req, res) {
         paymentAndExpense: Object.fromEntries(
           Object.entries(expenses).map(([field, amount]) => [field, roundAmount(amount)])
         ),
-        totalReceivedAmount: roundAmount(totalReceivedAmount),
+        totalReceivedAmount,
         totalAmountDues: roundAmount(previousPlusNetSales - totalReceivedAmount),
         totalNetSales: roundAmount(totalNetSales),
-        totalSalesDues: roundAmount(totalNetSales - totalReceivedAmount),
-        salesPercentage: target ? roundAmount(totalNetSales / target * 100) : 0,
+        totalSalesDues: roundAmount(target - previousPlusNetSales),
+        salesPercentage: target ? roundAmount(previousPlusNetSales / target * 100) : 0,
         paymentPercentage: previousPlusNetSales
           ? roundAmount(totalReceivedAmount / previousPlusNetSales * 100)
           : 0,

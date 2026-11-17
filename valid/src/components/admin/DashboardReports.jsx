@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { RefreshCw } from 'lucide-react';
+import { Printer, RefreshCw } from 'lucide-react';
 import { INVOICE_SESSIONS, getInvoiceSessionForDate } from '../../../shared/sessions';
 import { useAgro } from '../../context/AgroContext';
 
@@ -67,7 +67,7 @@ export default function DashboardReports() {
     officer.officerId === selectedOfficer || officer.officerCode === selectedOfficer
   )) || officers[0];
   const totals = officers.reduce((sum, officer) => ({
-    target: sum.target + officer.julyDecemberTarget,
+    target: sum.target + (period === 'year' ? officer.yearlyTarget : officer.sessionTarget),
     lastDue: sum.lastDue + officer.lastDue,
     sales: sum.sales + officer.salesAmount,
     returns: sum.returns + officer.returnAmount,
@@ -78,12 +78,11 @@ export default function DashboardReports() {
     lc: sum.lc + officer.paymentAndExpense.lc,
     received: sum.received + officer.totalReceivedAmount,
     dues: sum.dues + officer.totalAmountDues,
-    netSales: sum.netSales + officer.totalNetSales,
     salesDues: sum.salesDues + officer.totalSalesDues
   }), {
     target: 0, lastDue: 0, sales: 0, returns: 0, previousPlusNetSales: 0,
     officePay: 0, fare: 0, salary: 0, lc: 0, received: 0, dues: 0,
-    netSales: 0, salesDues: 0
+    salesDues: 0
   });
   const periodLabel = period === 'month'
     ? new Date(`${value}-01T00:00:00`).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
@@ -98,24 +97,29 @@ export default function DashboardReports() {
   };
 
   return (
-    <main className="mx-auto max-w-[96rem] space-y-6 px-4 py-8">
+    <main className="report-print mx-auto max-w-[96rem] space-y-6 px-4 py-8">
       <header className="flex flex-col justify-between gap-4 rounded-2xl bg-gradient-to-r from-emerald-950 to-emerald-700 p-6 text-white shadow-lg sm:flex-row sm:items-center">
         <div>
           <p className="text-xs font-bold uppercase tracking-widest text-emerald-200">Valid Agro Product Limited</p>
           <h1 className="mt-1 text-2xl font-black">লাইভ অফিসার পারফরম্যান্স রিপোর্ট</h1>
           <p className="mt-1 text-sm text-emerald-100">{periodLabel} • ইনভয়েস ও পেমেন্ট কালেকশন থেকে সরাসরি</p>
         </div>
-        <button
-          type="button"
-          onClick={() => setRefreshIndex((index) => index + 1)}
-          className="inline-flex items-center justify-center gap-2 rounded-lg bg-white/10 px-4 py-2 text-sm font-bold hover:bg-white/20"
-          aria-label="রিপোর্ট রিফ্রেশ করুন"
-        >
-          <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} /> রিফ্রেশ
-        </button>
+        <div className="no-print flex gap-2">
+          <button type="button" onClick={() => window.print()} className="inline-flex items-center gap-2 rounded-lg bg-white/10 px-4 py-2 text-sm font-bold hover:bg-white/20">
+            <Printer className="h-4 w-4" /> প্রিন্ট
+          </button>
+          <button
+            type="button"
+            onClick={() => setRefreshIndex((index) => index + 1)}
+            className="inline-flex items-center justify-center gap-2 rounded-lg bg-white/10 px-4 py-2 text-sm font-bold hover:bg-white/20"
+            aria-label="রিপোর্ট রিফ্রেশ করুন"
+          >
+            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} /> রিফ্রেশ
+          </button>
+        </div>
       </header>
 
-      <section className="grid gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:grid-cols-3">
+      <section className="no-print grid gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:grid-cols-3">
         <label className="text-xs font-bold text-slate-600">
           রিপোর্টের সময়সীমা
           <select value={period} onChange={(event) => setPeriodType(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm">
@@ -162,56 +166,55 @@ export default function DashboardReports() {
           <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-800">{number(officers.length)} জন অফিসার</span>
         </div>
         <TableFrame>
-          <table className="w-full min-w-[1800px] border-separate border-spacing-0 text-right text-xs">
+          <table className="officer-master-table w-full min-w-[1500px] border-separate border-spacing-0 text-right text-[10px]">
             <thead className="sticky top-0 z-10 bg-emerald-900 text-white">
               <tr>
-                <th rowSpan="2" className="sticky left-0 z-20 bg-emerald-900 px-3 py-3 text-center">SL</th>
-                <th rowSpan="2" className="sticky left-12 z-20 bg-emerald-900 px-3 py-3 text-left">Officer Name</th>
-                <th rowSpan="2" className="px-3 py-3">July-December {value.match(/\d{4}/)?.[0] || currentYear} Sales Target</th>
-                <th rowSpan="2" className="px-3 py-3">Session Due / Last Due</th>
-                <th rowSpan="2" className="px-3 py-3">Sales Amount (Tk)</th>
-                <th rowSpan="2" className="px-3 py-3">Return Amount (Tk)</th>
-                <th rowSpan="2" className="px-3 py-3">Previous + Net Sales (Tk)</th>
-                <th colSpan="4" className="px-3 py-2 text-center">Payment &amp; Expense</th>
-                <th rowSpan="2" className="px-3 py-3">Total Received Amount</th>
-                <th rowSpan="2" className="px-3 py-3">Total Amount Dues</th>
-                <th rowSpan="2" className="px-3 py-3">Total Net Sales</th>
-                <th rowSpan="2" className="px-3 py-3">Total Sales Dues</th>
-                <th rowSpan="2" className="px-3 py-3">Sales Percentage (%)</th>
-                <th rowSpan="2" className="px-3 py-3">Payment Percentage (%)</th>
+                <th rowSpan="2" className="sticky left-0 z-20 bg-emerald-900 px-2 py-1 text-center">SL</th>
+                <th rowSpan="2" className="sticky left-12 z-20 bg-emerald-900 px-2 py-1 text-left">Officer Name</th>
+                <th rowSpan="2" className="px-2 py-1">{period === 'year' ? 'Yearly' : 'Session'} Sales Target</th>
+                <th rowSpan="2" className="px-2 py-1">Session Due / Last Due</th>
+                <th rowSpan="2" className="px-2 py-1">Sales Amount (Tk)</th>
+                <th rowSpan="2" className="px-2 py-1">Return Amount (Tk)</th>
+                <th rowSpan="2" className="px-2 py-1">Previous + Net Sales (Tk)</th>
+                <th colSpan="4" className="px-2 py-1 text-center">Payment &amp; Expense</th>
+                <th rowSpan="2" className="px-2 py-1">Total Received Amount</th>
+                <th rowSpan="2" className="px-2 py-1">Total Amount Dues</th>
+                <th rowSpan="2" className="px-2 py-1">Total Sales Dues</th>
+                <th rowSpan="2" className="px-2 py-1">Sales Percentage (%)</th>
+                <th rowSpan="2" className="px-2 py-1">Payment Percentage (%)</th>
               </tr>
               <tr>
-                <th className="px-3 py-2">Office Pay</th><th className="px-3 py-2">Fare</th>
-                <th className="px-3 py-2">Salary</th><th className="px-3 py-2">L/C</th>
+                <th className="px-2 py-1">Office Pay</th><th className="px-2 py-1">Fare</th>
+                <th className="px-2 py-1">Salary</th><th className="px-2 py-1">L/C</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-slate-700">
               {officers.map((officer, index) => (
                 <tr key={officer.officerId || officer.officerCode || officer.officerName} className="odd:bg-white even:bg-slate-50 hover:bg-emerald-50">
-                  <td className="sticky left-0 bg-inherit px-3 py-3 text-center font-bold">{index + 1}</td>
-                  <td className="sticky left-12 bg-inherit px-3 py-3 text-left font-bold text-slate-900">{officer.officerName}<span className="block text-[10px] font-normal text-slate-500">{officer.officerCode}</span></td>
-                  <td className="px-3 py-3">{amount(officer.julyDecemberTarget)}</td><td className="px-3 py-3">{amount(officer.lastDue)}</td>
-                  <td className="px-3 py-3">{amount(officer.salesAmount)}</td><td className="px-3 py-3">{amount(officer.returnAmount)}</td>
-                  <td className="px-3 py-3 font-semibold">{amount(officer.previousPlusNetSales)}</td>
-                  <td className="px-3 py-3">{amount(officer.paymentAndExpense.officePay)}</td><td className="px-3 py-3">{amount(officer.paymentAndExpense.fare)}</td>
-                  <td className="px-3 py-3">{amount(officer.paymentAndExpense.salary)}</td><td className="px-3 py-3">{amount(officer.paymentAndExpense.lc)}</td>
-                  <td className="px-3 py-3 font-bold text-emerald-800">{amount(officer.totalReceivedAmount)}</td>
-                  <td className="px-3 py-3 font-bold text-rose-700">{amount(officer.totalAmountDues)}</td>
-                  <td className="px-3 py-3 font-bold">{amount(officer.totalNetSales)}</td><td className="px-3 py-3">{amount(officer.totalSalesDues)}</td>
-                  <td className="px-3 py-3">{officer.salesPercentage}%</td><td className="px-3 py-3">{officer.paymentPercentage}%</td>
+                  <td className="sticky left-0 bg-inherit px-2 py-1 text-center font-bold">{index + 1}</td>
+                  <td className="sticky left-12 bg-inherit px-2 py-1 text-left font-bold text-slate-900">{officer.officerName}<span className="block text-[10px] font-normal text-slate-500">{officer.officerCode}</span></td>
+                  <td className="px-2 py-1">{amount(period === 'year' ? officer.yearlyTarget : officer.sessionTarget)}</td><td className="px-2 py-1">{amount(officer.lastDue)}</td>
+                  <td className="px-2 py-1">{amount(officer.salesAmount)}</td><td className="px-2 py-1">{amount(officer.returnAmount)}</td>
+                  <td className="px-2 py-1 font-semibold">{amount(officer.previousPlusNetSales)}</td>
+                  <td className="px-2 py-1">{amount(officer.paymentAndExpense.officePay)}</td><td className="px-2 py-1">{amount(officer.paymentAndExpense.fare)}</td>
+                  <td className="px-2 py-1">{amount(officer.paymentAndExpense.salary)}</td><td className="px-2 py-1">{amount(officer.paymentAndExpense.lc)}</td>
+                  <td className="px-2 py-1 font-bold text-emerald-800">{amount(officer.totalReceivedAmount)}</td>
+                  <td className="px-2 py-1 font-bold text-rose-700">{amount(officer.totalAmountDues)}</td>
+                  <td className="px-2 py-1">{amount(officer.totalSalesDues)}</td>
+                  <td className="px-2 py-1">{officer.salesPercentage}%</td><td className="px-2 py-1">{officer.paymentPercentage}%</td>
                 </tr>
               ))}
               <tr className="sticky bottom-0 bg-emerald-50 font-black text-slate-900">
-                <td colSpan="2" className="sticky left-0 bg-emerald-50 px-3 py-3 text-left">TOTAL</td>
-                <td className="px-3 py-3">{amount(totals.target)}</td><td className="px-3 py-3">{amount(totals.lastDue)}</td>
-                <td className="px-3 py-3">{amount(totals.sales)}</td><td className="px-3 py-3">{amount(totals.returns)}</td>
-                <td className="px-3 py-3">{amount(totals.previousPlusNetSales)}</td><td className="px-3 py-3">{amount(totals.officePay)}</td>
-                <td className="px-3 py-3">{amount(totals.fare)}</td><td className="px-3 py-3">{amount(totals.salary)}</td>
-                <td className="px-3 py-3">{amount(totals.lc)}</td><td className="px-3 py-3">{amount(totals.received)}</td>
-                <td className="px-3 py-3">{amount(totals.dues)}</td><td className="px-3 py-3">{amount(totals.netSales)}</td>
-                <td className="px-3 py-3">{amount(totals.salesDues)}</td><td className="px-3 py-3">—</td><td className="px-3 py-3">—</td>
+                <td colSpan="2" className="sticky left-0 bg-emerald-50 px-2 py-1 text-left">TOTAL</td>
+                <td className="px-2 py-1">{amount(totals.target)}</td><td className="px-2 py-1">{amount(totals.lastDue)}</td>
+                <td className="px-2 py-1">{amount(totals.sales)}</td><td className="px-2 py-1">{amount(totals.returns)}</td>
+                <td className="px-2 py-1">{amount(totals.previousPlusNetSales)}</td><td className="px-2 py-1">{amount(totals.officePay)}</td>
+                <td className="px-2 py-1">{amount(totals.fare)}</td><td className="px-2 py-1">{amount(totals.salary)}</td>
+                <td className="px-2 py-1">{amount(totals.lc)}</td><td className="px-2 py-1">{amount(totals.received)}</td>
+                <td className="px-2 py-1">{amount(totals.dues)}</td>
+                <td className="px-2 py-1">{amount(totals.salesDues)}</td><td className="px-2 py-1">—</td><td className="px-2 py-1">—</td>
               </tr>
-              {!officers.length && <tr><td colSpan="17" className="px-4 py-10 text-center text-slate-500">{loading ? 'লাইভ রিপোর্ট লোড হচ্ছে…' : 'এই সময়সীমায় কোনো অফিসার বা লেনদেন নেই।'}</td></tr>}
+              {!officers.length && <tr><td colSpan="16" className="px-4 py-10 text-center text-slate-500">{loading ? 'লাইভ রিপোর্ট লোড হচ্ছে…' : 'এই সময়সীমায় কোনো অফিসার বা লেনদেন নেই।'}</td></tr>}
             </tbody>
           </table>
         </TableFrame>
@@ -221,7 +224,9 @@ export default function DashboardReports() {
         <>
           <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {[
-              ['Yearly Target', amount(selected.yearlyTarget)],
+              [`Jan-June ${value.match(/\d{4}/)?.[0] || currentYear} Target`, amount(selected.yearlyTarget - selected.julyDecemberTarget)],
+              [`July-December ${value.match(/\d{4}/)?.[0] || currentYear} Target`, amount(selected.julyDecemberTarget)],
+              ['Combined Two-Session / Yearly Target', amount(selected.yearlyTarget)],
               ['Session Target', amount(selected.sessionTarget)],
               ['Sales Achievement', `${amount(selected.totalNetSales)} • ${selected.salesPercentage}%`],
               ['Total Invoices', number(selected.invoiceCount)],
@@ -243,20 +248,20 @@ export default function DashboardReports() {
               <p className="text-xs text-slate-500">পূর্বের ব্যালেন্স এবং নির্বাচিত সময়সীমার চালান ও পেমেন্টের লাইভ হিসাব</p>
             </div>
             <TableFrame>
-              <table className="w-full min-w-[1450px] border-separate border-spacing-0 text-right text-xs">
-                <thead className="sticky top-0 z-10 bg-slate-800 text-white"><tr>
-                  {['SL', 'Mobile No', 'Previous Dues', 'Sales Amount (Tk)', 'Return Goods (Tk)', 'Actual Sales (Tk)', 'Salary', 'Depot', 'Fare', 'L/C', 'Received (Amount Tk)', 'Dues'].map((header) => <th key={header} className="px-3 py-3">{header}</th>)}
+              <table className="officer-party-table w-full min-w-[1400px] border-separate border-spacing-0 text-right text-[10px]">
+                <thead className="sticky top-0 z-10 bg-emerald-900 text-white"><tr>
+                  {['SL', 'ডিলারের নাম', 'Previous Dues', 'Sales Amount (Tk)', 'Return Goods (Tk)', 'Actual Sales (Tk)', 'Salary', 'Depot', 'Fare', 'L/C', 'Received (Amount Tk)', 'Dues'].map((header) => <th key={header} className="px-2 py-1">{header}</th>)}
                 </tr></thead>
                 <tbody className="divide-y divide-slate-100">
                   {selected.parties.map((party) => (
                     <tr key={party.dealerId || `${party.dealerName}-${party.mobileNo}`} className="odd:bg-white even:bg-slate-50">
-                      <td className="px-3 py-3">{party.slNo}</td><td className="px-3 py-3 text-left">{party.mobileNo || '—'}</td>
-                      <td className="px-3 py-3">{amount(party.previousDue)}</td><td className="px-3 py-3">{amount(party.sales)}</td>
-                      <td className="px-3 py-3">{amount(party.returns)}</td><td className="px-3 py-3 font-bold">{amount(party.netSales)}</td>
-                      <td className="px-3 py-3">{amount(party.salary)}</td><td className="px-3 py-3">{amount(party.officePay)}</td>
-                      <td className="px-3 py-3">{amount(party.fare)}</td><td className="px-3 py-3">{amount(party.lc)}</td>
-                      <td className="px-3 py-3 font-bold text-emerald-800">{amount(party.actualReceived)}</td>
-                      <td className="px-3 py-3 font-bold text-rose-700">{amount(party.dues)}</td>
+                      <td className="px-2 py-1">{party.slNo}</td><td className="px-2 py-1 text-left">{party.dealerName || '—'}</td>
+                      <td className="px-2 py-1">{amount(party.previousDue)}</td><td className="px-2 py-1">{amount(party.sales)}</td>
+                      <td className="px-2 py-1">{amount(party.returns)}</td><td className="px-2 py-1 font-bold">{amount(party.netSales)}</td>
+                      <td className="px-2 py-1">{amount(party.salary)}</td><td className="px-2 py-1">{amount(party.officePay)}</td>
+                      <td className="px-2 py-1">{amount(party.fare)}</td><td className="px-2 py-1">{amount(party.lc)}</td>
+                      <td className="px-2 py-1 font-bold text-emerald-800">{amount(party.actualReceived)}</td>
+                      <td className="px-2 py-1 font-bold text-rose-700">{amount(party.dues)}</td>
                     </tr>
                   ))}
                   {!selected.parties.length && <tr><td colSpan="12" className="px-4 py-8 text-center text-slate-500">কোনো পার্টি লেনদেন পাওয়া যায়নি।</td></tr>}
@@ -271,21 +276,21 @@ export default function DashboardReports() {
               <p className="text-xs text-slate-500">Present Month: {periodLabel} • Salary, collection, fare এবং L/C সহ রিপোর্ট শিট</p>
             </div>
             <TableFrame>
-              <table className="w-full min-w-[1500px] border-separate border-spacing-0 text-right text-xs">
-                <thead className="sticky top-0 z-10 bg-slate-800 text-white">
-                  <tr><th rowSpan="2" className="px-3 py-3">SL</th><th rowSpan="2" className="px-3 py-3 text-left">Name of the party</th><th rowSpan="2" className="px-3 py-3">Last Month Dues</th><th colSpan="3" className="px-3 py-2 text-center">Present Month</th><th rowSpan="2" className="px-3 py-3">Last &amp; Present Net Sales</th><th colSpan="6" className="px-3 py-2 text-center">Present Month Collection &amp; Expenses</th></tr>
-                  <tr>{['Sales', 'Return', 'Net Sales', 'Salary', 'Collection', 'Fare', 'L/C', 'Total Collection', 'Dues'].map((header) => <th key={header} className="px-3 py-2">{header}</th>)}</tr>
+              <table className="officer-monthly-party-table w-full min-w-[1400px] border-separate border-spacing-0 text-right text-[10px]">
+                <thead className="sticky top-0 z-10 bg-emerald-900 text-white">
+                  <tr><th rowSpan="2" className="border border-black px-2 py-1">SL</th><th rowSpan="2" className="border border-black px-2 py-1 text-left">Name of the party</th><th rowSpan="2" className="border border-black px-2 py-1">Last Month Dues</th><th colSpan="3" className="border border-black px-2 py-1 text-center">Present Month</th><th rowSpan="2" className="border border-black px-2 py-1">Last &amp; Present Net Sales</th><th colSpan="6" className="border border-black px-2 py-1 text-center">Present Month Collection &amp; Expenses</th></tr>
+                  <tr>{['Sales', 'Return', 'Net Sales', 'Salary', 'Collection', 'Fare', 'L/C', 'Total Collection', 'Dues'].map((header) => <th key={header} className="border border-black px-2 py-1">{header}</th>)}</tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {selected.parties.map((party) => (
                     <tr key={party.dealerId || `${party.dealerName}-${party.mobileNo}`} className="odd:bg-white even:bg-slate-50">
-                      <td className="px-3 py-3">{party.slNo}</td><td className="px-3 py-3 text-left font-semibold">{party.dealerName}</td>
-                      <td className="px-3 py-3">{amount(party.previousDue)}</td><td className="px-3 py-3">{amount(party.sales)}</td>
-                      <td className="px-3 py-3">{amount(party.returns)}</td><td className="px-3 py-3">{amount(party.netSales)}</td>
-                      <td className="px-3 py-3 font-semibold">{amount(party.previousPlusNetSales)}</td><td className="px-3 py-3">{amount(party.salary)}</td>
-                      <td className="px-3 py-3">{amount(party.collection + party.invoicePaid)}</td><td className="px-3 py-3">{amount(party.fare)}</td>
-                      <td className="px-3 py-3">{amount(party.lc)}</td><td className="px-3 py-3 font-bold">{amount(party.totalCollection + party.invoicePaid)}</td>
-                      <td className="px-3 py-3 font-bold text-rose-700">{amount(party.ledgerDues - party.invoicePaid)}</td>
+                      <td className="border border-black px-2 py-1">{party.slNo}</td><td className="border border-black px-2 py-1 text-left font-semibold">{party.dealerName}</td>
+                      <td className="border border-black px-2 py-1">{amount(party.previousDue)}</td><td className="border border-black px-2 py-1">{amount(party.sales)}</td>
+                      <td className="border border-black px-2 py-1">{amount(party.returns)}</td><td className="border border-black px-2 py-1">{amount(party.netSales)}</td>
+                      <td className="border border-black px-2 py-1 font-semibold">{amount(party.previousPlusNetSales)}</td><td className="border border-black px-2 py-1">{amount(party.salary)}</td>
+                      <td className="border border-black px-2 py-1">{amount(party.collection + party.invoicePaid)}</td><td className="border border-black px-2 py-1">{amount(party.fare)}</td>
+                      <td className="border border-black px-2 py-1">{amount(party.lc)}</td><td className="border border-black px-2 py-1 font-bold">{amount(party.totalCollection + party.invoicePaid)}</td>
+                      <td className="border border-black px-2 py-1 font-bold text-rose-700">{amount(party.ledgerDues - party.invoicePaid)}</td>
                     </tr>
                   ))}
                   {!selected.parties.length && <tr><td colSpan="13" className="px-4 py-8 text-center text-slate-500">কোনো পার্টি লেনদেন পাওয়া যায়নি।</td></tr>}

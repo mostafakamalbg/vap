@@ -14,3 +14,13 @@ test('expense payments do not reduce dealer balance', () => {
   assert.equal(balance, 400);
   assert.equal(transactions.some((entry) => entry.id === 'payment-expense'), false);
 });
+
+test('last session due is used as the ledger opening balance', () => {
+  const transactions = getDealerLedgerTransactions({
+    openingDue: 100,
+    lastSessionDue: 250,
+    invoices: [{ id: 'sale', date: '2026-10-01', invoiceType: 'regular', grandTotal: 500 }]
+  });
+  assert.equal(transactions[0].balance, 250);
+  assert.equal(transactions[transactions.length - 1].balance, 750);
+});
