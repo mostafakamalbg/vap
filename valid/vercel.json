@@ -1,4 +1,18 @@
 {
   "buildCommand": "npm run build",
-  "outputDirectory": "dist"
+  "outputDirectory": "dist",
+  "rewrites": [
+    {
+      "source": "/api/auth/login",
+      "destination": "/api/auth?route=login"
+    },
+    {
+      "source": "/api/auth/me",
+      "destination": "/api/auth?route=me"
+    },
+    {
+      "source": "/api/auth/register",
+      "destination": "/api/auth?route=register"
+    }
+  ]
 }
