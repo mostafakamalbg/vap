@@ -3,7 +3,7 @@ import { FilePlus2, Pencil, Printer, Search, Trash2 } from 'lucide-react';
 import { useAgro } from '../../context/AgroContext';
 import { toBn, toBnCurrency, toBnDate } from '../../utils/bengali';
 import { formatInvoiceNumber } from '../../../shared/codes';
-import { LEGACY_INVOICE_SESSION } from '../../../shared/sessions';
+import { getInvoiceSessionForDate, LEGACY_INVOICE_SESSION } from '../../../shared/sessions';
 import { getPackageQuantityUnit } from '../../../shared/quantityUnits';
 import { getInvoiceCartons } from '../../../shared/invoiceCartons';
 import { printInvoiceSheet } from '../../utils/printInvoice';
@@ -57,14 +57,64 @@ function toDamageInvoice(log) {
 export default function InvoiceList({ onNewInvoiceClick, onEditInvoice, initialInvoiceId = '' }) {
   const { invoices, damageLogs, deleteInvoice } = useAgro();
   const [search, setSearch] = useState('');
+  const [sessionFilter, setSessionFilter] = useState('ALL');
+  const [monthFilter, setMonthFilter] = useState('ALL');
+  const [dateFilter, setDateFilter] = useState('');
+  const [serverInvoices, setServerInvoices] = useState([]);
+  const [filterError, setFilterError] = useState('');
+  const [filterLoading, setFilterLoading] = useState(false);
   const [printInvoice, setPrintInvoice] = useState(null);
   const [deletingId, setDeletingId] = useState('');
+  const hasPeriodFilter = sessionFilter !== 'ALL' || monthFilter !== 'ALL' || Boolean(dateFilter);
+  const sessions = useMemo(() => [...new Set(invoices.map((invoice) => invoice.session).filter(Boolean))].sort().reverse(), [invoices]);
+  const months = useMemo(() => [...new Set([
+    ...invoices.map((invoice) => String(invoice.date || '').slice(0, 7)),
+    ...damageLogs.map((entry) => String(entry.date || '').slice(0, 7))
+  ].filter((month) => /^\d{4}-\d{2}$/.test(month)))].sort().reverse(), [damageLogs, invoices]);
+
+  useEffect(() => {
+    if (!hasPeriodFilter) {
+      setServerInvoices([]);
+      setFilterError('');
+      setFilterLoading(false);
+      return undefined;
+    }
+    let cancelled = false;
+    const query = new URLSearchParams();
+    if (sessionFilter !== 'ALL') query.set('session', sessionFilter);
+    if (monthFilter !== 'ALL') query.set('month', monthFilter);
+    if (dateFilter) query.set('date', dateFilter);
+    setServerInvoices([]);
+    setFilterLoading(true);
+    setFilterError('');
+    fetch(`/api/invoices?${query}`)
+      .then(async (response) => {
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'ইনভয়েস ফিল্টার করা যায়নি।');
+        return result;
+      })
+      .then((result) => { if (!cancelled) setServerInvoices(Array.isArray(result) ? result : []); })
+      .catch((error) => {
+        if (!cancelled) {
+          setServerInvoices([]);
+          setFilterError(error.message);
+        }
+      })
+      .finally(() => { if (!cancelled) setFilterLoading(false); });
+    return () => { cancelled = true; };
+  }, [dateFilter, hasPeriodFilter, monthFilter, sessionFilter]);
+
   const printSelectedInvoice = () => {
     printInvoiceSheet(document.querySelector('.invoice-print-sheet'));
   };
+  const historySource = hasPeriodFilter ? serverInvoices : invoices;
   const historyRecords = useMemo(() => [
-    ...invoices.map((invoice) => ({ type: 'invoice', record: invoice })),
-    ...damageLogs.map((log) => ({ type: 'damage', record: log }))
+    ...historySource.map((invoice) => ({ type: 'invoice', record: invoice })),
+    ...damageLogs.filter((log) => (
+      (sessionFilter === 'ALL' || getInvoiceSessionForDate(log.date) === sessionFilter)
+      && (monthFilter === 'ALL' || String(log.date || '').startsWith(monthFilter))
+      && (!dateFilter || log.date === dateFilter)
+    )).map((log) => ({ type: 'damage', record: log }))
   ].sort((a, b) => {
     const aSequence = a.type === 'invoice' ? getInvoiceSequence(a.record) : 0;
     const bSequence = b.type === 'invoice' ? getInvoiceSequence(b.record) : 0;
@@ -72,7 +122,7 @@ export default function InvoiceList({ onNewInvoiceClick, onEditInvoice, initialI
     const aTime = new Date(a.record.createdAt || a.record.date || 0).getTime() || aSequence;
     const bTime = new Date(b.record.createdAt || b.record.date || 0).getTime() || bSequence;
     return bTime - aTime;
-  }), [damageLogs, invoices]);
+  }), [dateFilter, damageLogs, historySource, monthFilter, sessionFilter]);
   const filteredRecords = useMemo(() => {
     const term = search.trim().toLowerCase();
     if (!term) return historyRecords;
@@ -148,6 +198,25 @@ export default function InvoiceList({ onNewInvoiceClick, onEditInvoice, initialI
         <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="ইনভয়েস, ডিলার, অফিসার বা সেশন খুঁজুন" className="w-full outline-none" />
       </label>
 
+      <div className="grid gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:grid-cols-3">
+        <label className="text-xs font-semibold text-slate-600">সেশন
+          <select value={sessionFilter} onChange={(event) => setSessionFilter(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm">
+            <option value="ALL">সকল সেশন</option>
+            {sessions.map((session) => <option key={session} value={session}>{session}</option>)}
+          </select>
+        </label>
+        <label className="text-xs font-semibold text-slate-600">মাস
+          <select value={monthFilter} onChange={(event) => setMonthFilter(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm">
+            <option value="ALL">সকল মাস</option>
+            {months.map((month) => <option key={month} value={month}>{month}</option>)}
+          </select>
+        </label>
+        <label className="text-xs font-semibold text-slate-600">তারিখ
+          <input type="date" value={dateFilter} onChange={(event) => setDateFilter(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" />
+        </label>
+      </div>
+      {filterError && <p role="alert" className="rounded-lg bg-rose-50 px-4 py-3 text-sm text-rose-700">{filterError}</p>}
+
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
         <table className="w-full min-w-[980px] text-left text-sm">
           <thead className="bg-slate-100 text-slate-600">
@@ -190,7 +259,7 @@ export default function InvoiceList({ onNewInvoiceClick, onEditInvoice, initialI
               </tr>
               );
             })}
-            {!filteredRecords.length && <tr><td colSpan="8" className="p-8 text-center text-slate-500">কোনো ইনভয়েস পাওয়া যায়নি।</td></tr>}
+            {!filteredRecords.length && <tr><td colSpan="8" className="p-8 text-center text-slate-500">{filterLoading ? 'ইনভয়েস লোড হচ্ছে…' : 'কোনো ইনভয়েস পাওয়া যায়নি।'}</td></tr>}
           </tbody>
         </table>
       </div>

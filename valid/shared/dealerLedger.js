@@ -1,6 +1,8 @@
+import { isDealerCollection } from './paymentMethods.js';
+
 function amountOrZero(value) {
   const amount = Number(value);
-  return Number.isFinite(amount) ? amount : 0;
+  return Number.isFinite(amount) ? Math.round(amount) : 0;
 }
 
 export function getDealerNetDue({
@@ -62,6 +64,8 @@ export function getDealerLedgerTransactions(summary = {}) {
   });
 
   (summary.payments || []).forEach((payment, index) => {
+    const isReceipt = isDealerCollection(payment);
+    if (!isReceipt) return;
     addTransaction({
       id: `payment-${payment.id || index}`,
       date: payment.date || '',

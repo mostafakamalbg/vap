@@ -1,0 +1,82 @@
+import { getInvoiceSalesAmount, roundCurrency } from './invoiceTotals.js';
+import { getInvoiceSessionForDate } from './sessions.js';
+import { parseSessionDateRange } from './reportDateFilters.js';
+
+const SALES_EXCLUDED = new Set(['dealer_return', 'factory_damage', 'depot_factory_return']);
+const RECEIPTS = new Set(['dealer_collection', 'company_transfer']);
+const EXPENSE_FIELDS = {
+  office_pay: 'officePay',
+  salary: 'salary',
+  vehicle_rent: 'fare',
+  lc_commission: 'lc'
+};
+
+function isInvoicePayment(payment) {
+  return Boolean(payment?.sourceInvoiceId)
+    || /(?:invoice|চালান)\s*#/i.test(String(payment?.reference || ''));
+}
+
+function inPeriod(record, { session = 'ALL', month = 'ALL', date = 'ALL' } = {}) {
+  const sessionRange = session === 'ALL' ? null : parseSessionDateRange(session);
+  const matchesSession = session === 'ALL'
+    || (sessionRange
+      ? String(record.date || '') >= sessionRange.start && String(record.date || '') < sessionRange.end
+      : (record.session || getInvoiceSessionForDate(record.date)) === session);
+  return matchesSession
+    && (month === 'ALL' || String(record.date || '').startsWith(month))
+    && (date === 'ALL' || String(record.date || '') === date);
+}
+
+export function filterOfficerRecordsByPeriod(records, filters) {
+  return records.filter((record) => inPeriod(record, filters));
+}
+
+export function calculateOfficerFinancials({
+  invoices = [],
+  payments = [],
+  salesTarget = 0,
+  lastSessionDue = 0
+} = {}) {
+  const sales = invoices.filter((invoice) => !SALES_EXCLUDED.has(invoice.invoiceType));
+  const returns = invoices.filter((invoice) => invoice.invoiceType === 'dealer_return');
+  const salesAmount = roundCurrency(sales.reduce(
+    (sum, invoice) => sum + Math.abs(getInvoiceSalesAmount(invoice)), 0
+  ));
+  const returnAmount = roundCurrency(returns.reduce(
+    (sum, invoice) => sum + Math.abs(getInvoiceSalesAmount(invoice)), 0
+  ));
+  const totalNetSales = salesAmount - returnAmount;
+  const invoiceReceipts = roundCurrency(sales.reduce(
+    (sum, invoice) => sum + (Number(invoice.paidAmount) || 0), 0
+  ));
+  const standalone = payments.filter((payment) => !isInvoicePayment(payment));
+  const totalReceivedAmount = roundCurrency(invoiceReceipts + standalone
+    .filter((payment) => RECEIPTS.has(String(payment.paymentType || 'dealer_collection')))
+    .reduce((sum, payment) => sum + (Number(payment.amount) || 0), 0));
+  const paymentAndExpense = { officePay: 0, fare: 0, salary: 0, lc: 0 };
+  standalone.forEach((payment) => {
+    const field = EXPENSE_FIELDS[String(payment.paymentType || '')];
+    if (field) paymentAndExpense[field] += roundCurrency(payment.amount);
+  });
+  Object.keys(paymentAndExpense).forEach((key) => {
+    paymentAndExpense[key] = roundCurrency(paymentAndExpense[key]);
+  });
+  const totalExpenses = Object.values(paymentAndExpense).reduce((sum, value) => sum + value, 0);
+  const previousPlusNetSales = roundCurrency(lastSessionDue) + totalNetSales;
+  return {
+    salesAmount,
+    returnAmount,
+    totalNetSales,
+    previousPlusNetSales,
+    paymentAndExpense,
+    totalReceivedAmount,
+    totalAmountDues: previousPlusNetSales - totalReceivedAmount,
+    totalSalesDues: totalNetSales - totalReceivedAmount,
+    totalExpenses,
+    expensePercentage: totalNetSales ? roundCurrency(totalExpenses / totalNetSales * 100) : 0,
+    salesPercentage: salesTarget ? roundCurrency(totalNetSales / salesTarget * 100) : 0,
+    paymentPercentage: previousPlusNetSales
+      ? roundCurrency(totalReceivedAmount / previousPlusNetSales * 100)
+      : 0
+  };
+}

@@ -9,7 +9,7 @@ import {
   normalizeOfficerCode
 } from '../../../shared/codes';
 import { normalizePaymentMethod, PAYMENT_METHODS } from '../../../shared/paymentMethods';
-import { getInvoiceItemAmounts } from '../../../shared/invoiceTotals';
+import { getInvoiceItemAmounts, roundCurrency } from '../../../shared/invoiceTotals';
 import { getItemCartons } from '../../../shared/invoiceCartons';
 import { getPackageQuantityUnit } from '../../../shared/quantityUnits';
 import { compareInvoiceItemsByIdAndSize } from '../../../shared/invoiceSorting';
@@ -222,28 +222,28 @@ export default function InvoiceGenerator({
   const isDealerReturn = invoiceType === 'dealer_return';
   const isDepotFactoryReturn = invoiceType === 'depot_factory_return';
   const totalPieces = items.reduce((sum, item) => sum + item.totalPieces, 0);
-  const subtotal = items.reduce((sum, item) => sum + item.total, 0);
-  const commissionAmount = items.reduce((sum, item) => sum + item.commissionAmount, 0);
+  const subtotal = roundCurrency(items.reduce((sum, item) => sum + item.total, 0));
+  const commissionAmount = roundCurrency(items.reduce((sum, item) => sum + item.commissionAmount, 0));
   const returnAdjustments = isRegularInvoice ? form.returnAdjustments.map((item) => ({
     ...item,
-    quantity: Math.max(0, Number(item.quantity) || 0),
-    price: Math.max(0, Number(item.price) || 0),
-    total: Math.max(0, Number(item.quantity) || 0) * Math.max(0, Number(item.price) || 0)
+    quantity: Math.max(0, Math.round(Number(item.quantity) || 0)),
+    price: roundCurrency(item.price),
+    total: roundCurrency(Math.max(0, Math.round(Number(item.quantity) || 0)) * roundCurrency(item.price))
   })) : [];
-  const returnAdjustmentTotal = returnAdjustments.reduce((sum, item) => sum + item.total, 0);
-  const transportCost = isRegularInvoice ? Math.max(0, Number(form.transportCost) || 0) : 0;
-  const totalAmount = isRegularInvoice
+  const returnAdjustmentTotal = roundCurrency(returnAdjustments.reduce((sum, item) => sum + item.total, 0));
+  const transportCost = isRegularInvoice ? roundCurrency(form.transportCost) : 0;
+  const totalAmount = roundCurrency(isRegularInvoice
     ? Math.max(0, subtotal - commissionAmount + transportCost - returnAdjustmentTotal)
-    : Math.max(0, subtotal - commissionAmount);
-  const previousDue = isRegularInvoice && editInvoiceData
+    : Math.max(0, subtotal - commissionAmount));
+  const previousDue = roundCurrency(isRegularInvoice && editInvoiceData
     ? Number(editInvoiceData.previousDue) || 0
-    : isRegularInvoice ? Number(dealerSummary?.currentDue) || 0 : 0;
-  const netPayable = isRegularInvoice ? totalAmount + previousDue : 0;
+    : isRegularInvoice ? Number(dealerSummary?.currentDue) || 0 : 0);
+  const netPayable = isRegularInvoice ? roundCurrency(totalAmount + previousDue) : 0;
   const paymentMethod = isRegularInvoice ? normalizePaymentMethod(form.paymentMethod) : 'credit';
   const paidAmount = isRegularInvoice && paymentMethod !== 'credit'
-    ? Math.max(0, Number(form.paidAmount) || 0)
+    ? roundCurrency(Math.max(0, Number(form.paidAmount) || 0))
     : 0;
-  const dueAmount = isRegularInvoice ? Math.max(0, netPayable - paidAmount) : 0;
+  const dueAmount = isRegularInvoice ? roundCurrency(Math.max(0, netPayable - paidAmount)) : 0;
   const invoiceNumbers = useMemo(() => [
     ...invoices,
     ...pendingInvoiceIds.map((id) => ({ id }))
@@ -697,7 +697,7 @@ export default function InvoiceGenerator({
                   <input
                     type="number"
                     min="0"
-                    step="0.01"
+                    step="1"
                     value={item.unitType === 'piece' ? item.piecePrice : item.cartonPrice}
                     onChange={(event) => updateItem(index, item.unitType === 'piece' ? 'piecePrice' : 'cartonPrice', event.target.value)}
                     className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
@@ -770,7 +770,7 @@ export default function InvoiceGenerator({
                     </label>
                     <label className="text-sm font-semibold text-slate-700">
                       দর (৳/{getPackageQuantityUnit(item) === 'কার্টুন' ? item.unit || 'পিস' : getPackageQuantityUnit(item)})
-                      <input type="number" min="0" step="0.01" required value={item.price} onChange={(event) => updateReturnAdjustment(index, 'price', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" />
+                      <input type="number" min="0" step="1" required value={item.price} onChange={(event) => updateReturnAdjustment(index, 'price', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" />
                     </label>
                     <button type="button" aria-label="ফেরত পণ্য সরান" onClick={() => removeReturnAdjustment(index)} className="rounded-lg p-2 text-rose-600 hover:bg-rose-50">
                       <Trash2 className="h-5 w-5" />
@@ -793,11 +793,11 @@ export default function InvoiceGenerator({
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="text-sm font-semibold text-slate-700">
               পরিবহন খরচ (৳)
-              <input type="number" min="0" step="0.01" value={form.transportCost} onChange={(event) => updateForm('transportCost', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" />
+              <input type="number" min="0" step="1" value={form.transportCost} onChange={(event) => updateForm('transportCost', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" />
             </label>
             <label className="text-sm font-semibold text-slate-700">
               পরিশোধিত (৳)
-              <input type="number" min="0" step="0.01" value={paymentMethod === 'credit' ? '0' : form.paidAmount} onChange={(event) => updateForm('paidAmount', event.target.value)} disabled={paymentMethod === 'credit'} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 disabled:bg-slate-100 disabled:text-slate-500" />
+              <input type="number" min="0" step="1" value={paymentMethod === 'credit' ? '0' : form.paidAmount} onChange={(event) => updateForm('paidAmount', event.target.value)} disabled={paymentMethod === 'credit'} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 disabled:bg-slate-100 disabled:text-slate-500" />
             </label>
             <fieldset className="sm:col-span-2">
               <legend className="text-sm font-semibold text-slate-700">পেমেন্ট পদ্ধতি</legend>

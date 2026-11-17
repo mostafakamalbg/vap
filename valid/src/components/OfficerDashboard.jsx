@@ -12,6 +12,8 @@ import { getPackageQuantityUnit } from '../../shared/quantityUnits';
 import { getItemCartons, getInvoiceCartons } from '../../shared/invoiceCartons';
 import { getInvoiceSessionForDate } from '../../shared/sessions';
 import { getOfficerSalesTarget, OFFICER_TARGET_SESSIONS } from '../../shared/officerSalesTargets';
+import { calculateOfficerFinancials } from '../../shared/officerFinancials';
+import { getInvoiceSalesAmount } from '../../shared/invoiceTotals';
 
 async function requestJson(url, options) {
   const response = await fetch(url, options);
@@ -29,8 +31,10 @@ export default function OfficerDashboard() {
   ));
   const officerCode = normalizeOfficerCode(currentUser?.officerCode, currentOfficer?.designation);
   const [orders, setOrders] = useState([]);
-  const [salesOfficerSummary, setSalesOfficerSummary] = useState(null);
+  const [salesOfficerSummaries, setSalesOfficerSummaries] = useState([]);
   const [monthlyReports, setMonthlyReports] = useState([]);
+  const [periodInvoices, setPeriodInvoices] = useState([]);
+  const [periodPayments, setPeriodPayments] = useState([]);
   const [items, setItems] = useState([{ productId: '', sku: '', cartons: 1 }]);
   const [dealerId, setDealerId] = useState(dealers[0]?.id || '');
   const [sessionFilter, setSessionFilter] = useState(
@@ -41,6 +45,11 @@ export default function OfficerDashboard() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  const salesOfficerSummary = salesOfficerSummaries.find((entry) => (
+    (currentOfficer?.id && entry.officerId === currentOfficer.id)
+    || (officerCode && normalizeOfficerCode(entry.officerCode, currentOfficer?.designation) === officerCode)
+    || (currentUser?.name && entry.officerName === currentUser.name)
+  )) || null;
 
   useEffect(() => {
     let cancelled = false;
@@ -48,7 +57,7 @@ export default function OfficerDashboard() {
       .then((data) => { if (!cancelled) setOrders(data); })
       .catch((requestError) => { if (!cancelled) setError(requestError.message); });
     requestJson('/api/sales-officers')
-      .then((data) => { if (!cancelled) setSalesOfficerSummary(data[0] || null); })
+      .then((data) => { if (!cancelled) setSalesOfficerSummaries(Array.isArray(data) ? data : []); })
       .catch((requestError) => { if (!cancelled) setError(requestError.message); });
     return () => { cancelled = true; };
   }, []);
@@ -61,6 +70,29 @@ export default function OfficerDashboard() {
     requestJson(`/api/reports?${query}`)
       .then((data) => { if (!cancelled) setMonthlyReports(data); })
       .catch((requestError) => { if (!cancelled) setError(requestError.message); });
+    return () => { cancelled = true; };
+  }, [monthFilter, sessionFilter]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const query = new URLSearchParams();
+    if (sessionFilter !== 'ALL') query.set('session', sessionFilter);
+    if (monthFilter !== 'ALL') query.set('month', monthFilter);
+    setPeriodInvoices([]);
+    setPeriodPayments([]);
+    Promise.all([
+      requestJson(`/api/invoices?${query}`),
+      requestJson(`/api/records?type=payments&${query}`)
+    ]).then(([invoiceRecords, paymentRecords]) => {
+      if (cancelled) return;
+      setPeriodInvoices(Array.isArray(invoiceRecords) ? invoiceRecords : []);
+      setPeriodPayments(Array.isArray(paymentRecords) ? paymentRecords : []);
+    }).catch((requestError) => {
+      if (cancelled) return;
+      setPeriodInvoices([]);
+      setPeriodPayments([]);
+      setError(requestError.message);
+    });
     return () => { cancelled = true; };
   }, [monthFilter, sessionFilter]);
 
@@ -107,35 +139,26 @@ export default function OfficerDashboard() {
     ].filter((month) => /^\d{4}-\d{2}$/.test(month)))].sort().reverse(),
     [monthlyReports, salesInvoices]
   );
-  const filteredSalesInvoices = useMemo(() => salesInvoices.filter((invoice) => (
-    (sessionFilter === 'ALL' || invoice.session === sessionFilter)
-    && (monthFilter === 'ALL' || String(invoice.date || '').startsWith(monthFilter))
-  )), [monthFilter, salesInvoices, sessionFilter]);
-  const filteredReturnInvoices = returnInvoices.filter((invoice) => (
-    (sessionFilter === 'ALL' || invoice.session === sessionFilter)
-    && (monthFilter === 'ALL' || String(invoice.date || '').startsWith(monthFilter))
+  const filteredSalesInvoices = periodInvoices.filter((invoice) => (
+    !['dealer_return', 'factory_damage', 'depot_factory_return'].includes(invoice.invoiceType)
   ));
+  const filteredReturnInvoices = periodInvoices.filter((invoice) => invoice.invoiceType === 'dealer_return');
   const totalSales = Math.round(filteredSalesInvoices.reduce(
-    (sum, invoice) => sum + (Number(invoice.totalAmount ?? invoice.grandTotal) || 0),
+    (sum, invoice) => sum + getInvoiceSalesAmount(invoice),
     0
   ) - filteredReturnInvoices.reduce(
-    (sum, invoice) => sum + (Number(invoice.totalAmount ?? invoice.grandTotal) || 0),
+    (sum, invoice) => sum + getInvoiceSalesAmount(invoice),
     0
   ));
-  const totalDue = Math.round(filteredSalesInvoices.reduce((sum, invoice) => sum + (Number(invoice.dueAmount ?? invoice.currentDue) || 0), 0));
-  const targetSalesInvoices = invoices.filter((invoice) => (
-    isOfficerInvoice(invoice)
-    && !['factory_damage', 'depot_factory_return'].includes(invoice.invoiceType)
-    && (sessionFilter === 'ALL'
-      || (invoice.session || getInvoiceSessionForDate(invoice.date)) === sessionFilter)
-    && (monthFilter === 'ALL' || String(invoice.date || '').startsWith(monthFilter))
+  const targetSalesInvoices = periodInvoices.filter((invoice) => (
+    !['factory_damage', 'depot_factory_return'].includes(invoice.invoiceType)
   ));
   const sessionSalesAmount = Math.round(targetSalesInvoices.reduce(
-    (sum, invoice) => sum + (Number(invoice.totalAmount ?? invoice.grandTotal) || 0),
+    (sum, invoice) => sum + getInvoiceSalesAmount(invoice),
     0
   ) - targetSalesInvoices
     .filter((invoice) => invoice.invoiceType === 'dealer_return')
-    .reduce((sum, invoice) => sum + (Number(invoice.totalAmount ?? invoice.grandTotal) || 0), 0));
+    .reduce((sum, invoice) => sum + getInvoiceSalesAmount(invoice), 0));
   const sessionSalesTarget = getOfficerSalesTarget({
     ...currentOfficer,
     ...(salesOfficerSummary || {}),
@@ -181,17 +204,14 @@ export default function OfficerDashboard() {
     collections: 0,
     dues: 0
   });
-  const reportExpenses = reportSummary.salary + reportSummary.fare + reportSummary.lc
-    + (Number(salesOfficerSummary?.paymentAndExpense?.officePay) || 0);
-  const reportExpensePercentage = reportSummary.netSales
-    ? Math.round((reportExpenses / reportSummary.netSales) * 100)
-    : 0;
-  const reportSalesPercentage = sessionSalesTarget
-    ? Math.round((reportSummary.netSales / sessionSalesTarget) * 100)
-    : 0;
-  const reportPaymentPercentage = reportSummary.previousPlusNetSales
-    ? Math.round((reportSummary.collections / reportSummary.previousPlusNetSales) * 100)
-    : 0;
+  const financeSummary = calculateOfficerFinancials({
+    invoices: periodInvoices,
+    payments: periodPayments,
+    salesTarget: sessionSalesTarget,
+    lastSessionDue: monthlyReports.length
+      ? reportSummary.lastMonthDues
+      : monthFilter === 'ALL' ? currentOfficer?.lastSessionDue : 0
+  });
   const officerProductSales = useMemo(() => {
     const sales = new Map();
     filteredSalesInvoices.forEach((invoice) => {
@@ -270,7 +290,28 @@ export default function OfficerDashboard() {
         {[
           { label: t('officer.invoiceCount'), value: filteredSalesInvoices.length.toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US'), Icon: ClipboardList },
           { label: t('officer.salesAmount'), value: `৳${totalSales.toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}`, Icon: TrendingUp },
-          { label: 'মোট বকেয়া', value: `৳${totalDue.toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}`, Icon: TrendingUp },
+          {
+            label: 'মোট আদায়',
+            value: `৳${financeSummary.totalReceivedAmount.toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}`,
+            detail: `পেমেন্ট অর্জন ${financeSummary.paymentPercentage}%`,
+            Icon: TrendingUp
+          },
+          {
+            label: 'মোট পাওনা',
+            value: `৳${financeSummary.totalAmountDues.toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}`,
+            Icon: TrendingUp
+          },
+          {
+            label: 'বর্তমান বিক্রয় বকেয়া',
+            value: `৳${financeSummary.totalSalesDues.toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}`,
+            Icon: TrendingUp
+          },
+          {
+            label: 'মোট খরচ',
+            value: `৳${financeSummary.totalExpenses.toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}`,
+            detail: `খরচের হার ${financeSummary.expensePercentage}%`,
+            Icon: TrendingUp
+          },
           { label: 'মোট বিক্রিত প্যাক / কার্টুন', value: Math.round(totalCartonsSold).toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US'), Icon: PackageCheck },
           {
             label: 'জুলাই–ডিসেম্বর ২০২৬ টার্গেট',
@@ -364,9 +405,9 @@ export default function OfficerDashboard() {
                 ['অফিস খরচ', salesOfficerSummary?.paymentAndExpense?.officePay || 0],
                 ['মোট গৃহীত', reportSummary.collections],
                 ['মোট বিক্রয় বকেয়া', reportSummary.dues],
-                ['খরচের হার', `${reportExpensePercentage}%`],
-                ['বিক্রয় অর্জন', `${reportSalesPercentage}%`],
-                ['পেমেন্ট হার', `${reportPaymentPercentage}%`]
+                ['খরচের হার', `${financeSummary.expensePercentage}%`],
+                ['বিক্রয় অর্জন', `${financeSummary.salesPercentage}%`],
+                ['পেমেন্ট হার', `${financeSummary.paymentPercentage}%`]
               ].map(([label, value]) => (
                 <div key={label} className="rounded-lg bg-slate-50 p-3">
                   <p className="text-xs font-semibold text-slate-500">{label}</p>

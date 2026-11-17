@@ -1,8 +1,10 @@
 import dbConnect from '../lib/mongodb.js';
 import { authorize, verifyPassword } from '../lib/auth.js';
 import { User } from '../lib/models.js';
-import { BusinessRecord, Dealer, Invoice, Order, Product } from '../lib/models.js';
+import { BusinessRecord, Dealer, Invoice, Order, Payment, Product } from '../lib/models.js';
 import { normalizeDealerAssignment } from '../shared/codes.js';
+import { normalizePaymentMethod, normalizePaymentType } from '../shared/paymentMethods.js';
+import { roundCurrency } from '../shared/invoiceTotals.js';
 import { transactionOptions, withTransactionFallback } from '../lib/transactions.js';
 import { rebuildStockBalances, STOCK_RECONCILIATION_START_DATE } from '../shared/stockReconciliation.js';
 import {
@@ -25,7 +27,7 @@ const recordTypes = [
   'payments',
   'salesAgreements'
 ];
-const databaseModels = { products: Product, dealers: Dealer, invoices: Invoice };
+const databaseModels = { products: Product, dealers: Dealer, invoices: Invoice, payments: Payment };
 
 function getFactoryData() {
   return {
@@ -53,13 +55,23 @@ function isValidBackup(value) {
 async function replaceRecords(data, session = null) {
   const options = session ? { session } : {};
   for (const type of recordTypes) {
-    const records = type === 'dealers'
+    let records = type === 'dealers'
       ? data[type].map((record) => normalizeDealerAssignment(record, data.officers))
       : data[type];
+    if (type === 'payments') {
+      records = records.map((record, index) => ({
+        ...record,
+        id: String(record.id || `PAY-BACKUP-${index}`),
+        paymentType: normalizePaymentType(record.paymentType),
+        amount: roundCurrency(record.amount),
+        paymentMethod: normalizePaymentMethod(record.paymentMethod)
+      }));
+    }
     const Model = databaseModels[type];
     if (Model) {
       await Model.deleteMany({}, options);
       if (records.length) await Model.insertMany(records, options);
+      if (type === 'payments') await BusinessRecord.deleteMany({ type: 'payments' }, options);
       continue;
     }
 

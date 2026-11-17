@@ -8,6 +8,7 @@ export const PAYMENT_METHODS = [
 export const PAYMENT_TYPES = [
   { value: 'dealer_collection', label: 'ডিলার কালেকশন' },
   { value: 'company_transfer', label: 'কোম্পানিতে টাকা পাঠানো' },
+  { value: 'office_pay', label: 'অফিস খরচ' },
   { value: 'salary', label: 'বেতন' },
   { value: 'vehicle_rent', label: 'গাড়ি ভাড়া' },
   { value: 'lc_commission', label: 'লেস কমিশন (LC)' }
@@ -25,8 +26,8 @@ export function normalizePaymentType(type) {
 }
 
 export function isDealerCollection(payment) {
-  const type = String(payment?.paymentType || '');
-  return !type || type === 'dealer_collection';
+  const type = String(payment?.paymentType || 'dealer_collection');
+  return type === 'dealer_collection' || type === 'company_transfer';
 }
 
 export function normalizePaymentMethod(method) {

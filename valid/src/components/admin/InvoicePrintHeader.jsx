@@ -5,29 +5,21 @@ import { normalizePaymentMethod, PAYMENT_METHODS } from '../../../shared/payment
 import { LEGACY_INVOICE_SESSION } from '../../../shared/sessions';
 import { getInvoiceQuantityParts, getPackageQuantityUnit } from '../../../shared/quantityUnits';
 import { getItemCartons } from '../../../shared/invoiceCartons';
-import { getInvoiceSalesAmount } from '../../../shared/invoiceTotals';
+import { getInvoiceItemAmounts, getInvoiceSalesAmount, roundCurrency } from '../../../shared/invoiceTotals';
 import { sortInvoiceItems } from '../../../shared/invoiceSorting';
 import { normalizeHotlineNumber } from '../../../shared/companyContact';
 import { useAgro } from '../../context/AgroContext';
 import CompanyLetterhead from './CompanyLetterhead';
 
 const money = (value) => {
-  const amount = Number(value) || 0;
-  return `৳${amount.toLocaleString('bn-BD', {
-    minimumFractionDigits: Number.isInteger(amount) ? 0 : 1,
-    maximumFractionDigits: 2
-  })}`;
+  return `৳${roundCurrency(value).toLocaleString('bn-BD')}`;
 };
 
 function getItemValues(item) {
   const cartonCount = Number(item.cartons ?? item.quantity) || 0;
   const retailPieces = Number(item.retailPieces) || 0;
-  const piecePrice = Number(item.piecePrice ?? item.unitPrice) || 0;
+  const amounts = getInvoiceItemAmounts(item);
   const quantityUnit = getPackageQuantityUnit(item);
-  const tradePrice = Number(item.total)
-    || cartonCount * (Number(item.cartonPrice) || 0)
-      + retailPieces * piecePrice;
-  const commission = tradePrice * (Number(item.commission) || 0) / 100;
   const quantityLabel = getInvoiceQuantityParts(item)
     .map(({ quantity, unit }) => `${toBn(quantity)}${unit ? ` ${unit}` : ''}`)
     .join(' + ');
@@ -35,13 +27,13 @@ function getItemValues(item) {
     cartons: getItemCartons(item),
     quantityLabel: quantityLabel || `০ ${quantityUnit}`,
     unitTradePrice: retailPieces > 0 && cartonCount === 0
-      ? piecePrice
+      ? roundCurrency(item.piecePrice ?? item.unitPrice)
       : Number(item.cartonPrice) || Number(item.unitPrice) * (Number(item.packPerBox) || 1),
     priceUnit: retailPieces > 0 && cartonCount === 0 ? `/${item.unit || 'পিস'}` : '',
-    tradePrice,
+    tradePrice: amounts.total,
     commissionPercent: Number(item.commission) || 0,
-    commission,
-    net: tradePrice - commission
+    commission: amounts.commissionAmount,
+    net: amounts.netTotal
   };
 }
 
@@ -54,7 +46,7 @@ function getReturnValues(item) {
     cartons: Math.floor(quantity / packPerBox),
     loosePieces: quantity % packPerBox,
     price,
-    total: Number(item.total) || quantity * price
+    total: roundCurrency(Number(item.total) || quantity * price)
   };
 }
 
@@ -86,17 +78,19 @@ export default function InvoicePrintHeader({ invoice }) {
     totals.net += values.net;
     return totals;
   }, { cartons: 0, tradePrice: 0, commission: 0, net: 0 });
-  const returnTotal = returns.reduce((sum, item) => sum + getReturnValues(item).total, 0)
-    || Number(invoice.returnAdjustmentTotal) || 0;
-  const transportCost = Number(invoice.transportCost) || 0;
+  const returnTotal = roundCurrency(
+    returns.reduce((sum, item) => sum + getReturnValues(item).total, 0)
+      || Number(invoice.returnAdjustmentTotal) || 0
+  );
+  const transportCost = roundCurrency(invoice.transportCost);
   const invoiceNet = getInvoiceSalesAmount(invoice)
     || itemTotals.net + transportCost - returnTotal;
-  const previousDue = Number(invoice.previousDue) || 0;
-  const paidAmount = Number(invoice.paidAmount) || 0;
+  const previousDue = roundCurrency(invoice.previousDue);
+  const paidAmount = roundCurrency(invoice.paidAmount);
   const storedDue = invoice.currentDue ?? invoice.dueAmount;
   const currentDue = storedDue == null
     ? Math.max(0, invoiceNet + previousDue - paidAmount)
-    : Number(storedDue) || 0;
+    : roundCurrency(storedDue);
   const paymentMethod = PAYMENT_METHODS.find(
     (method) => method.value === normalizePaymentMethod(invoice.paymentMethod)
   )?.label || PAYMENT_METHODS[0].label;

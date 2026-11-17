@@ -48,7 +48,7 @@ const invoiceItemSchema = new Schema({
   size: { type: String, default: '' },
   cartons: { type: Number, min: 0, default: 0 },
   quantity: { type: Number, min: 0, default: 0 },
-  packPerBox: { type: Number, min: 0, default: 1 },
+  packPerBox: { type: Number, min: 1, default: 1 },
   totalPieces: { type: Number, min: 0, default: 0 },
   retailPieces: { type: Number, min: 0, default: 0 },
   piecePrice: { type: Number, min: 0, default: 0 },
@@ -56,7 +56,24 @@ const invoiceItemSchema = new Schema({
   unitPrice: { type: Number, min: 0, default: 0 },
   cartonPrice: { type: Number, min: 0, default: 0 },
   commission: { type: Number, min: 0, default: 0 },
+  commissionAmount: { type: Number, min: 0, default: 0 },
+  netTotal: { type: Number, min: 0, default: 0 },
   total: { type: Number, min: 0, default: 0 }
+}, { _id: false, strict: false });
+
+const invoiceReturnAdjustmentSchema = new Schema({
+  productId: { type: String, required: true },
+  productName: { type: String, default: '' },
+  sku: { type: String, default: '' },
+  size: { type: String, default: '' },
+  quantity: { type: Number, min: 0, default: 0 },
+  quantityPieces: { type: Number, min: 0, default: 0 },
+  unit: { type: String, default: '' },
+  packPerBox: { type: Number, min: 1, default: 1 },
+  price: { type: Number, min: 0, default: 0 },
+  unitPrice: { type: Number, min: 0, default: 0 },
+  total: { type: Number, min: 0, default: 0 },
+  reason: { type: String, default: '' }
 }, { _id: false, strict: false });
 
 const invoiceSchema = new Schema({
@@ -79,14 +96,49 @@ const invoiceSchema = new Schema({
   dealerProprietor: { type: String, default: '' },
   dealerAddress: { type: String, default: '' },
   dealerPhone: { type: String, default: '' },
+  officerDesignation: { type: String, default: '' },
   items: { type: [invoiceItemSchema], default: [] },
+  returnAdjustments: { type: [invoiceReturnAdjustmentSchema], default: [] },
+  returnAdjustmentTotal: { type: Number, min: 0, default: 0 },
+  totalCartons: { type: Number, min: 0, default: 0 },
   subtotal: { type: Number, min: 0, default: 0 },
+  commissionAmount: { type: Number, min: 0, default: 0 },
+  transportCost: { type: Number, min: 0, default: 0 },
   totalAmount: { type: Number, min: 0, default: 0 },
   grandTotal: { type: Number, min: 0, default: 0 },
   paidAmount: { type: Number, min: 0, default: 0 },
   dueAmount: { type: Number, min: 0, default: 0 },
   currentDue: { type: Number, min: 0, default: 0 },
+  previousDue: { type: Number, default: 0 },
+  netPayable: { type: Number, default: 0 },
+  paymentMethod: { type: String, default: 'credit' },
+  seqNumber: { type: Number, default: 0 },
+  transport: { type: String, default: '' },
+  note: { type: String, default: '' },
+  returnReason: { type: String, default: '' },
   invoiceType: { type: String, default: 'regular' }
+}, flexibleOptions);
+
+const paymentSchema = new Schema({
+  id: { type: String, required: true, unique: true, index: true },
+  date: { type: String, default: '', index: true },
+  paymentType: {
+    type: String,
+    enum: ['dealer_collection', 'company_transfer', 'office_pay', 'salary', 'vehicle_rent', 'lc_commission'],
+    default: 'dealer_collection',
+    index: true
+  },
+  amount: { type: Number, min: 0, default: 0 },
+  paymentMethod: { type: String, default: 'cash' },
+  dealerId: { type: String, default: '', index: true },
+  dealerName: { type: String, default: '' },
+  officerId: { type: String, default: '', index: true },
+  officerCode: { type: String, default: '', index: true },
+  officerName: { type: String, default: '' },
+  reference: { type: String, default: '' },
+  receivedBy: { type: String, default: '' },
+  note: { type: String, default: '' },
+  sourceInvoiceId: { type: String, default: '', index: true }
 }, flexibleOptions);
 
 const orderItemSchema = new Schema({}, { _id: false, strict: false });
@@ -171,6 +223,7 @@ export const BusinessRecord = mongoose.models.BusinessRecord
 export const Product = mongoose.models.Product || mongoose.model('Product', productSchema);
 export const Dealer = mongoose.models.Dealer || mongoose.model('Dealer', dealerSchema);
 export const Invoice = mongoose.models.Invoice || mongoose.model('Invoice', invoiceSchema);
+export const Payment = mongoose.models.Payment || mongoose.model('Payment', paymentSchema);
 export const Order = mongoose.models.Order || mongoose.model('Order', orderSchema);
 export const SalesOfficer = mongoose.models.SalesOfficer
   || mongoose.model('SalesOfficer', salesOfficerSchema);

@@ -17,8 +17,10 @@ import {
 import { isDealerCollection, normalizePaymentMethod } from '../../shared/paymentMethods';
 import { applyInvoiceStockChanges } from '../../shared/invoiceStock';
 import { getInvoiceCartons, getItemCartons } from '../../shared/invoiceCartons';
-import { getInvoiceSalesAmount } from '../../shared/invoiceTotals';
+import { getInvoiceSalesAmount, roundCurrency } from '../../shared/invoiceTotals';
+import { calculateOfficerFinancials, filterOfficerRecordsByPeriod } from '../../shared/officerFinancials';
 import { getDealerNetDue } from '../../shared/dealerLedger';
+import { getOfficerSalesTarget } from '../../shared/officerSalesTargets';
 import { getStockInQuantities } from '../../shared/quantityUnits';
 import { STOCK_RECONCILIATION_START_DATE } from '../../shared/stockReconciliation';
 import { normalizeHotlineNumber } from '../../shared/companyContact';
@@ -718,6 +720,7 @@ export function AgroProvider({ children }) {
     const newPayment = {
       ...paymentData,
       id: `PAY-${globalThis.crypto.randomUUID()}`,
+      amount: roundCurrency(paymentData.amount),
     };
     setPayments((prev) => [newPayment, ...prev]);
   };
@@ -804,24 +807,24 @@ export function AgroProvider({ children }) {
     
     // Total purchases from regular invoices
     const regularInvoices = dealerInvoices.filter(isSalesInvoice);
-    const totalPurchases = regularInvoices.reduce((acc, curr) => acc + getInvoiceSalesAmount(curr), 0);
+    const totalPurchases = roundCurrency(regularInvoices.reduce((acc, curr) => acc + getInvoiceSalesAmount(curr), 0));
 
     // Total returns (credit) from dealer_return invoices
     const returnInvoices = dealerInvoices.filter((inv) => inv.invoiceType === 'dealer_return');
-    const totalReturnCredits = returnInvoices.reduce(
+    const totalReturnCredits = roundCurrency(returnInvoices.reduce(
       (acc, curr) => acc + Math.abs(getInvoiceSalesAmount(curr)),
       0
-    );
-
-    const dealerPays = payments.filter((p) => (
-      isDealerCollection(p) && (p.dealerId === dealer.id || p.dealerName === dealer.shopName)
     ));
-    const totalPaid = dealerPays
-      .reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0);
 
-    const damageCredits = damageLogs
+    const dealerPayments = payments.filter((p) => (
+      p.dealerId === dealer.id || p.dealerName === dealer.shopName
+    ));
+    const dealerReceipts = dealerPayments.filter(isDealerCollection);
+    const totalPaid = roundCurrency(dealerReceipts.reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0));
+
+    const damageCredits = roundCurrency(damageLogs
       .filter((d) => (d.dealerId === dealer.id || d.dealerName === dealer.shopName) && d.actionType === 'ledger_credit' && !d.invoiceRef)
-      .reduce((acc, curr) => acc + (Number(curr.totalDamageValue) || 0), 0);
+      .reduce((acc, curr) => acc + (Number(curr.totalDamageValue) || 0), 0));
 
     const currentDue = getDealerNetDue({
       openingDue,
@@ -840,52 +843,45 @@ export function AgroProvider({ children }) {
       damageCredits,
       currentDue,
       invoices: dealerInvoices,
-      payments: dealerPays,
+      payments: dealerPayments,
       damages: damageLogs.filter((d) => d.dealerId === dealer.id || d.dealerName === dealer.shopName)
     };
   };
 
   // Calculate Officer summary: Ranking by cartons sold
-  const getOfficerSummary = (officerId) => {
+  const getOfficerSummary = (officerId, filters = {}) => {
     const officer = officers.find((o) => o.id === officerId || o.code === officerId);
     if (!officer) return null;
+    const officerCode = normalizeOfficerCode(officer.code, officer.designation);
 
-    const officerInvoices = invoices.filter(
+    const allInvoices = invoices.filter(
       (inv) => inv.officerId === officer.id
-        || normalizeOfficerCode(inv.officerCode, officer.designation)
-          === normalizeOfficerCode(officer.code, officer.designation)
+        || (officerCode && normalizeOfficerCode(inv.officerCode, officer.designation) === officerCode)
     );
-
-    const totalSalesAmount = officerInvoices
-      .filter(isSalesInvoice)
-      .reduce((acc, curr) => acc + getInvoiceSalesAmount(curr), 0);
-
+    const allPayments = payments.filter(
+      (payment) => payment.officerId === officer.id
+        || (officerCode && normalizeOfficerCode(payment.officerCode, officer.designation) === officerCode)
+        || payment.officerName === officer.name
+    );
+    const officerInvoices = filterOfficerRecordsByPeriod(allInvoices, filters);
+    const officerPayments = filterOfficerRecordsByPeriod(allPayments, filters);
     const totalCartonsSold = officerInvoices
       .filter(isSalesInvoice)
       .reduce((sum, invoice) => sum + getInvoiceCartons(invoice), 0);
-
-    const officerPayments = payments.filter(
-      (p) => p.officerId === officer.id
-        || normalizeOfficerCode(p.officerCode, officer.designation)
-          === normalizeOfficerCode(officer.code, officer.designation)
-        || p.officerName === officer.name
-    );
-    const salesInvoices = officerInvoices.filter(isSalesInvoice);
-    const invoiceCollections = salesInvoices.reduce(
-      (sum, invoice) => sum + (Number(invoice.paidAmount) || 0),
-      0
-    );
-    const standaloneCollections = officerPayments
-      .filter((payment) => isDealerCollection(payment) && !isInvoicePaymentRecord(payment))
-      .reduce((sum, payment) => sum + (Number(payment.amount) || 0), 0);
-    const totalCollected = invoiceCollections + standaloneCollections;
+    const financials = calculateOfficerFinancials({
+      invoices: officerInvoices,
+      payments: officerPayments,
+      salesTarget: getOfficerSalesTarget(officer, filters.session || 'ALL'),
+      lastSessionDue: filters.month && filters.month !== 'ALL' ? 0 : officer.lastSessionDue
+    });
 
     return {
       ...officer,
-      invoiceCount: officerInvoices.length,
-      totalSalesAmount,
+      invoiceCount: officerInvoices.filter(isSalesInvoice).length,
+      totalSalesAmount: financials.totalNetSales,
       totalCartonsSold,
-      totalCollected,
+      totalCollected: financials.totalReceivedAmount,
+      ...financials,
       invoices: officerInvoices,
       payments: officerPayments
     };

@@ -193,6 +193,8 @@ export default function OfficerPerformance() {
                 <th className="py-3 px-3 text-center">মোট কার্টুন বিক্রয়</th>
                 <th className="py-3 px-3 text-right">মোট সেলস (৳)</th>
                 <th className="py-3 px-3 text-right">আদায়কৃত কালেকশন (৳)</th>
+                <th className="py-3 px-3 text-right">মোট পাওনা (৳)</th>
+                <th className="py-3 px-3 text-center">পেমেন্ট হার</th>
                 <th className="py-3 px-3 text-center">অ্যাকশন</th>
               </tr>
             </thead>
@@ -260,7 +262,15 @@ export default function OfficerPerformance() {
                   </td>
 
                   <td className="py-3 px-3 text-right font-mono font-bold text-emerald-700 text-sm">
-                    ৳{off.totalCollected.toLocaleString()}
+                    ৳{Math.round(off.totalCollected).toLocaleString()}
+                  </td>
+
+                  <td className="py-3 px-3 text-right font-mono font-bold text-rose-700 text-sm">
+                    ৳{Math.round(off.totalAmountDues).toLocaleString()}
+                  </td>
+
+                  <td className="py-3 px-3 text-center font-mono font-bold text-slate-700 text-sm">
+                    {off.paymentPercentage}%
                   </td>
 
                   <td className="py-3 px-3 text-center">
@@ -300,7 +310,7 @@ export default function OfficerPerformance() {
             </div>
 
             {/* Officer Performance Stats */}
-            <div className="grid grid-cols-3 gap-3 bg-emerald-50 p-3 rounded-lg text-xs border border-emerald-200">
+            <div className="grid grid-cols-2 gap-3 bg-emerald-50 p-3 rounded-lg text-xs border border-emerald-200 sm:grid-cols-3">
               <div>
                 <p className="text-slate-500 font-medium">মোট কার্টুন বিক্রয়</p>
                 <p className="text-base font-black text-emerald-800 font-mono">{selectedOfficerDetail.totalCartonsSold} কার্টুন</p>
@@ -312,6 +322,26 @@ export default function OfficerPerformance() {
               <div>
                 <p className="text-slate-500 font-medium">আদায়কৃত কালেকশন</p>
                 <p className="text-base font-black text-emerald-700 font-mono">৳{selectedOfficerDetail.totalCollected.toLocaleString()}</p>
+              </div>
+              <div>
+                <p className="text-slate-500 font-medium">মোট পাওনা</p>
+                <p className="text-base font-black text-rose-700 font-mono">৳{Math.round(selectedOfficerDetail.totalAmountDues).toLocaleString()}</p>
+              </div>
+              <div>
+                <p className="text-slate-500 font-medium">মোট খরচ</p>
+                <p className="text-base font-black text-slate-800 font-mono">৳{selectedOfficerDetail.totalExpenses.toLocaleString()}</p>
+              </div>
+              <div className="col-span-2 sm:col-span-3">
+                <p className="text-slate-500 font-medium">বিক্রয় / খরচ / পেমেন্ট হার</p>
+                <p className="text-base font-black text-slate-800 font-mono">
+                  {selectedOfficerDetail.salesPercentage}% / {selectedOfficerDetail.expensePercentage}% / {selectedOfficerDetail.paymentPercentage}%
+                </p>
+              </div>
+              <div className="col-span-2 sm:col-span-3">
+                <p className="text-slate-500 font-medium">খরচের খাত: অফিস / বেতন / ভাড়া / LC</p>
+                <p className="font-bold text-slate-800">
+                  {Object.values(selectedOfficerDetail.paymentAndExpense).map((amount) => `৳${Math.round(amount).toLocaleString()}`).join(' / ')}
+                </p>
               </div>
             </div>
 

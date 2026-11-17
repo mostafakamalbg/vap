@@ -1,9 +1,11 @@
 import dbConnect from '../lib/mongodb.js';
-import { BusinessRecord, Dealer, Invoice, Order, Product, User } from '../lib/models.js';
+import { BusinessRecord, Dealer, Invoice, Order, Payment, Product, User } from '../lib/models.js';
 import { authorize, verifyPassword } from '../lib/auth.js';
 import { normalizePaymentMethod } from '../shared/paymentMethods.js';
 import { getInvoiceStockChanges } from '../shared/invoiceStock.js';
 import { getItemCartons } from '../shared/invoiceCartons.js';
+import { calculateInvoiceTotals, roundCurrency } from '../shared/invoiceTotals.js';
+import { dateRangeCondition, invoiceSessionCondition, parseReportMonth } from '../shared/reportDateFilters.js';
 import { STOCK_RECONCILIATION_START_DATE } from '../shared/stockReconciliation.js';
 import { transactionOptions, withTransactionFallback } from '../lib/transactions.js';
 
@@ -46,6 +48,9 @@ function validateInvoice(body) {
     const retailPieces = Number(item?.retailPieces ?? 0);
     const piecePrice = Number(item?.piecePrice ?? item?.unitPrice);
     const unitPrice = Number(item?.unitPrice ?? item?.piecePrice);
+    const cartonPrice = Number(item?.cartonPrice ?? item?.unitPrice);
+    const packPerBox = Number(item?.packPerBox ?? 1);
+    const commission = Number(item?.commission ?? 0);
     return !item?.productId
       || !item?.sku
       || !Number.isSafeInteger(cartons)
@@ -58,59 +63,48 @@ function validateInvoice(body) {
       || (item?.unitType === 'piece' && cartons > 0)
       || !Number.isFinite(unitPrice)
       || unitPrice < 0
+      || !Number.isFinite(cartonPrice)
+      || cartonPrice < 0
+      || !Number.isSafeInteger(packPerBox)
+      || packPerBox < 1
+      || !Number.isFinite(commission)
+      || commission < 0
+      || commission > 100
       || (retailPieces > 0 && (!Number.isFinite(piecePrice) || piecePrice <= 0))
       || (item.stockCondition != null && !['good', 'damaged'].includes(item.stockCondition));
   });
   if (invalidItem) return 'প্রতিটি পণ্যের সঠিক পরিমাণ ও একক মূল্য দিন।';
-  for (const field of ['totalAmount', 'grandTotal', 'paidAmount', 'dueAmount', 'currentDue']) {
+  for (const field of ['paidAmount', 'transportCost']) {
     if (body[field] != null && (!Number.isFinite(Number(body[field])) || Number(body[field]) < 0)) {
       return 'ইনভয়েসের টাকার পরিমাণ সঠিক নয়।';
     }
+  }
+  if (body.previousDue != null && !Number.isFinite(Number(body.previousDue))) {
+    return 'ইনভয়েসের টাকার পরিমাণ সঠিক নয়।';
   }
   return '';
 }
 
 function invoiceValues(body) {
-  const items = body.items.map((item) => ({
-    ...item,
-    cartons: Number(item.cartons ?? item.quantity ?? 0),
-    quantity: Number(item.quantity ?? item.cartons ?? 0),
-    retailPieces: Number(item.retailPieces) || 0,
-    piecePrice: Number(item.piecePrice ?? item.unitPrice) || 0,
-    totalPieces: Number(item.totalPieces)
-      || (Number(item.cartons ?? item.quantity) || 0) * (Number(item.packPerBox) || 1)
-        + (Number(item.retailPieces) || 0),
-    unitPrice: Number(item.unitPrice ?? item.piecePrice) || 0,
-    total: Number(item.total ?? (
-      Number(item.unitPrice) * Number(item.cartons ?? item.quantity)
-      + (Number(item.piecePrice ?? 0) || 0) * (Number(item.retailPieces) || 0)
-    ))
-  }));
-  const totalAmount = Number(body.totalAmount ?? body.grandTotal ?? 0);
   const isReturn = ['dealer_return', 'depot_factory_return', 'factory_damage'].includes(body.invoiceType);
-  const previousDue = isReturn ? 0 : Number(body.previousDue) || 0;
+  const totals = calculateInvoiceTotals({
+    items: body.items,
+    invoiceType: body.invoiceType,
+    transportCost: body.transportCost,
+    returnAdjustments: body.returnAdjustments || []
+  });
+  const { items, subtotal, commissionAmount, transportCost, returnAdjustments, returnAdjustmentTotal, totalAmount } = totals;
+  const previousDue = isReturn ? 0 : roundCurrency(body.previousDue);
   const netPayable = isReturn ? 0 : totalAmount + previousDue;
   const paymentMethod = normalizePaymentMethod(body.paymentMethod);
-  const paidAmount = isReturn || paymentMethod === 'credit' ? 0 : Number(body.paidAmount) || 0;
-  const dueAmount = isReturn
-    ? 0
-    : paymentMethod === 'credit'
-    ? Math.max(0, netPayable - paidAmount)
-    : Number(body.dueAmount ?? body.currentDue ?? 0);
-  const returnAdjustments = (body.returnAdjustments || []).map((item) => ({
-    ...item,
-    quantity: Number(item.quantity ?? item.quantityPieces),
-    quantityPieces: Number(item.quantityPieces ?? item.quantity),
-    price: Number(item.price ?? item.unitPrice),
-    unitPrice: Number(item.unitPrice ?? item.price),
-    total: Number(item.price ?? item.unitPrice) * Number(item.quantity ?? item.quantityPieces)
-  }));
+  const paidAmount = isReturn || paymentMethod === 'credit' ? 0 : roundCurrency(body.paidAmount);
+  const dueAmount = isReturn ? 0 : Math.max(0, netPayable - paidAmount);
   return {
     id: String(body.id).trim(),
     invoiceNo: String(body.invoiceNo || body.id).trim(),
     challanNo: String(body.challanNo || '').trim().slice(0, 100),
     date: body.date,
-    session: body.session,
+    session: String(body.session).trim(),
     officerId: String(body.officerId || ''),
     officerCode: String(body.officerCode || ''),
     officerName: String(body.officerName || ''),
@@ -122,25 +116,62 @@ function invoiceValues(body) {
     dealerAddress: String(body.dealerAddress || ''),
     dealerPhone: String(body.dealerPhone || ''),
     items,
-    totalCartons: items.reduce((sum, item) => sum + getItemCartons(item), 0),
-    subtotal: Number(body.subtotal ?? totalAmount),
-    grandTotal: Number(body.grandTotal ?? totalAmount),
+    totalCartons: roundCurrency(items.reduce((sum, item) => sum + getItemCartons(item), 0)),
+    subtotal,
+    commissionAmount,
+    transportCost,
+    grandTotal: totalAmount,
     totalAmount,
     paidAmount,
-    currentDue: paymentMethod === 'credit' ? dueAmount : Number(body.currentDue ?? dueAmount),
+    currentDue: dueAmount,
     dueAmount,
     invoiceType: String(body.invoiceType || 'regular'),
     seqNumber: Number(body.seqNumber) || 0,
-    commissionAmount: Number(body.commissionAmount) || 0,
-    transportCost: Number(body.transportCost) || 0,
     returnAdjustments,
-    returnAdjustmentTotal: returnAdjustments.reduce((sum, item) => sum + item.total, 0),
+    returnAdjustmentTotal,
     previousDue,
     netPayable,
     paymentMethod,
     transport: String(body.transport || ''),
     note: String(body.note || '').slice(0, 1000)
   };
+}
+
+function getInvoicePaymentValues(invoice) {
+  return {
+    id: `PAY-INVOICE-${invoice.id}`,
+    sourceInvoiceId: invoice.id,
+    date: invoice.date,
+    paymentType: 'dealer_collection',
+    dealerId: invoice.dealerId,
+    dealerName: invoice.dealerName,
+    officerId: invoice.officerId,
+    officerCode: invoice.officerCode,
+    officerName: invoice.officerName,
+    amount: roundCurrency(invoice.paidAmount),
+    paymentMethod: invoice.paymentMethod,
+    reference: `চালান #${invoice.id}`,
+    receivedBy: invoice.officerCode ? `অফিসার কোড ${invoice.officerCode}` : 'ক্যাশিয়ার',
+    note: `ইনভয়েস #${invoice.id} এর বিপরীতে পরিশোধ`
+  };
+}
+
+async function syncInvoicePayment(invoice, session) {
+  const options = transactionOptions(session);
+  await Payment.deleteMany({ sourceInvoiceId: invoice.id }, options);
+  await BusinessRecord.deleteMany({
+    type: 'payments',
+    $or: [
+      { 'data.sourceInvoiceId': invoice.id },
+      {
+        'data.reference': `চালান #${invoice.id}`,
+        'data.note': `ইনভয়েস #${invoice.id} এর বিপরীতে পরিশোধ`
+      }
+    ]
+  }, options);
+  if (invoice.paidAmount > 0) {
+    await Payment.create([getInvoicePaymentValues(invoice)], options);
+  }
 }
 
 function getInvoiceCreatedAt(invoice) {
@@ -239,9 +270,26 @@ export default async function handler(req, res) {
           { officerCode: officerCodeDigits }
         ] : [])
       ];
-      const filter = user.role === 'admin'
-        ? {}
-        : ownerConditions.length ? { $or: ownerConditions } : { id: '__no_records__' };
+      const filters = [];
+      if (user.role !== 'admin') {
+        filters.push(ownerConditions.length ? { $or: ownerConditions } : { id: '__no_records__' });
+      }
+      if (req.query?.session != null) {
+        const session = String(req.query.session).trim();
+        if (!session || session.length > 100) return res.status(400).json({ error: 'সঠিক সেশন নির্বাচন করুন।' });
+        filters.push(invoiceSessionCondition(session));
+      }
+      if (req.query?.month != null) {
+        const range = parseReportMonth(req.query.month);
+        if (!range) return res.status(400).json({ error: 'রিপোর্টের মাস সঠিক নয়।' });
+        filters.push(dateRangeCondition('date', range));
+      }
+      if (req.query?.date != null) {
+        const date = String(req.query.date);
+        if (!isValidDate(date)) return res.status(400).json({ error: 'সঠিক তারিখ দিন।' });
+        filters.push({ date });
+      }
+      const filter = filters.length > 1 ? { $and: filters } : filters[0] || {};
       return res.status(200).json(await Invoice.find(filter).sort({ date: -1, createdAt: -1 }).lean());
     }
 
@@ -288,6 +336,7 @@ export default async function handler(req, res) {
               }
             ]
           }, options);
+          await Payment.deleteMany({ sourceInvoiceId: invoiceId }, options);
           await Invoice.deleteOne({ id: invoiceId }, options);
         });
         return res.status(200).json({ deleted: invoiceId });
@@ -352,6 +401,7 @@ export default async function handler(req, res) {
         }
         await applyInvoiceStockChanges(null, values, session);
         [invoice] = await Invoice.create([values], transactionOptions(session));
+        await syncInvoicePayment(invoice, session);
       });
       return res.status(201).json(invoice.toObject());
     }
@@ -377,6 +427,7 @@ export default async function handler(req, res) {
         { $set: values },
         { ...transactionOptions(session), new: true, runValidators: true }
       ).lean();
+      await syncInvoicePayment(invoice, session);
     });
     if (!invoice) return res.status(404).json({ error: 'ইনভয়েস পাওয়া যায়নি।' });
     return res.status(200).json(invoice);

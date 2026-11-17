@@ -45,7 +45,7 @@ function findDealerOfficer(dealer, officers) {
 }
 
 function formatBalanceAmount(amount) {
-  const balance = Number(amount) || 0;
+  const balance = Math.round(Number(amount) || 0);
   return `${balance < 0 ? '− ' : ''}৳${Math.abs(balance).toLocaleString()}`;
 }
 
@@ -179,7 +179,7 @@ export default function DealerLedger() {
         officerId: paymentForm.officerId,
         officerCode: o?.code || '',
         officerName: o?.name || 'অফিসার',
-        amount: Number(entry.amount),
+        amount: Math.round(Number(entry.amount)),
         paymentMethod: paymentForm.paymentMethod,
         reference: paymentForm.reference || 'নগদ রসিদ',
         receivedBy: paymentForm.receivedBy,
@@ -187,7 +187,7 @@ export default function DealerLedger() {
       });
     });
 
-    const total = entriesToSave.reduce((sum, entry) => sum + Number(entry.amount), 0);
+    const total = Math.round(entriesToSave.reduce((sum, entry) => sum + Number(entry.amount), 0));
     setSuccessMsg(`${d?.shopName || 'ডিলার'}-এর ${entriesToSave.length}টি পেমেন্ট পোস্টিং, মোট ৳${total.toLocaleString()} সংরক্ষণ হয়েছে।`);
     setTimeout(() => setSuccessMsg(''), 4500);
     setShowPaymentModal(false);
@@ -465,7 +465,7 @@ export default function DealerLedger() {
                       <input
                         type="number"
                         min="0"
-                        step="0.01"
+                        step="1"
                         value={entry.amount}
                         onChange={(event) => setPaymentForm((previous) => ({
                           ...previous,

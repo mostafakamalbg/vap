@@ -1,5 +1,5 @@
 import dbConnect from '../lib/mongodb.js';
-import { BusinessRecord, Dealer, Invoice, Product } from '../lib/models.js';
+import { BusinessRecord, Dealer, Invoice, Payment, Product } from '../lib/models.js';
 import { authorize } from '../lib/auth.js';
 import {
   isDealerAssignedToOfficer,
@@ -7,6 +7,10 @@ import {
   normalizeOfficerCode
 } from '../shared/codes.js';
 import { getDealersWithOfficerCodes } from '../lib/dealerAssignments.js';
+import { dateRangeCondition, parseReportMonth, parseSessionDateRange } from '../shared/reportDateFilters.js';
+import { normalizePaymentMethod, normalizePaymentType, PAYMENT_TYPES } from '../shared/paymentMethods.js';
+import { roundCurrency } from '../shared/invoiceTotals.js';
+import { transactionOptions, withTransactionFallback } from '../lib/transactions.js';
 
 const recordTypes = new Set([
   'products',
@@ -18,7 +22,7 @@ const recordTypes = new Set([
   'payments',
   'salesAgreements'
 ]);
-const databaseModels = { products: Product, dealers: Dealer, invoices: Invoice };
+const databaseModels = { products: Product, dealers: Dealer, invoices: Invoice, payments: Payment };
 
 function getRecordId(record, index) {
   return String(record?.id || record?.officerId || record?._id || `${Date.now()}-${index}`);
@@ -56,6 +60,54 @@ export default async function handler(req, res) {
         return res.status(200).json(dealers.filter((dealer) => (
           isDealerAssignedToOfficer(dealer, officerCode, designation)
         )));
+      }
+      if (type === 'payments') {
+        const conditions = [];
+        if (user.role !== 'admin') {
+          const ownerConditions = [
+            ...(user.officerId ? [{ officerId: user.officerId }] : []),
+            ...(user.officerCode ? [{ officerCode: user.officerCode }] : [])
+          ];
+          conditions.push(ownerConditions.length ? { $or: ownerConditions } : { id: '__no_records__' });
+        }
+        if (req.query?.session != null) {
+          const range = parseSessionDateRange(req.query.session);
+          if (!range) return res.status(400).json({ error: 'সঠিক সেশন নির্বাচন করুন।' });
+          conditions.push(dateRangeCondition('date', range));
+        }
+        if (req.query?.month != null) {
+          const range = parseReportMonth(req.query.month);
+          if (!range) return res.status(400).json({ error: 'রিপোর্টের মাস সঠিক নয়।' });
+          conditions.push(dateRangeCondition('date', range));
+        }
+        if (req.query?.date != null) {
+          const date = String(req.query.date);
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: 'সঠিক তারিখ দিন।' });
+          conditions.push({ date });
+        }
+        const filter = conditions.length > 1 ? { $and: conditions } : conditions[0] || {};
+        const [typed, legacyRecords] = await Promise.all([
+          Payment.find(filter).sort({ date: -1 }).lean(),
+          BusinessRecord.find({ type: 'payments' }).select('data').lean()
+        ]);
+        const ids = new Set(typed.map((payment) => String(payment.id)));
+        const sources = new Set(typed.map((payment) => String(payment.sourceInvoiceId || '')).filter(Boolean));
+        const monthRange = req.query?.month != null ? parseReportMonth(req.query.month) : null;
+        const sessionRange = req.query?.session != null ? parseSessionDateRange(req.query.session) : null;
+        const legacy = legacyRecords.map((record) => record.data).filter((payment) => {
+          if (!payment || (payment.id && ids.has(String(payment.id)))) return false;
+          if (payment.sourceInvoiceId && sources.has(String(payment.sourceInvoiceId))) return false;
+          if (user.role !== 'admin'
+            && payment.officerId !== user.officerId
+            && payment.officerCode !== user.officerCode) return false;
+          if (req.query?.date != null && payment.date !== String(req.query.date)) return false;
+          if (monthRange && !(String(payment.date || '') >= monthRange.start
+            && String(payment.date || '') < monthRange.end)) return false;
+          if (sessionRange && !(String(payment.date || '') >= sessionRange.start
+            && String(payment.date || '') < sessionRange.end)) return false;
+          return true;
+        });
+        return res.status(200).json([...typed, ...legacy]);
       }
       if (Model) {
         let filter = {};
@@ -110,6 +162,30 @@ export default async function handler(req, res) {
 
     const records = req.body;
     if (!Array.isArray(records)) return res.status(400).json({ error: 'Expected an array of records.' });
+
+    if (type === 'payments') {
+      const validTypes = new Set(PAYMENT_TYPES.map((entry) => entry.value));
+      if (records.some((record) => !record || typeof record !== 'object'
+        || !Number.isFinite(Number(record.amount))
+        || Number(record.amount) < 0
+        || (record.paymentType && !validTypes.has(String(record.paymentType))))) {
+        return res.status(400).json({ error: 'পেমেন্টের ধরন ও টাকার পরিমাণ সঠিক নয়।' });
+      }
+      const normalized = records.map((record, index) => ({
+        ...record,
+        id: getRecordId(record, index),
+        paymentType: normalizePaymentType(record.paymentType),
+        amount: roundCurrency(record.amount),
+        paymentMethod: normalizePaymentMethod(record.paymentMethod)
+      }));
+      await withTransactionFallback(async (session) => {
+        const options = transactionOptions(session);
+        await Payment.deleteMany({}, options);
+        await BusinessRecord.deleteMany({ type: 'payments' }, options);
+        if (normalized.length) await Payment.insertMany(normalized, options);
+      });
+      return res.status(200).json({ saved: records.length });
+    }
 
     if (Model) {
       let normalizedRecords = records;
