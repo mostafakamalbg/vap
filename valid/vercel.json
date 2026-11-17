@@ -3,6 +3,18 @@
   "outputDirectory": "dist",
   "rewrites": [
     {
+      "source": "/api/reports",
+      "destination": "/api/combined-reports?route=reports"
+    },
+    {
+      "source": "/api/sales-officers",
+      "destination": "/api/combined-reports?route=sales-officers"
+    },
+    {
+      "source": "/api/dashboard-reports",
+      "destination": "/api/combined-reports?route=dashboard-reports"
+    },
+    {
       "source": "/api/auth/login",
       "destination": "/api/auth?route=login"
     },
