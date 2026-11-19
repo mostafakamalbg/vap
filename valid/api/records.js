@@ -10,6 +10,7 @@ import { getDealersWithOfficerCodes } from '../lib/dealerAssignments.js';
 import { dateRangeCondition, parseReportMonth, parseSessionDateRange } from '../shared/reportDateFilters.js';
 import { normalizePaymentMethod, normalizePaymentType, PAYMENT_TYPES } from '../shared/paymentMethods.js';
 import { roundCurrency } from '../shared/invoiceTotals.js';
+import { getInvoiceSessionForDate } from '../shared/sessions.js';
 import { transactionOptions, withTransactionFallback } from '../lib/transactions.js';
 
 const recordTypes = new Set([
@@ -174,6 +175,7 @@ export default async function handler(req, res) {
       const normalized = records.map((record, index) => ({
         ...record,
         id: getRecordId(record, index),
+        session: String(record.session || getInvoiceSessionForDate(record.date) || '').trim(),
         paymentType: normalizePaymentType(record.paymentType),
         amount: roundCurrency(record.amount),
         paymentMethod: normalizePaymentMethod(record.paymentMethod)

@@ -93,8 +93,9 @@ export default async function handler(req, res) {
     || !Number.isFinite(Number(payment.amount))
     || Number(payment.amount) <= 0
     || !String(payment.dealerId || '').trim()
+    || !String(payment.officerId || '').trim()
   ))) {
-    return res.status(400).json({ error: 'তারিখ, ডিলার, পেমেন্টের ধরন ও টাকার পরিমাণ সঠিক নয়।' });
+    return res.status(400).json({ error: 'তারিখ, সেশন, ডিলার, অফিসার, পেমেন্টের ধরন ও টাকার পরিমাণ সঠিকভাবে দিন।' });
   }
 
   try {

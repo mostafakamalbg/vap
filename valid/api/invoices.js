@@ -142,6 +142,7 @@ function getInvoicePaymentValues(invoice) {
     id: `PAY-INVOICE-${invoice.id}`,
     sourceInvoiceId: invoice.id,
     date: invoice.date,
+    session: invoice.session,
     paymentType: 'dealer_collection',
     dealerId: invoice.dealerId,
     dealerName: invoice.dealerName,
