@@ -39,13 +39,14 @@ export default function AuthPage({ initialRole = 'admin', onNavigate, onLoginSuc
         setMessage(result.message);
         setIsRegistering(false);
         setRole('officer');
+        setForm((previous) => ({ ...previous, password: '' }));
+        setPasswordFieldActive(false);
+        setShowPassword(false);
       } else {
         const user = await login({ email: form.email, password: form.password, expectedRole: role });
-        if (!deviceOwnerEmail) {
-          const email = form.email.trim().toLowerCase();
-          localStorage.setItem('vap_device_owner_email_v1', email);
-          setDeviceOwnerEmail(email);
-        }
+        const email = form.email.trim().toLowerCase();
+        localStorage.setItem('vap_device_owner_email_v1', email);
+        setDeviceOwnerEmail(email);
         onLoginSuccess(user);
       }
     } catch (requestError) {
@@ -58,6 +59,9 @@ export default function AuthPage({ initialRole = 'admin', onNavigate, onLoginSuc
   const selectRole = (nextRole) => {
     setRole(nextRole);
     setIsRegistering(false);
+    setForm((previous) => ({ ...previous, password: '' }));
+    setPasswordFieldActive(false);
+    setShowPassword(false);
     setShowAdminHelp(false);
     setError('');
     setMessage('');
@@ -119,7 +123,7 @@ export default function AuthPage({ initialRole = 'admin', onNavigate, onLoginSuc
             </button>
           </div>
         ) : (
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} autoComplete="off" className="space-y-4">
           {isRegistering && (
             <>
               <label className="block space-y-1">
@@ -201,13 +205,13 @@ export default function AuthPage({ initialRole = 'admin', onNavigate, onLoginSuc
 
         <div className="mt-5 border-t border-slate-100 pt-4 text-center">
           {showAdminHelp ? null : isRegistering ? (
-            <button type="button" onClick={() => { setForm((previous) => ({ ...previous, email: deviceOwnerEmail })); setIsRegistering(false); setMessage(''); setError(''); }} className="text-sm font-bold text-emerald-700 hover:underline">
+            <button type="button" onClick={() => { setForm((previous) => ({ ...previous, email: deviceOwnerEmail, password: '' })); setPasswordFieldActive(false); setShowPassword(false); setIsRegistering(false); setMessage(''); setError(''); }} className="text-sm font-bold text-emerald-700 hover:underline">
               {t('auth.existingOfficer')}
             </button>
           ) : (
             <div className="flex flex-wrap justify-center gap-4">
               {role === 'officer' && (
-                <button type="button" onClick={() => { setForm((previous) => ({ ...previous, email: '' })); setIsRegistering(true); setMessage(''); setError(''); }} className="text-sm font-bold text-emerald-700 hover:underline">
+                <button type="button" onClick={() => { setForm((previous) => ({ ...previous, email: '', password: '' })); setPasswordFieldActive(false); setShowPassword(false); setIsRegistering(true); setMessage(''); setError(''); }} className="text-sm font-bold text-emerald-700 hover:underline">
                   {t('auth.newOfficer')}
                 </button>
               )}
