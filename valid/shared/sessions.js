@@ -22,14 +22,27 @@ export function sortSessionsNewestFirst(sessions) {
       || String(right).localeCompare(String(left)));
 }
 
-export const INVOICE_SESSIONS = Array.from({ length: currentYear + 6 - FIRST_SESSION_YEAR }, (_, index) => (
-  currentYear + 5 - index
-)).flatMap((year) => [
-  `জুলাই - ডিসেম্বর ${year}`,
-  ...(year > FIRST_SESSION_YEAR ? [`জানুয়ারি - জুন ${year}`] : [])
-]);
+export const INVOICE_SESSIONS = Array.from(
+  { length: currentYear + 3 - FIRST_SESSION_YEAR },
+  (_, index) => FIRST_SESSION_YEAR + index
+)
+  .sort((left, right) => right - left)
+  .flatMap((year) => [
+    `জুলাই - ডিসেম্বর ${year}`,
+    ...(year >= FIRST_SESSION_YEAR + 1 ? [`জানুয়ারি - জুন ${year}`] : [])
+  ]);
 
 export const LEGACY_INVOICE_SESSION = 'সেশন নির্ধারিত নয়';
+
+export function normalizeSessionText(value) {
+  const banglaDigits = '০১২৩৪৫৬৭৮৯';
+  return String(value || '')
+    .replace(/[০-৯]/g, (digit) => String(banglaDigits.indexOf(digit)))
+    .replace(/[‐‑‒–—−]/g, '-')
+    .replace(/\s*-\s*/g, ' - ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
 
 export function getInvoiceSessionForDate(date) {
   const match = String(date || '').match(/^(\d{4})-(\d{2})-\d{2}$/);

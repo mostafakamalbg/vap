@@ -4,6 +4,8 @@ import { Dealer } from '../lib/models.js';
 import { authorize } from '../lib/auth.js';
 import { getDealersWithOfficerCodes } from '../lib/dealerAssignments.js';
 import { normalizeDealerAssignment, normalizeOfficerCode, isDealerAssignedToOfficer } from '../shared/codes.js';
+import { normalizeSessionText } from '../shared/sessions.js';
+import { parseSessionDateRange } from '../shared/reportDateFilters.js';
 
 export default async function handler(req, res) {
   if (!['GET', 'POST', 'PATCH'].includes(req.method)) {
@@ -45,7 +47,8 @@ export default async function handler(req, res) {
       || !String(session || '').trim()
       || !/^\d{4}-\d{2}-\d{2}$/.test(String(date || ''))
       || !Number.isFinite(Number(amount))
-      || Number(amount) < 0) {
+      || Number(amount) < 0
+      || !parseSessionDateRange(normalizeSessionText(session))) {
       return res.status(400).json({
         error: 'ডিলার, অফিসার, সেশন, তারিখ ও পূর্বের বকেয়া সঠিকভাবে দিন।'
       });
@@ -59,7 +62,7 @@ export default async function handler(req, res) {
             previousDue: due,
             openingDue: due,
             lastSessionDue: due,
-            previousDueSession: String(session).trim(),
+            previousDueSession: normalizeSessionText(session),
             previousDueDate: String(date),
             previousDueOfficerId: String(officerId)
           }

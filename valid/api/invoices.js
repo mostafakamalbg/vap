@@ -8,6 +8,8 @@ import { calculateInvoiceTotals, roundCurrency } from '../shared/invoiceTotals.j
 import { dateRangeCondition, invoiceSessionCondition, parseReportMonth } from '../shared/reportDateFilters.js';
 import { STOCK_RECONCILIATION_START_DATE } from '../shared/stockReconciliation.js';
 import { transactionOptions, withTransactionFallback } from '../lib/transactions.js';
+import { normalizeSessionText } from '../shared/sessions.js';
+import { parseSessionDateRange } from '../shared/reportDateFilters.js';
 
 const isValidDate = (value) => {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -18,6 +20,9 @@ const isValidDate = (value) => {
 function validateInvoice(body) {
   if (!body?.id || !isValidDate(body.date) || !String(body.session || '').trim() || String(body.session).length > 100) {
     return 'ইনভয়েস নম্বর, সঠিক তারিখ ও সেশন নির্বাচন করুন।';
+  }
+  if (!parseSessionDateRange(normalizeSessionText(body.session))) {
+    return 'সঠিক সেশন নির্বাচন করুন।';
   }
   const invoiceType = String(body.invoiceType || 'regular');
   if (!['regular', 'dealer_return', 'depot_factory_return', 'factory_damage'].includes(invoiceType)) {
@@ -104,7 +109,7 @@ function invoiceValues(body) {
     invoiceNo: String(body.invoiceNo || body.id).trim(),
     challanNo: String(body.challanNo || '').trim().slice(0, 100),
     date: body.date,
-    session: String(body.session).trim(),
+    session: normalizeSessionText(body.session),
     officerId: String(body.officerId || ''),
     officerCode: String(body.officerCode || ''),
     officerName: String(body.officerName || ''),
@@ -142,7 +147,7 @@ function getInvoicePaymentValues(invoice) {
     id: `PAY-INVOICE-${invoice.id}`,
     sourceInvoiceId: invoice.id,
     date: invoice.date,
-    session: invoice.session,
+    session: normalizeSessionText(invoice.session),
     paymentType: 'dealer_collection',
     dealerId: invoice.dealerId,
     dealerName: invoice.dealerName,

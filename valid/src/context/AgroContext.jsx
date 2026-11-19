@@ -52,6 +52,10 @@ function normalizeBusinessRecords(type, records, officers = []) {
     if (type === 'officers') {
       normalized.id = String(record.id || record.officerId || normalizeOfficerCode(record.code, record.designation));
       normalized.code = normalizeOfficerCode(record.code, record.designation);
+      normalized.name = String(record.name || record.officerName || record.fullName || '').trim();
+      normalized.phone = String(record.phone || record.mobileNo || '').trim();
+      normalized.designation = String(record.designation || record.roleDesignation || '').trim();
+      normalized.territory = String(record.territory || record.areaName || '').trim();
     }
     if (type === 'dealers') {
       normalized.code = formatDealerCode(record.code);
@@ -308,7 +312,9 @@ export function AgroProvider({ children }) {
   };
 
   const refreshSharedRecords = async (type) => {
-    const response = await fetch(`/api/records?type=${encodeURIComponent(type)}`);
+    const response = await fetch(type === 'officers'
+      ? '/api/officers'
+      : `/api/records?type=${encodeURIComponent(type)}`);
     const records = await readJsonResponse(response);
     const setters = {
       products: setProducts,
@@ -356,7 +362,9 @@ export function AgroProvider({ children }) {
         const recordTypes = Object.entries(setters)
           .filter(([type]) => type !== 'salesAgreements' || currentUser.role === 'admin');
         const sharedRecords = await Promise.all(recordTypes.map(async ([type]) => {
-          const response = await fetch(`/api/records?type=${encodeURIComponent(type)}`);
+          const response = await fetch(type === 'officers'
+            ? '/api/officers'
+            : `/api/records?type=${encodeURIComponent(type)}`);
           const records = await readJsonResponse(response);
           if (!Array.isArray(records)) throw new Error(`সার্ভার থেকে ${type} ডেটা সঠিকভাবে পাওয়া যায়নি।`);
           return [type, records];
@@ -474,6 +482,7 @@ export function AgroProvider({ children }) {
     id: `PAY-${globalThis.crypto.randomUUID()}`,
     sourceInvoiceId: invoice.id,
     date: invoice.date,
+    session: invoice.session,
     dealerId: invoice.dealerId,
     dealerName: invoice.dealerName,
     officerId: invoice.officerId,

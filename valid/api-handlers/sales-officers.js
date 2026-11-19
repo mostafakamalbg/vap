@@ -6,6 +6,7 @@ import { roundAmount } from '../shared/salesReports.js';
 import { calculateOfficerFinancials, filterOfficerRecordsByPeriod } from '../shared/officerFinancials.js';
 import { getOfficerSalesTarget } from '../shared/officerSalesTargets.js';
 import { parseReportMonth, parseSessionDateRange } from '../shared/reportDateFilters.js';
+import { normalizeSessionText } from '../shared/sessions.js';
 
 const numericFields = [
   'salesTargetJulyDec2026',
@@ -146,12 +147,14 @@ export default async function handler(req, res) {
     values.salesTargets = {};
     const existingTarget = await SalesOfficer.findOne({ slNo }).lean();
     const superAdmin = await hasSuperAdminAccess(user);
-    for (const [session, target] of Object.entries(body.salesTargets || {})) {
+    for (const [rawSession, target] of Object.entries(body.salesTargets || {})) {
+      const session = normalizeSessionText(rawSession);
       if (!parseSessionDateRange(session) || !Number.isFinite(Number(target)) || Number(target) < 0) {
         return res.status(400).json({ error: 'সেশন টার্গেটের পরিমাণ সঠিক নয়।' });
       }
       if (
         existingTarget?.salesTargets?.[session] != null
+        && roundAmount(existingTarget.salesTargets[session]) !== roundAmount(target)
         && !superAdmin
       ) {
         return res.status(409).json({

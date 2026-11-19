@@ -30,7 +30,7 @@ import {
 } from '../../../shared/paymentMethods';
 import { getDealerLedgerTransactions } from '../../../shared/dealerLedger';
 import CompanyLetterhead from './CompanyLetterhead';
-import { getInvoiceSessionForDate, INVOICE_SESSIONS } from '../../../shared/sessions';
+import { getBangladeshBusinessDate, getInvoiceSessionForDate, INVOICE_SESSIONS } from '../../../shared/sessions';
 
 const createPaymentEntries = () => LEDGER_PAYMENT_TYPES.map(({ value }) => ({
   paymentType: value,
@@ -38,8 +38,8 @@ const createPaymentEntries = () => LEDGER_PAYMENT_TYPES.map(({ value }) => ({
 }));
 
 const createPaymentForm = (dealerId = '', officerId = '') => ({
-  date: new Date().toISOString().slice(0, 10),
-  session: getInvoiceSessionForDate(new Date().toISOString().slice(0, 10)),
+  date: getBangladeshBusinessDate(),
+  session: getInvoiceSessionForDate(getBangladeshBusinessDate()),
   dealerId,
   officerId,
   paymentMethod: 'cash',
@@ -105,7 +105,7 @@ export default function DealerLedger() {
     dealerId: '',
     officerId: '',
     session: INVOICE_SESSIONS[0] || '',
-    date: new Date().toISOString().slice(0, 10),
+    date: getBangladeshBusinessDate(),
     amount: 0
   });
 

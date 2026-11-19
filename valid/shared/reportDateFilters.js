@@ -27,7 +27,13 @@ export function parseReportMonth(value) {
 }
 
 export function parseSessionDateRange(value) {
-  const session = String(value || '').toLowerCase();
+  const session = String(value || '')
+    .replace(/[০-৯]/g, (digit) => String('০১২৩৪৫৬৭৮৯'.indexOf(digit)))
+    .replace(/[‐‑‒–—−]/g, '-')
+    .replace(/\s*-\s*/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
   const year = session.match(/\b(20\d{2})\b/)?.[1];
   if (!year) return null;
   if (session.includes('জানু') || session.includes('january')) {

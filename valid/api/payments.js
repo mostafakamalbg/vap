@@ -6,6 +6,7 @@ import { normalizePaymentMethod, PAYMENT_TYPES } from '../shared/paymentMethods.
 import { roundCurrency } from '../shared/invoiceTotals.js';
 import { transactionOptions, withTransactionFallback } from '../lib/transactions.js';
 import { parseSessionDateRange } from '../shared/reportDateFilters.js';
+import { normalizeSessionText } from '../shared/sessions.js';
 
 function isValidDate(value) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -17,7 +18,7 @@ function paymentValues(payment) {
   return {
     id: String(payment.id || `PAY-${randomUUID()}`),
     date: payment.date,
-    session: String(payment.session || '').trim(),
+    session: normalizeSessionText(payment.session),
     paymentType: payment.paymentType,
     amount: roundCurrency(payment.amount),
     paymentMethod: normalizePaymentMethod(payment.paymentMethod),
@@ -61,7 +62,8 @@ export default async function handler(req, res) {
     const id = String(req.body?.id || '').trim();
     const update = req.body?.payment;
     if (!id || !update) return res.status(400).json({ error: 'পেমেন্টের সঠিক তথ্য দিন।' });
-    if (!isValidDate(String(update.date || '')) || !String(update.session || '').trim()) {
+    if (!isValidDate(String(update.date || ''))
+      || !parseSessionDateRange(normalizeSessionText(update.session))) {
       return res.status(400).json({ error: 'তারিখ ও সেশন নির্বাচন করুন।' });
     }
     try {
@@ -88,7 +90,7 @@ export default async function handler(req, res) {
     || !isValidDate(String(payment.date || ''))
     || !String(payment.session || '').trim()
     || String(payment.session).length > 100
-    || !parseSessionDateRange(String(payment.session).trim())
+    || !parseSessionDateRange(normalizeSessionText(payment.session))
     || !validTypes.has(String(payment.paymentType || ''))
     || !Number.isFinite(Number(payment.amount))
     || Number(payment.amount) <= 0
@@ -119,7 +121,7 @@ export default async function handler(req, res) {
       const saved = existingById.get(payment.id);
       return saved && (
         saved.date !== payment.date
-          || String(saved.session || '') !== payment.session
+          || normalizeSessionText(saved.session) !== payment.session
         || saved.paymentType !== payment.paymentType
         || saved.amount !== payment.amount
         || saved.dealerId !== payment.dealerId
