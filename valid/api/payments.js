@@ -1,10 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import dbConnect from '../lib/mongodb.js';
 import { Dealer, Payment } from '../lib/models.js';
-import { authorize } from '../lib/auth.js';
+import { authorize, hasSuperAdminAccess } from '../lib/auth.js';
 import { normalizePaymentMethod, PAYMENT_TYPES } from '../shared/paymentMethods.js';
 import { roundCurrency } from '../shared/invoiceTotals.js';
 import { transactionOptions, withTransactionFallback } from '../lib/transactions.js';
+import { parseSessionDateRange } from '../shared/reportDateFilters.js';
 
 function isValidDate(value) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -16,6 +17,7 @@ function paymentValues(payment) {
   return {
     id: String(payment.id || `PAY-${randomUUID()}`),
     date: payment.date,
+    session: String(payment.session || '').trim(),
     paymentType: payment.paymentType,
     amount: roundCurrency(payment.amount),
     paymentMethod: normalizePaymentMethod(payment.paymentMethod),
@@ -32,10 +34,49 @@ function paymentValues(payment) {
 }
 
 export default async function handler(req, res) {
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method Not Allowed' });
+  if (!['POST', 'PATCH', 'DELETE'].includes(req.method)) return res.status(405).json({ error: 'Method Not Allowed' });
   if (!await dbConnect()) return res.status(503).json({ error: 'MongoDB is not configured.' });
   const user = await authorize(req, res, ['admin']);
   if (!user) return;
+  if (req.method !== 'POST') {
+    if (!await hasSuperAdminAccess(user)) {
+      return res.status(403).json({ error: 'পেমেন্ট সম্পাদনা বা মুছে ফেলার অনুমতি শুধু সুপার অ্যাডমিনের।' });
+    }
+  }
+
+  if (req.method === 'DELETE') {
+    const id = String(req.body?.id || '').trim();
+    if (!id) return res.status(400).json({ error: 'মুছে ফেলার জন্য পেমেন্ট নির্বাচন করুন।' });
+    try {
+      await withTransactionFallback(async (session) => {
+        await Payment.deleteOne({ id }, transactionOptions(session));
+      });
+      return res.status(200).json({ deleted: id });
+    } catch (error) {
+      console.error('Payment delete failed:', error);
+      return res.status(500).json({ error: 'পেমেন্ট মুছে ফেলা যায়নি।' });
+    }
+  }
+  if (req.method === 'PATCH') {
+    const id = String(req.body?.id || '').trim();
+    const update = req.body?.payment;
+    if (!id || !update) return res.status(400).json({ error: 'পেমেন্টের সঠিক তথ্য দিন।' });
+    if (!isValidDate(String(update.date || '')) || !String(update.session || '').trim()) {
+      return res.status(400).json({ error: 'তারিখ ও সেশন নির্বাচন করুন।' });
+    }
+    try {
+      const saved = await Payment.findOneAndUpdate(
+        { id },
+        { $set: { ...paymentValues({ ...update, id }), session: String(update.session).trim() } },
+        { new: true, runValidators: true }
+      ).lean();
+      if (!saved) return res.status(404).json({ error: 'পেমেন্ট পাওয়া যায়নি।' });
+      return res.status(200).json(saved);
+    } catch (error) {
+      console.error('Payment update failed:', error);
+      return res.status(500).json({ error: 'পেমেন্ট সম্পাদনা করা যায়নি।' });
+    }
+  }
 
   const payments = req.body?.payments;
   if (!Array.isArray(payments) || payments.length < 1 || payments.length > PAYMENT_TYPES.length) {
@@ -45,6 +86,9 @@ export default async function handler(req, res) {
   if (payments.some((payment) => (
     !payment
     || !isValidDate(String(payment.date || ''))
+    || !String(payment.session || '').trim()
+    || String(payment.session).length > 100
+    || !parseSessionDateRange(String(payment.session).trim())
     || !validTypes.has(String(payment.paymentType || ''))
     || !Number.isFinite(Number(payment.amount))
     || Number(payment.amount) <= 0
@@ -74,6 +118,7 @@ export default async function handler(req, res) {
       const saved = existingById.get(payment.id);
       return saved && (
         saved.date !== payment.date
+          || String(saved.session || '') !== payment.session
         || saved.paymentType !== payment.paymentType
         || saved.amount !== payment.amount
         || saved.dealerId !== payment.dealerId

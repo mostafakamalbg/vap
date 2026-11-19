@@ -1,6 +1,6 @@
 import dbConnect from '../lib/mongodb.js';
 import { BusinessRecord, Invoice, Payment, SalesOfficer } from '../lib/models.js';
-import { authorize } from '../lib/auth.js';
+import { authorize, hasSuperAdminAccess } from '../lib/auth.js';
 import { normalizeOfficerCode } from '../shared/codes.js';
 import { roundAmount } from '../shared/salesReports.js';
 import { calculateOfficerFinancials, filterOfficerRecordsByPeriod } from '../shared/officerFinancials.js';
@@ -144,9 +144,19 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'সেশন টার্গেটের তালিকা সঠিক নয়।' });
     }
     values.salesTargets = {};
+    const existingTarget = await SalesOfficer.findOne({ slNo }).lean();
+    const superAdmin = await hasSuperAdminAccess(user);
     for (const [session, target] of Object.entries(body.salesTargets || {})) {
       if (!parseSessionDateRange(session) || !Number.isFinite(Number(target)) || Number(target) < 0) {
         return res.status(400).json({ error: 'সেশন টার্গেটের পরিমাণ সঠিক নয়।' });
+      }
+      if (
+        existingTarget?.salesTargets?.[session] != null
+        && !superAdmin
+      ) {
+        return res.status(409).json({
+          error: `${session} সেশনে এই অফিসারের টার্গেট আগে থেকেই সংরক্ষিত আছে। পরিবর্তন শুধু সুপার অ্যাডমিন করতে পারবেন।`
+        });
       }
       values.salesTargets[session] = roundAmount(target);
     }

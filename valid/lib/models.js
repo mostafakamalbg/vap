@@ -10,14 +10,18 @@ const userSchema = new Schema({
   email: { type: String, required: true, unique: true, lowercase: true, trim: true },
   passwordHash: { type: String, required: true, select: false },
   role: { type: String, enum: ['admin', 'officer'], required: true },
-  status: { type: String, enum: ['pending', 'active', 'rejected'], default: 'pending' },
+  status: {
+    type: String,
+    enum: ['pending', 'active', 'rejected', 'সুপার এডমিন', 'একটিভ', 'এডমিন'],
+    default: 'pending'
+  },
   officerId: { type: String, default: '' },
   officerCode: { type: String, default: '' },
   phone: { type: String, default: '' }
 }, { timestamps: true });
 
 const adminSeatSchema = new Schema({
-  _id: { type: Number, enum: [1, 2], required: true },
+  _id: { type: Number, min: 1, max: 11, required: true },
   email: { type: String, required: true, lowercase: true, trim: true }
 }, { timestamps: true });
 
@@ -39,7 +43,11 @@ const dealerSchema = new Schema({
   code: { type: String, default: '' },
   shopName: { type: String, default: '' },
   openingDue: { type: Number, default: 0 },
-  lastSessionDue: { type: Number, default: null }
+  lastSessionDue: { type: Number, default: null },
+  previousDue: { type: Number, default: 0 },
+  previousDueSession: { type: String, default: '' },
+  previousDueDate: { type: String, default: '' },
+  previousDueOfficerId: { type: String, default: '' }
 }, flexibleOptions);
 
 const invoiceItemSchema = new Schema({
@@ -123,6 +131,7 @@ const invoiceSchema = new Schema({
 const paymentSchema = new Schema({
   id: { type: String, required: true, unique: true, index: true },
   date: { type: String, default: '', index: true },
+  session: { type: String, required: true, trim: true, maxlength: 100, index: true },
   paymentType: {
     type: String,
     enum: ['dealer_collection', 'company_transfer', 'office_pay', 'salary', 'vehicle_rent', 'lc_commission'],

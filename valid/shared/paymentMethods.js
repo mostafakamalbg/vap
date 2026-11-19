@@ -24,7 +24,7 @@ export const DEALER_BALANCE_CREDIT_TYPES = new Set([
 ]);
 
 export const LEDGER_PAYMENT_TYPES = PAYMENT_TYPES.filter((entry) => (
-  entry.value !== 'dealer_collection'
+  entry.value !== 'dealer_collection' && entry.value !== 'office_pay'
 ));
 
 export function normalizePaymentType(type) {

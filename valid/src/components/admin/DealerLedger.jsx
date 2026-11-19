@@ -30,6 +30,7 @@ import {
 } from '../../../shared/paymentMethods';
 import { getDealerLedgerTransactions } from '../../../shared/dealerLedger';
 import CompanyLetterhead from './CompanyLetterhead';
+import { INVOICE_SESSIONS } from '../../../shared/sessions';
 
 const createPaymentEntries = () => LEDGER_PAYMENT_TYPES.map(({ value }) => ({
   paymentType: value,
@@ -38,6 +39,7 @@ const createPaymentEntries = () => LEDGER_PAYMENT_TYPES.map(({ value }) => ({
 
 const createPaymentForm = (dealerId = '', officerId = '') => ({
   date: new Date().toISOString().slice(0, 10),
+  session: INVOICE_SESSIONS[0] || '',
   dealerId,
   officerId,
   paymentMethod: 'cash',
@@ -90,12 +92,21 @@ export default function DealerLedger() {
     addDealerPayment,
     getDealerSummary,
     invoices,
-    payments
+    payments,
+    refreshSharedRecords
   } = useAgro();
 
   const [searchTerm, setSearchTerm] = useState('');
   const [showAddDealerModal, setShowAddDealerModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [showPreviousDueModal, setShowPreviousDueModal] = useState(false);
+  const [previousDueForm, setPreviousDueForm] = useState({
+    dealerId: '',
+    officerId: '',
+    session: INVOICE_SESSIONS[0] || '',
+    date: new Date().toISOString().slice(0, 10),
+    amount: 0
+  });
   const [selectedDealerForLedger, setSelectedDealerForLedger] = useState(null);
   const [successMsg, setSuccessMsg] = useState('');
 
@@ -175,6 +186,7 @@ export default function DealerLedger() {
       const paymentType = normalizePaymentType(entry.paymentType);
       return {
           date: paymentForm.date,
+          session: paymentForm.session,
           paymentType,
           dealerId: paymentForm.dealerId,
           dealerName: d?.shopName || 'ডিলার',
@@ -205,6 +217,29 @@ export default function DealerLedger() {
     setPaymentForm(resetForm);
     setSuccessMsg(`${d?.shopName || 'ডিলার'}-এর পেমেন্ট সংরক্ষণ হয়েছে।`);
     setTimeout(() => setSuccessMsg(''), 4500);
+  };
+
+  const handlePreviousDueSubmit = async (event) => {
+    event.preventDefault();
+    if (!previousDueForm.dealerId || !previousDueForm.officerId || !previousDueForm.session
+      || !previousDueForm.date || Number(previousDueForm.amount) < 0) {
+      setSuccessMsg('ডিলার, অফিসার, সেশন, তারিখ ও বকেয়া সঠিকভাবে দিন।');
+      return;
+    }
+    try {
+      const response = await fetch('/api/dealers', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(previousDueForm)
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'পূর্বের বকেয়া সংরক্ষণ করা যায়নি।');
+      await refreshSharedRecords('dealers');
+      setSuccessMsg('পূর্বের বকেয়া সংরক্ষিত হয়েছে এবং ডিলার লেজার হালনাগাদ হয়েছে।');
+      setShowPreviousDueModal(false);
+    } catch (error) {
+      window.alert(error.message);
+    }
   };
 
   // Submit New Dealer
@@ -254,6 +289,13 @@ export default function DealerLedger() {
         </div>
 
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setShowPreviousDueModal(true)}
+            className="no-print rounded-lg border border-amber-300 bg-amber-50 px-3.5 py-2 text-xs font-bold text-amber-900"
+          >
+            পূর্বের বকেয়া ইনপুট
+          </button>
           <button
             onClick={() => setShowAddDealerModal(true)}
             className="no-print flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 px-3.5 py-2 rounded-lg text-xs font-bold transition"
@@ -476,6 +518,19 @@ export default function DealerLedger() {
                 </div>
 
                 <div>
+                  <label className="block font-semibold text-slate-600 mb-1">সেশন *</label>
+                  <select
+                    required
+                    value={paymentForm.session}
+                    onChange={(e) => setPaymentForm({ ...paymentForm, session: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-300 rounded p-2 text-xs"
+                  >
+                    <option value="">সেশন নির্বাচন করুন</option>
+                    {INVOICE_SESSIONS.map((session) => <option key={session} value={session}>{session}</option>)}
+                  </select>
+                </div>
+
+                <div>
                   <label className="block font-semibold text-slate-600 mb-1">ডিলার নির্বাচন</label>
                   <select
                     value={paymentForm.dealerId}
@@ -613,6 +668,46 @@ export default function DealerLedger() {
               </div>
             </form>
           </div>
+        </div>
+      )}
+
+      {showPreviousDueModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <form onSubmit={handlePreviousDueSubmit} className="w-full max-w-lg space-y-4 rounded-xl bg-white p-6 shadow-xl">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+              <h3 className="text-base font-bold text-slate-800">ডিলারের পূর্বের বকেয়া ইনপুট</h3>
+              <button type="button" onClick={() => setShowPreviousDueModal(false)} className="text-slate-400">✕</button>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="text-xs font-semibold text-slate-600">ডিলার সিলেক্ট *
+                <select required value={previousDueForm.dealerId} onChange={(e) => setPreviousDueForm({ ...previousDueForm, dealerId: e.target.value })} className="mt-1 w-full rounded border border-slate-300 p-2">
+                  <option value="">ডিলার নির্বাচন করুন</option>
+                  {dealers.map((dealer) => <option key={dealer.id} value={dealer.id}>{dealer.shopName}</option>)}
+                </select>
+              </label>
+              <label className="text-xs font-semibold text-slate-600">অফিসার সিলেক্ট *
+                <select required value={previousDueForm.officerId} onChange={(e) => setPreviousDueForm({ ...previousDueForm, officerId: e.target.value })} className="mt-1 w-full rounded border border-slate-300 p-2">
+                  <option value="">অফিসার নির্বাচন করুন</option>
+                  {officers.map((officer) => <option key={officer.id} value={officer.id}>{officer.name}</option>)}
+                </select>
+              </label>
+              <label className="text-xs font-semibold text-slate-600">সেশন *
+                <select required value={previousDueForm.session} onChange={(e) => setPreviousDueForm({ ...previousDueForm, session: e.target.value })} className="mt-1 w-full rounded border border-slate-300 p-2">
+                  {INVOICE_SESSIONS.map((session) => <option key={session} value={session}>{session}</option>)}
+                </select>
+              </label>
+              <label className="text-xs font-semibold text-slate-600">তারিখ *
+                <input required type="date" value={previousDueForm.date} onChange={(e) => setPreviousDueForm({ ...previousDueForm, date: e.target.value })} className="mt-1 w-full rounded border border-slate-300 p-2" />
+              </label>
+              <label className="text-xs font-semibold text-slate-600 sm:col-span-2">Previous Due Amount *
+                <input required type="number" min="0" step="1" value={previousDueForm.amount} onChange={(e) => setPreviousDueForm({ ...previousDueForm, amount: e.target.value })} className="mt-1 w-full rounded border border-slate-300 p-2 font-bold text-rose-700" />
+              </label>
+            </div>
+            <div className="flex justify-end gap-2 border-t border-slate-200 pt-3">
+              <button type="button" onClick={() => setShowPreviousDueModal(false)} className="rounded border border-slate-300 px-4 py-2 text-xs font-bold">বাতিল</button>
+              <button type="submit" className="rounded bg-emerald-700 px-4 py-2 text-xs font-bold text-white">সংরক্ষণ করুন</button>
+            </div>
+          </form>
         </div>
       )}
 

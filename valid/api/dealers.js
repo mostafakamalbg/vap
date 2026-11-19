@@ -1,11 +1,12 @@
 import dbConnect from '../lib/mongodb.js';
+import { hasSuperAdminAccess } from '../lib/auth.js';
 import { Dealer } from '../lib/models.js';
 import { authorize } from '../lib/auth.js';
 import { getDealersWithOfficerCodes } from '../lib/dealerAssignments.js';
 import { normalizeDealerAssignment, normalizeOfficerCode, isDealerAssignedToOfficer } from '../shared/codes.js';
 
 export default async function handler(req, res) {
-  if (!['GET', 'POST'].includes(req.method)) {
+  if (!['GET', 'POST', 'PATCH'].includes(req.method)) {
     return res.status(405).json({ message: 'Method Not Allowed' });
   }
   if (!await dbConnect()) return res.status(503).json({ error: 'MongoDB is not configured.' });
@@ -34,6 +35,42 @@ export default async function handler(req, res) {
     } catch (error) {
       console.error('Dealer lookup failed:', error);
       return res.status(500).json({ error: 'ডিলার লোড করা যায়নি।' });
+    }
+  }
+
+  if (req.method === 'PATCH') {
+    const { dealerId, officerId, session, date, amount } = req.body || {};
+    if (!String(dealerId || '').trim()
+      || !String(officerId || '').trim()
+      || !String(session || '').trim()
+      || !/^\d{4}-\d{2}-\d{2}$/.test(String(date || ''))
+      || !Number.isFinite(Number(amount))
+      || Number(amount) < 0) {
+      return res.status(400).json({
+        error: 'ডিলার, অফিসার, সেশন, তারিখ ও পূর্বের বকেয়া সঠিকভাবে দিন।'
+      });
+    }
+    try {
+      const due = Math.round(Number(amount));
+      const dealer = await Dealer.findOneAndUpdate(
+        { id: String(dealerId) },
+        {
+          $set: {
+            previousDue: due,
+            openingDue: due,
+            lastSessionDue: due,
+            previousDueSession: String(session).trim(),
+            previousDueDate: String(date),
+            previousDueOfficerId: String(officerId)
+          }
+        },
+        { new: true, runValidators: true }
+      ).lean();
+      if (!dealer) return res.status(404).json({ error: 'ডিলার পাওয়া যায়নি।' });
+      return res.status(200).json(dealer);
+    } catch (error) {
+      console.error('Previous due save failed:', error);
+      return res.status(500).json({ error: 'পূর্বের বকেয়া সংরক্ষণ করা যায়নি।' });
     }
   }
 

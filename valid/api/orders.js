@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import mongoose from 'mongoose';
 import dbConnect from '../lib/mongodb.js';
 import { Invoice, Order, Product } from '../lib/models.js';
-import { authorize } from '../lib/auth.js';
+import { authorize, hasSuperAdminAccess } from '../lib/auth.js';
 import { getBangladeshBusinessDate, getInvoiceSessionForDate } from '../shared/sessions.js';
 import { isDealerAssignedToOfficer, normalizeOfficerCode } from '../shared/codes.js';
 import { getDealersWithOfficerCodes } from '../lib/dealerAssignments.js';
@@ -93,6 +93,10 @@ export default async function handler(req, res) {
     req.method === 'PATCH' ? ['admin'] : ['admin', 'officer']
   );
   if (!user) return;
+
+  if (req.method === 'PATCH' && !await hasSuperAdminAccess(user)) {
+    return res.status(403).json({ error: 'অর্ডার সম্পাদনা বা অনুমোদন শুধু সুপার অ্যাডমিনের।' });
+  }
 
   try {
     if (req.method === 'GET') {

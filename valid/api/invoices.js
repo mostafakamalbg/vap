@@ -1,6 +1,6 @@
 import dbConnect from '../lib/mongodb.js';
 import { BusinessRecord, Dealer, Invoice, Order, Payment, Product, User } from '../lib/models.js';
-import { authorize, verifyPassword } from '../lib/auth.js';
+import { authorize, hasSuperAdminAccess, verifyPassword } from '../lib/auth.js';
 import { normalizePaymentMethod } from '../shared/paymentMethods.js';
 import { getInvoiceStockChanges } from '../shared/invoiceStock.js';
 import { getItemCartons } from '../shared/invoiceCartons.js';
@@ -257,6 +257,11 @@ export default async function handler(req, res) {
       req.method === 'GET' ? ['admin', 'officer'] : ['admin']
     );
     if (!user) return;
+    if (req.method !== 'GET' && req.method !== 'POST') {
+      if (!await hasSuperAdminAccess(user)) {
+        return res.status(403).json({ error: 'সেলস সম্পাদনা বা মুছে ফেলার অনুমতি শুধু সুপার অ্যাডমিনের।' });
+      }
+    }
 
     if (req.method === 'GET') {
       const officerCodeMatch = String(user.officerCode || '').match(/\d+/);

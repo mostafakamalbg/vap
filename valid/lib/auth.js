@@ -92,7 +92,7 @@ export async function getSessionUser(req) {
   const session = readSession(req);
   if (!session?.sub) return null;
   const user = await User.findById(session.sub).lean();
-  if (!user || user.status !== 'active') return null;
+  if (!user || !['active', 'একটিভ', 'এডমিন', 'সুপার এডমিন'].includes(user.status)) return null;
   return user;
 }
 

@@ -12,8 +12,8 @@ if (!stdin.isTTY) {
 }
 
 if (!await dbConnect()) throw new Error('Could not connect to MongoDB.');
-if (await User.countDocuments({ role: 'admin' }) >= 2) {
-  throw new Error('The maximum of two administrator accounts has already been reached.');
+if (await User.countDocuments({ role: 'admin' }) >= 11) {
+  throw new Error('The maximum of eleven administrator accounts has already been reached.');
 }
 
 function ask(prompt) {
@@ -68,7 +68,7 @@ try {
     throw new Error('Enter a name, valid email, and a password of at least 10 characters.');
   }
 
-  for (const seat of [1, 2]) {
+  for (let seat = 1; seat <= 11; seat += 1) {
     try {
       reservedSeat = await AdminSeat.create({ _id: seat, email });
       break;
@@ -76,7 +76,7 @@ try {
       if (error?.code !== 11000) throw error;
     }
   }
-  if (!reservedSeat) throw new Error('The maximum of two administrator accounts has already been reached.');
+  if (!reservedSeat) throw new Error('The maximum of eleven administrator accounts has already been reached.');
 
   createdUser = await User.create({
     name,
@@ -85,7 +85,7 @@ try {
     role: 'admin',
     status: 'active'
   });
-  console.log(`Administrator ${email} created. ${2 - reservedSeat._id} administrator slot(s) remain.`);
+  console.log(`Administrator ${email} created. ${11 - reservedSeat._id} administrator slot(s) remain.`);
 } catch (error) {
   if (reservedSeat && !createdUser) await AdminSeat.deleteOne({ _id: reservedSeat._id });
   throw error;

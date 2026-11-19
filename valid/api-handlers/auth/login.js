@@ -18,7 +18,9 @@ export default async function handler(req, res) {
     if (user.status === 'pending') {
       return res.status(403).json({ error: 'অ্যাডমিন অনুমোদনের অপেক্ষায় আছে।' });
     }
-    if (user.status !== 'active') return res.status(403).json({ error: 'এই অ্যাকাউন্টটি অনুমোদিত নয়।' });
+    if (!['active', 'একটিভ', 'এডমিন', 'সুপার এডমিন'].includes(user.status)) {
+      return res.status(403).json({ error: 'এই অ্যাকাউন্টটি অনুমোদিত নয়।' });
+    }
     if (req.body?.expectedRole && req.body.expectedRole !== user.role) {
       return res.status(403).json({ error: 'নির্বাচিত লগইন ধরনের সঙ্গে এই অ্যাকাউন্টের ভূমিকা মিলছে না।' });
     }
