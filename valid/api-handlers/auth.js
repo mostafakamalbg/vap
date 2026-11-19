@@ -1,6 +1,6 @@
-import login from '../api-handlers/auth/login.js';
-import me from '../api-handlers/auth/me.js';
-import register from '../api-handlers/auth/register.js';
+import login from './auth/login.js';
+import me from './auth/me.js';
+import register from './auth/register.js';
 
 const handlers = { login, me, register };
 

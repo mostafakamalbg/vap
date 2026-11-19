@@ -1,6 +1,6 @@
-import dashboardReports from '../api-handlers/dashboard-reports.js';
-import reports from '../api-handlers/reports.js';
-import salesOfficers from '../api-handlers/sales-officers.js';
+import dashboardReports from './dashboard-reports.js';
+import reports from './reports.js';
+import salesOfficers from './sales-officers.js';
 
 const handlers = {
   'dashboard-reports': dashboardReports,
