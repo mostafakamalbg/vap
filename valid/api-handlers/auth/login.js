@@ -1,6 +1,7 @@
 import dbConnect, { MongoConnectionError } from '../../lib/mongodb.js';
 import { User } from '../../lib/models.js';
-import { hasSuperAdminAccess, publicUser, setSessionCookie, verifyPassword } from '../../lib/auth.js';
+import { normalizeUser, publicUser, setSessionCookie, verifyPassword } from '../../lib/auth.js';
+import { isActiveUserStatus, matchesExpectedRole } from '../../shared/roles.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method Not Allowed' });
@@ -18,16 +19,17 @@ export default async function handler(req, res) {
     if (user.status === 'pending') {
       return res.status(403).json({ error: 'অ্যাডমিন অনুমোদনের অপেক্ষায় আছে।' });
     }
-    if (!['active', 'একটিভ', 'এডমিন', 'সুপার এডমিন'].includes(user.status)) {
+    if (!isActiveUserStatus(user.status)) {
       return res.status(403).json({ error: 'এই অ্যাকাউন্টটি অনুমোদিত নয়।' });
     }
-    if (req.body?.expectedRole && req.body.expectedRole !== user.role) {
+    await normalizeUser(user);
+    if (!matchesExpectedRole(req.body?.expectedRole, user.role)) {
       return res.status(403).json({ error: 'নির্বাচিত লগইন ধরনের সঙ্গে এই অ্যাকাউন্টের ভূমিকা মিলছে না।' });
     }
 
     setSessionCookie(res, user._id);
     return res.status(200).json({
-      user: publicUser(user, user.role === 'admin' && await hasSuperAdminAccess(user))
+      user: publicUser(user)
     });
   } catch (error) {
     if (error instanceof MongoConnectionError) {

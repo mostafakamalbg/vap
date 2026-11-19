@@ -7,6 +7,7 @@ import { roundCurrency } from '../shared/invoiceTotals.js';
 import { transactionOptions, withTransactionFallback } from '../lib/transactions.js';
 import { parseSessionDateRange } from '../shared/reportDateFilters.js';
 import { normalizeSessionText } from '../shared/sessions.js';
+import { ADMIN_ROLES } from '../shared/roles.js';
 
 function isValidDate(value) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -37,7 +38,7 @@ function paymentValues(payment) {
 export default async function handler(req, res) {
   if (!['POST', 'PATCH', 'DELETE'].includes(req.method)) return res.status(405).json({ error: 'Method Not Allowed' });
   if (!await dbConnect()) return res.status(503).json({ error: 'MongoDB is not configured.' });
-  const user = await authorize(req, res, ['admin']);
+  const user = await authorize(req, res, ADMIN_ROLES);
   if (!user) return;
   if (req.method !== 'POST') {
     if (!await hasSuperAdminAccess(user)) {

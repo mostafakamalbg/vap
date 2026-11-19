@@ -17,6 +17,7 @@ import { toBnCurrency } from '../../utils/bengali';
 import InvoicePrintHeader from './InvoicePrintHeader';
 import SearchableRecordSelect from './SearchableRecordSelect';
 import { printInvoiceSheet } from '../../utils/printInvoice';
+import { isAdminRole, SUPER_ADMIN_ROLE } from '../../../shared/roles';
 
 const today = () => new Date().toISOString().slice(0, 10);
 const TRANSPORT_OPTIONS = ['কাভার্ড ভ্যান', 'অটো', 'ভ্যান'];
@@ -91,6 +92,8 @@ export default function InvoiceGenerator({
     dealers,
     getDealerSummary
   } = useAgro();
+  const canAdminister = isAdminRole(currentUser?.role);
+  const canEditInvoice = currentUser?.role === SUPER_ADMIN_ROLE || currentUser?.isSuperAdmin;
   const [form, setForm] = useState(() => ({
     id: editInvoiceData?.id || '',
     challanNo: editInvoiceData?.challanNo || '',
@@ -152,7 +155,7 @@ export default function InvoiceGenerator({
   const [invoiceType, setInvoiceType] = useState(editInvoiceData?.invoiceType || 'regular');
   const [pendingInvoiceIds, setPendingInvoiceIds] = useState([]);
   const [invoiceNumberLoading, setInvoiceNumberLoading] = useState(
-    !editInvoiceData && currentUser?.role === 'admin'
+    !editInvoiceData && canAdminister
   );
   const [invoiceNumberError, setInvoiceNumberError] = useState('');
   const [savedInvoice, setSavedInvoice] = useState(editInvoiceData || null);
@@ -161,7 +164,7 @@ export default function InvoiceGenerator({
   const [saving, setSaving] = useState(false);
   const [previewInvoice, setPreviewInvoice] = useState(null);
   useEffect(() => {
-    if (editInvoiceData || currentUser?.role !== 'admin') {
+    if (editInvoiceData || !canAdminister) {
       setInvoiceNumberLoading(false);
       return undefined;
     }
@@ -200,7 +203,7 @@ export default function InvoiceGenerator({
       });
 
     return () => { cancelled = true; };
-  }, [currentUser?.role, editInvoiceData]);
+  }, [canAdminister, editInvoiceData]);
 
   const selectedOfficer = officers.find((officer) => officer.id === form.officerId);
   const selectedDealer = dealers.find((dealer) => dealer.id === form.dealerId);
@@ -515,6 +518,14 @@ export default function InvoiceGenerator({
       setSaving(false);
     }
   };
+
+  if (editInvoiceData && !canEditInvoice) {
+    return (
+      <p role="alert" className="mx-auto mt-8 max-w-2xl rounded-lg bg-rose-50 p-4 text-sm font-semibold text-rose-700">
+        ইনভয়েস সম্পাদনার অনুমতি শুধু SuperAdmin-এর।
+      </p>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 px-4 py-6">

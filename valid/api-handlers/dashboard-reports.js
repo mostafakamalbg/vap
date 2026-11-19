@@ -5,6 +5,7 @@ import { normalizeOfficerCode } from '../shared/codes.js';
 import { getOfficerSalesTarget } from '../shared/officerSalesTargets.js';
 import { dateRangeCondition, parseReportMonth, parseSessionDateRange } from '../shared/reportDateFilters.js';
 import { getInvoiceSessionForDate } from '../shared/sessions.js';
+import { ADMIN_ROLES, OFFICER_ROLE, isAdminRole } from '../shared/roles.js';
 
 const DAMAGE_TYPES = ['factory_damage', 'depot_factory_return'];
 const RECEIPT_TYPES = new Set(['dealer_collection', 'company_transfer']);
@@ -196,7 +197,7 @@ function addPaymentRows(groups, rows, { periodRange, beforePeriod, user }) {
   rows.forEach((payment) => {
     const date = String(payment.date || '');
     if (beforePeriod ? date >= periodRange.start : date < periodRange.start || date >= periodRange.end) return;
-    if (user.role !== 'admin'
+    if (!isAdminRole(user.role)
       && payment.officerId !== String(user.officerId || '')
       && normalizeOfficerCode(payment.officerCode) !== normalizeOfficerCode(user.officerCode)
       && payment.officerName !== user.name) return;
@@ -238,7 +239,7 @@ export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method Not Allowed' });
   if (!await dbConnect()) return res.status(503).json({ error: 'MongoDB is not configured.' });
   res.setHeader('Cache-Control', 'no-store, max-age=0');
-  const user = await authorize(req, res, ['admin', 'officer']);
+  const user = await authorize(req, res, [...ADMIN_ROLES, OFFICER_ROLE]);
   if (!user) return;
 
   const period = String(req.query?.period || 'session');
@@ -247,7 +248,7 @@ export default async function handler(req, res) {
   if (!periodRange) return res.status(400).json({ error: 'রিপোর্টের সময়সীমা সঠিক নয়।' });
 
   try {
-    const ownerMatch = user.role === 'admin' ? {} : getOfficerAliases(user);
+    const ownerMatch = isAdminRole(user.role) ? {} : getOfficerAliases(user);
     const periodMatch = { date: dateRangeCondition('date', periodRange).date, ...ownerMatch };
     const priorMatch = {
       date: { $lt: periodRange.start },
@@ -289,7 +290,7 @@ export default async function handler(req, res) {
         roster.push(officer);
       }
     });
-    if (user.role !== 'admin') {
+    if (!isAdminRole(user.role)) {
       let ownOfficer = roster.find((officer) => officerMatches({
         officerId: user.officerId,
         officerCode: user.officerCode,
@@ -322,7 +323,7 @@ export default async function handler(req, res) {
     const allPriorPayments = [...priorPayments, ...priorPaymentGroups.values()];
 
     const filteredRoster = roster.filter((officer) => (
-      user.role === 'admin'
+      isAdminRole(user.role)
       || (normalizeOfficerCode(officer.code) === normalizeOfficerCode(user.officerCode)
         || String(officer.id || '') === String(user.officerId || '')
         || officer.name === user.name)
@@ -490,7 +491,7 @@ export default async function handler(req, res) {
     });
 
     const officerFilter = String(req.query?.officer || '');
-    const resultRows = user.role === 'admin' && officerFilter
+    const resultRows = isAdminRole(user.role) && officerFilter
       ? rows.filter((row) => row.officerId === officerFilter || row.officerCode === officerFilter)
       : rows;
     return res.status(200).json({ period, value, officers: resultRows });

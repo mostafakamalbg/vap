@@ -8,6 +8,7 @@ import { isDealerAssignedToOfficer, normalizeOfficerCode } from '../shared/codes
 import { getDealersWithOfficerCodes } from '../lib/dealerAssignments.js';
 import { getPackageQuantityUnit } from '../shared/quantityUnits.js';
 import { STOCK_RECONCILIATION_START_DATE } from '../shared/stockReconciliation.js';
+import { ADMIN_ROLES, OFFICER_ROLE, isAdminRole } from '../shared/roles.js';
 
 const invoiceIdPattern = /^VAP-(\d{4})-(\d+)$/;
 
@@ -90,7 +91,7 @@ export default async function handler(req, res) {
   const user = await authorize(
     req,
     res,
-    req.method === 'PATCH' ? ['admin'] : ['admin', 'officer']
+    req.method === 'PATCH' ? ADMIN_ROLES : [...ADMIN_ROLES, OFFICER_ROLE]
   );
   if (!user) return;
 
@@ -100,7 +101,7 @@ export default async function handler(req, res) {
 
   try {
     if (req.method === 'GET') {
-      const filter = user.role === 'admin' ? {} : { officerId: user.officerId };
+      const filter = isAdminRole(user.role) ? {} : { officerId: user.officerId };
       return res.status(200).json(await Order.find(filter).sort({ createdAt: -1 }).lean());
     }
 

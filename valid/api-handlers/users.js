@@ -3,13 +3,14 @@ import mongoose from 'mongoose';
 import { BusinessRecord, User } from '../lib/models.js';
 import { authorize, hashPassword } from '../lib/auth.js';
 import { normalizeOfficerCode } from '../shared/codes.js';
+import { ADMIN_ROLES } from '../shared/roles.js';
 
 export default async function handler(req, res) {
   if (!['GET', 'PATCH'].includes(req.method)) {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
   if (!await dbConnect()) return res.status(503).json({ error: 'MongoDB is not configured.' });
-  if (!await authorize(req, res, ['admin'])) return;
+  if (!await authorize(req, res, ADMIN_ROLES)) return;
 
   try {
     if (req.method === 'GET') {

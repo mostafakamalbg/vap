@@ -7,6 +7,7 @@ import { calculateOfficerFinancials, filterOfficerRecordsByPeriod } from '../sha
 import { getOfficerSalesTarget } from '../shared/officerSalesTargets.js';
 import { parseReportMonth, parseSessionDateRange } from '../shared/reportDateFilters.js';
 import { normalizeSessionText } from '../shared/sessions.js';
+import { ADMIN_ROLES, OFFICER_ROLE, isAdminRole } from '../shared/roles.js';
 
 const numericFields = [
   'salesTargetJulyDec2026',
@@ -41,7 +42,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
   if (!await dbConnect()) return res.status(503).json({ error: 'MongoDB is not configured.' });
-  const user = await authorize(req, res, ['admin', 'officer']);
+  const user = await authorize(req, res, [...ADMIN_ROLES, OFFICER_ROLE]);
   if (!user) return;
 
   try {
@@ -65,12 +66,12 @@ export default async function handler(req, res) {
       }
 
       const code = normalizeOfficerCode(user.officerCode);
-      const conditions = user.role === 'admin' ? [] : [
+      const conditions = isAdminRole(user.role) ? [] : [
         ...(user.officerId ? [{ officerId: String(user.officerId) }] : []),
         ...(code ? [{ officerCode: code }, { officerCode: String(user.officerCode) }] : [])
       ];
       const [storedRecords, invoices, typedPayments, legacyRecords] = await Promise.all([
-        SalesOfficer.find(conditions.length ? { $or: conditions } : user.role === 'admin' ? {} : { _id: null })
+        SalesOfficer.find(conditions.length ? { $or: conditions } : isAdminRole(user.role) ? {} : { _id: null })
           .sort({ slNo: 1 }).lean(),
         Invoice.find({}).lean(),
         Payment.find({}).lean(),
@@ -106,7 +107,7 @@ export default async function handler(req, res) {
       }));
     }
 
-    if (user.role !== 'admin') {
+    if (!isAdminRole(user.role)) {
       return res.status(403).json({ error: 'টার্গেট পরিবর্তনের অনুমতি নেই।' });
     }
     const body = req.body || {};

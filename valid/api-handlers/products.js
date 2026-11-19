@@ -1,6 +1,7 @@
 import dbConnect from '../lib/mongodb.js';
 import { Product } from '../lib/models.js';
 import { authorize } from '../lib/auth.js';
+import { ADMIN_ROLES, OFFICER_ROLE } from '../shared/roles.js';
 
 export default async function handler(req, res) {
   if (!['GET', 'POST'].includes(req.method)) {
@@ -8,8 +9,8 @@ export default async function handler(req, res) {
   }
   if (!await dbConnect()) return res.status(503).json({ error: 'MongoDB is not configured.' });
   if (req.method === 'POST') {
-    if (!await authorize(req, res, ['admin'])) return;
-  } else if (!await authorize(req, res, ['admin', 'officer'])) {
+    if (!await authorize(req, res, ADMIN_ROLES)) return;
+  } else if (!await authorize(req, res, [...ADMIN_ROLES, OFFICER_ROLE])) {
     return;
   }
   if (req.method === 'GET') {

@@ -2,11 +2,12 @@ import dbConnect from '../lib/mongodb.js';
 import { authorize } from '../lib/auth.js';
 import { BusinessRecord, SalesOfficer, User } from '../lib/models.js';
 import { normalizeOfficerCode } from '../shared/codes.js';
+import { ADMIN_ROLES, OFFICER_ROLE, isAdminRole } from '../shared/roles.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method Not Allowed' });
   if (!await dbConnect()) return res.status(503).json({ error: 'MongoDB is not configured.' });
-  const user = await authorize(req, res, ['admin', 'officer']);
+  const user = await authorize(req, res, [...ADMIN_ROLES, OFFICER_ROLE]);
   if (!user) return;
 
   try {
@@ -62,7 +63,7 @@ export default async function handler(req, res) {
     }));
 
     const officers = [...merged.values()].filter((officer) => officer.name);
-    if (user.role !== 'admin') {
+    if (!isAdminRole(user.role)) {
       const code = normalizeOfficerCode(user.officerCode);
       const own = officers.filter((officer) => (
         (user.officerId && String(officer.id) === String(user.officerId))

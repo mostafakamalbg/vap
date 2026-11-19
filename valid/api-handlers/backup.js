@@ -1,5 +1,6 @@
 import dbConnect from '../lib/mongodb.js';
 import { authorize, verifyPassword } from '../lib/auth.js';
+import { ADMIN_ROLES } from '../shared/roles.js';
 import { User } from '../lib/models.js';
 import { BusinessRecord, Dealer, Invoice, Order, Payment, Product } from '../lib/models.js';
 import { normalizeDealerAssignment } from '../shared/codes.js';
@@ -149,7 +150,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
   if (!await dbConnect()) return res.status(503).json({ error: 'MongoDB is not configured.' });
-  const user = await authorize(req, res, ['admin']);
+  const user = await authorize(req, res, ADMIN_ROLES);
   if (!user) return;
   const password = String(req.body?.password || '');
   const credential = await User.findById(user._id).select('+passwordHash').lean();

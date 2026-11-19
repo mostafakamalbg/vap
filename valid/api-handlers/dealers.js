@@ -6,21 +6,25 @@ import { getDealersWithOfficerCodes } from '../lib/dealerAssignments.js';
 import { normalizeDealerAssignment, normalizeOfficerCode, isDealerAssignedToOfficer } from '../shared/codes.js';
 import { normalizeSessionText } from '../shared/sessions.js';
 import { parseSessionDateRange } from '../shared/reportDateFilters.js';
+import { ADMIN_ROLES, OFFICER_ROLE, isAdminRole } from '../shared/roles.js';
 
 export default async function handler(req, res) {
   if (!['GET', 'POST', 'PATCH'].includes(req.method)) {
     return res.status(405).json({ message: 'Method Not Allowed' });
   }
   if (!await dbConnect()) return res.status(503).json({ error: 'MongoDB is not configured.' });
-  const user = await authorize(req, res, ['admin', 'officer']);
+  const user = await authorize(req, res, [...ADMIN_ROLES, OFFICER_ROLE]);
   if (!user) return;
-  if (req.method === 'POST' && user.role !== 'admin') {
+  if (req.method === 'POST' && !isAdminRole(user.role)) {
     return res.status(403).json({ error: 'এই কাজের অনুমতি নেই।' });
+  }
+  if (req.method === 'PATCH' && !await hasSuperAdminAccess(user)) {
+    return res.status(403).json({ error: 'পূর্বের বকেয়া পরিবর্তনের অনুমতি শুধু সুপার অ্যাডমিনের।' });
   }
   if (req.method === 'GET') {
     try {
       const { officers, dealers } = await getDealersWithOfficerCodes();
-      if (user.role === 'admin') return res.status(200).json(dealers);
+      if (isAdminRole(user.role)) return res.status(200).json(dealers);
       const normalizedUserCode = normalizeOfficerCode(user.officerCode);
       const officer = (user.officerId && officers.find((entry) => (
         String(entry.id || entry.officerId || '') === String(user.officerId || '')

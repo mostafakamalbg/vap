@@ -10,6 +10,7 @@ import { STOCK_RECONCILIATION_START_DATE } from '../shared/stockReconciliation.j
 import { transactionOptions, withTransactionFallback } from '../lib/transactions.js';
 import { normalizeSessionText } from '../shared/sessions.js';
 import { parseSessionDateRange } from '../shared/reportDateFilters.js';
+import { ADMIN_ROLES, OFFICER_ROLE, isAdminRole } from '../shared/roles.js';
 
 const isValidDate = (value) => {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -260,7 +261,7 @@ export default async function handler(req, res) {
     const user = await authorize(
       req,
       res,
-      req.method === 'GET' ? ['admin', 'officer'] : ['admin']
+      req.method === 'GET' ? [...ADMIN_ROLES, OFFICER_ROLE] : ADMIN_ROLES
     );
     if (!user) return;
     if (req.method !== 'GET' && req.method !== 'POST') {
@@ -282,7 +283,7 @@ export default async function handler(req, res) {
         ] : [])
       ];
       const filters = [];
-      if (user.role !== 'admin') {
+      if (!isAdminRole(user.role)) {
         filters.push(ownerConditions.length ? { $or: ownerConditions } : { id: '__no_records__' });
       }
       if (req.query?.session != null) {

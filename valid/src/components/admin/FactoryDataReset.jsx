@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { AlertTriangle, RotateCw, ShieldCheck } from 'lucide-react';
 import { useAgro } from '../../context/AgroContext';
+import { isAdminRole } from '../../../shared/roles';
 
 export default function FactoryDataReset() {
   const { currentUser, cloudReady, resetToFactoryData } = useAgro();
@@ -22,7 +23,7 @@ export default function FactoryDataReset() {
     }
   };
 
-  if (currentUser?.role !== 'admin') return null;
+  if (!isAdminRole(currentUser?.role)) return null;
 
   return (
     <div className="mx-auto max-w-3xl space-y-5 px-4 py-8">

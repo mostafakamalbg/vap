@@ -12,6 +12,7 @@ import { normalizePaymentMethod, normalizePaymentType, PAYMENT_TYPES } from '../
 import { roundCurrency } from '../shared/invoiceTotals.js';
 import { getInvoiceSessionForDate } from '../shared/sessions.js';
 import { transactionOptions, withTransactionFallback } from '../lib/transactions.js';
+import { ADMIN_ROLES, OFFICER_ROLE, isAdminRole } from '../shared/roles.js';
 
 const recordTypes = new Set([
   'products',
@@ -35,7 +36,11 @@ export default async function handler(req, res) {
   }
 
   if (!await dbConnect()) return res.status(503).json({ error: 'MongoDB is not configured.' });
-  const user = await authorize(req, res, req.method === 'PUT' ? ['admin'] : ['admin', 'officer']);
+  const user = await authorize(
+    req,
+    res,
+    req.method === 'PUT' ? ADMIN_ROLES : [...ADMIN_ROLES, OFFICER_ROLE]
+  );
   if (!user) return;
 
   const type = String(req.query?.type || '');
@@ -49,7 +54,7 @@ export default async function handler(req, res) {
     if (req.method === 'GET') {
       if (type === 'dealers') {
         const { officers, dealers } = await getDealersWithOfficerCodes();
-        if (user.role === 'admin') return res.status(200).json(dealers);
+        if (isAdminRole(user.role)) return res.status(200).json(dealers);
         const normalizedUserCode = normalizeOfficerCode(user.officerCode);
         const officer = (user.officerId && officers.find((entry) => (
           String(entry.id || entry.officerId || '') === String(user.officerId || '')
@@ -64,7 +69,7 @@ export default async function handler(req, res) {
       }
       if (type === 'payments') {
         const conditions = [];
-        if (user.role !== 'admin') {
+        if (!isAdminRole(user.role)) {
           const ownerConditions = [
             ...(user.officerId ? [{ officerId: user.officerId }] : []),
             ...(user.officerCode ? [{ officerCode: user.officerCode }] : [])
@@ -98,7 +103,7 @@ export default async function handler(req, res) {
         const legacy = legacyRecords.map((record) => record.data).filter((payment) => {
           if (!payment || (payment.id && ids.has(String(payment.id)))) return false;
           if (payment.sourceInvoiceId && sources.has(String(payment.sourceInvoiceId))) return false;
-          if (user.role !== 'admin'
+          if (!isAdminRole(user.role)
             && payment.officerId !== user.officerId
             && payment.officerCode !== user.officerCode) return false;
           if (req.query?.date != null && payment.date !== String(req.query.date)) return false;
@@ -112,7 +117,7 @@ export default async function handler(req, res) {
       }
       if (Model) {
         let filter = {};
-        if (user.role !== 'admin' && type === 'invoices') {
+        if (!isAdminRole(user.role) && type === 'invoices') {
           const officerCodeMatch = String(user.officerCode || '').match(/\d+/);
           const officerCodeDigits = officerCodeMatch ? String(Number(officerCodeMatch[0])) : '';
           const conditions = [
@@ -134,7 +139,7 @@ export default async function handler(req, res) {
         return res.status(200).json(await query.lean());
       }
       let filter = { type };
-      if (user.role !== 'admin') {
+      if (!isAdminRole(user.role)) {
         if (type === 'salesAgreements') {
           return res.status(403).json({ error: 'এই রেকর্ড দেখার অনুমতি নেই।' });
         }

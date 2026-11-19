@@ -29,6 +29,7 @@ import { getStockInQuantities } from '../../shared/quantityUnits';
 import { STOCK_RECONCILIATION_START_DATE } from '../../shared/stockReconciliation';
 import { normalizeHotlineNumber } from '../../shared/companyContact';
 import { normalizeProductDisplayNames } from '../../shared/productNames';
+import { isAdminRole, SUPER_ADMIN_ROLE } from '../../shared/roles';
 
 const AgroContext = createContext();
 
@@ -360,7 +361,7 @@ export function AgroProvider({ children }) {
     async function loadSharedRecords() {
       try {
         const recordTypes = Object.entries(setters)
-          .filter(([type]) => type !== 'salesAgreements' || currentUser.role === 'admin');
+          .filter(([type]) => type !== 'salesAgreements' || isAdminRole(currentUser.role));
         const sharedRecords = await Promise.all(recordTypes.map(async ([type]) => {
           const response = await fetch(type === 'officers'
             ? '/api/officers'
@@ -421,7 +422,7 @@ export function AgroProvider({ children }) {
   }, [currentUser]);
 
   useEffect(() => {
-    if (currentUser?.role !== 'admin' || !cloudReady) return;
+    if (!isAdminRole(currentUser?.role) || !cloudReady) return;
     const syncRecords = (type, records) => {
       const previousSync = syncQueueRef.current[type] || Promise.resolve();
       const sync = previousSync.catch(() => {}).then(async () => {
@@ -603,6 +604,9 @@ export function AgroProvider({ children }) {
 
   // Update existing invoice (Edit capability)
   const updateInvoice = async (updatedInvoice) => {
+    if (currentUser?.role !== SUPER_ADMIN_ROLE && !currentUser?.isSuperAdmin) {
+      throw new Error('ইনভয়েস সম্পাদনার অনুমতি শুধু সুপার অ্যাডমিনের।');
+    }
     const calculatedTotalCartons = (updatedInvoice.items || []).reduce(
       (sum, it) => sum + getItemCartons(it),
       0
@@ -657,6 +661,9 @@ export function AgroProvider({ children }) {
 
   // Delete invoice
   const deleteInvoice = async (invoiceId, password) => {
+    if (currentUser?.role !== SUPER_ADMIN_ROLE && !currentUser?.isSuperAdmin) {
+      throw new Error('ইনভয়েস মুছে ফেলার অনুমতি শুধু সুপার অ্যাডমিনের।');
+    }
     const response = await fetch('/api/invoices', {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
@@ -921,7 +928,7 @@ export function AgroProvider({ children }) {
 
   // Reset to factory data
   const resetToFactoryData = async () => {
-    if (currentUser?.role !== 'admin') {
+    if (!isAdminRole(currentUser?.role)) {
       throw new Error('এই রিসেট ব্যবহারের অনুমতি নেই।');
     }
     const confirmed = window.confirm(
@@ -962,7 +969,7 @@ export function AgroProvider({ children }) {
   };
 
   const recalculateStock = async (password, confirmationText) => {
-    if (currentUser?.role !== 'admin') {
+    if (!isAdminRole(currentUser?.role)) {
       throw new Error('স্টক পুনর্গণনা ব্যবহারের অনুমতি নেই।');
     }
     if (typeof password !== 'string' || !password) {
@@ -1103,7 +1110,7 @@ export function AgroProvider({ children }) {
       'payments',
       'salesAgreements'
     ];
-    if (currentUser?.role !== 'admin') {
+    if (!isAdminRole(currentUser?.role)) {
       throw new Error('ব্যাকআপ ইমপোর্ট করার অনুমতি নেই।');
     }
     if (!cloudReady) {

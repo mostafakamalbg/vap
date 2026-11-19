@@ -15,6 +15,7 @@ import { getInvoicePackageCount } from '../../../shared/invoiceCartons';
 import { getInvoiceSalesAmount } from '../../../shared/invoiceTotals';
 import { printInvoiceSheet } from '../../utils/printInvoice';
 import InvoicePrintHeader from './InvoicePrintHeader';
+import { SUPER_ADMIN_ROLE } from '../../../shared/roles';
 
 function getInvoiceSequence(invoice) {
   const match = String(invoice.invoiceNo || invoice.id || '').match(/^VAP-(\d{4})-(\d+)$/);
@@ -62,7 +63,8 @@ function toDamageInvoice(log) {
 }
 
 export default function InvoiceList({ onNewInvoiceClick, onEditInvoice, initialInvoiceId = '' }) {
-  const { invoices, damageLogs, deleteInvoice } = useAgro();
+  const { invoices, damageLogs, deleteInvoice, currentUser } = useAgro();
+  const canManageSales = currentUser?.role === SUPER_ADMIN_ROLE || currentUser?.isSuperAdmin;
   const [search, setSearch] = useState('');
   const [sessionFilter, setSessionFilter] = useState('ALL');
   const [monthFilter, setMonthFilter] = useState('ALL');
@@ -305,8 +307,8 @@ export default function InvoiceList({ onNewInvoiceClick, onEditInvoice, initialI
                 <td className="no-print p-2">
                   <div className="flex gap-1">
                     <button type="button" title="প্রিন্ট" onClick={() => setPrintInvoice(invoice)} className="rounded p-2 text-slate-600 hover:bg-slate-100"><Printer className="h-4 w-4" /></button>
-                    {!isDamage && onEditInvoice && <button type="button" title={isWithinEditWindow(invoice) ? 'সম্পাদনা' : 'ইনভয়েস তৈরির ১৫ দিনের পর সম্পাদনা করা যাবে না'} disabled={!isWithinEditWindow(invoice)} onClick={() => onEditInvoice(invoice)} className="rounded p-2 text-blue-700 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-40"><Pencil className="h-4 w-4" /></button>}
-                    {!isDamage && <button type="button" title={isWithinDeleteWindow(invoice) ? 'পাসওয়ার্ড দিয়ে মুছুন' : 'ইনভয়েস তৈরির এক মাস পর মুছতে পারবেন না'} disabled={!isWithinDeleteWindow(invoice) || deletingId === invoice.id} onClick={() => handleDelete(invoice)} className="rounded p-2 text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-40"><Trash2 className="h-4 w-4" /></button>}
+                    {canManageSales && !isDamage && onEditInvoice && <button type="button" title={isWithinEditWindow(invoice) ? 'সম্পাদনা' : 'ইনভয়েস তৈরির ১৫ দিনের পর সম্পাদনা করা যাবে না'} disabled={!isWithinEditWindow(invoice)} onClick={() => onEditInvoice(invoice)} className="rounded p-2 text-blue-700 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-40"><Pencil className="h-4 w-4" /></button>}
+                    {canManageSales && !isDamage && <button type="button" title={isWithinDeleteWindow(invoice) ? 'পাসওয়ার্ড দিয়ে মুছুন' : 'ইনভয়েস তৈরির এক মাস পর মুছতে পারবেন না'} disabled={!isWithinDeleteWindow(invoice) || deletingId === invoice.id} onClick={() => handleDelete(invoice)} className="rounded p-2 text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-40"><Trash2 className="h-4 w-4" /></button>}
                   </div>
                 </td>
               </tr>

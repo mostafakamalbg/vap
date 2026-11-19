@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import { LEGACY_INVOICE_SESSION } from '../shared/sessions.js';
+import { USER_ROLE_VALUES, USER_STATUS_VALUES } from '../shared/roles.js';
 
 const { Schema } = mongoose;
 
@@ -9,10 +10,10 @@ const userSchema = new Schema({
   name: { type: String, required: true, trim: true },
   email: { type: String, required: true, unique: true, lowercase: true, trim: true },
   passwordHash: { type: String, required: true, select: false },
-  role: { type: String, enum: ['admin', 'officer'], required: true },
+  role: { type: String, enum: USER_ROLE_VALUES, required: true },
   status: {
     type: String,
-    enum: ['pending', 'active', 'rejected', 'সুপার এডমিন', 'একটিভ', 'এডমিন'],
+    enum: USER_STATUS_VALUES,
     default: 'pending'
   },
   officerId: { type: String, default: '' },

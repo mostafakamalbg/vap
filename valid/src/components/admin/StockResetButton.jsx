@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { AlertTriangle, CheckCircle } from 'lucide-react';
 import { useAgro } from '../../context/AgroContext';
+import { isAdminRole } from '../../../shared/roles';
 import { STOCK_RECONCILIATION_START_DATE } from '../../../shared/stockReconciliation';
 
 export default function StockResetButton({ className = '', disabled = false }) {
@@ -34,7 +35,7 @@ export default function StockResetButton({ className = '', disabled = false }) {
     }
   };
 
-  if (currentUser?.role !== 'admin') return null;
+  if (!isAdminRole(currentUser?.role)) return null;
 
   return (
     <>

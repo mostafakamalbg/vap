@@ -2,6 +2,7 @@ import dbConnect from '../lib/mongodb.js';
 import { authorize } from '../lib/auth.js';
 import { BusinessRecord, Product } from '../lib/models.js';
 import { transactionOptions, withTransactionFallback } from '../lib/transactions.js';
+import { ADMIN_ROLES } from '../shared/roles.js';
 import { STOCK_RECONCILIATION_START_DATE } from '../shared/stockReconciliation.js';
 
 const ACTION_TYPES = new Set(['damage_stock', 'replaced_stock', 'write_off']);
@@ -37,7 +38,7 @@ export default async function handler(req, res) {
     console.error('Damage return database connection failed:', error);
     return res.status(503).json({ error: 'ডাটাবেজে সংযোগ করা যায়নি; পরে আবার চেষ্টা করুন।' });
   }
-  const user = await authorize(req, res, ['admin']);
+  const user = await authorize(req, res, ADMIN_ROLES);
   if (!user) return;
 
   const input = req.body || {};

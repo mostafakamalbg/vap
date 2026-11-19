@@ -10,6 +10,7 @@ import {
 } from '../../../shared/sessions';
 import { normalizeOfficerCode } from '../../../shared/codes';
 import { roundAmount } from '../../../shared/salesReports';
+import { SUPER_ADMIN_ROLE } from '../../../shared/roles';
 
 const amount = (value) => Math.round(Number(value) || 0).toLocaleString('en-US');
 const emptyParty = () => ({
@@ -74,7 +75,8 @@ function ReportField({ label, value, onChange, type = 'text', required = false, 
 }
 
 export default function MonthlySalesReports() {
-  const { officers } = useAgro();
+  const { officers, currentUser } = useAgro();
+  const canEditExistingTargets = currentUser?.role === SUPER_ADMIN_ROLE || currentUser?.isSuperAdmin;
   const [reports, setReports] = useState([]);
   const [allReports, setAllReports] = useState([]);
   const [targetRecords, setTargetRecords] = useState([]);
@@ -327,6 +329,7 @@ export default function MonthlySalesReports() {
                           value={existing.salesTargets?.[session] ?? getOfficerSalesTarget({ ...officer, ...existing }, session)}
                           onChange={(event) => setTarget(key, session, event.target.value, officer)}
                           onBlur={(event) => setTarget(key, session, String(roundAmount(event.target.value)), officer)}
+                          disabled={!canEditExistingTargets && existing.salesTargets?.[session] != null}
                           className="w-36 rounded-lg border border-slate-300 px-3 py-2"
                           aria-label={`${officer.name} ${session} target`}
                         />

@@ -21,6 +21,7 @@ import SalesAgreement from './components/admin/SalesAgreement';
 import MonthlySalesReports from './components/admin/MonthlySalesReports';
 import AdminDataManagement from './components/admin/AdminDataManagement';
 import FactoryDataReset from './components/admin/FactoryDataReset';
+import { isAdminRole } from '../shared/roles';
 
 function AppContent() {
   const {
@@ -42,7 +43,7 @@ function AppContent() {
       return;
     }
 
-    if (currentUser?.role === 'admin') {
+    if (isAdminRole(currentUser?.role)) {
       setActiveTab(tab);
     } else if (currentUser?.role === 'officer') {
       setActiveTab(tab === 'officer-dashboard' ? tab : 'officer-dashboard');
@@ -64,7 +65,7 @@ function AppContent() {
   };
 
   const handleLoginSuccess = (user) => {
-    setActiveTab(user.role === 'admin' ? 'admin-access' : 'officer-dashboard');
+    setActiveTab(isAdminRole(user.role) ? 'admin-access' : 'officer-dashboard');
   };
 
   const renderActivePage = () => {

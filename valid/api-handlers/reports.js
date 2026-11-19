@@ -5,6 +5,7 @@ import { authorize } from '../lib/auth.js';
 import { normalizeMonthlySalesReport, validateMonthlySalesReport } from '../shared/salesReports.js';
 import { normalizeOfficerCode } from '../shared/codes.js';
 import { invoiceSessionCondition } from '../shared/reportDateFilters.js';
+import { ADMIN_ROLES, OFFICER_ROLE, isAdminRole } from '../shared/roles.js';
 
 function getMonthFilter(value) {
   const month = String(value || '').trim();
@@ -28,7 +29,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
   if (!await dbConnect()) return res.status(503).json({ error: 'MongoDB is not configured.' });
-  const user = await authorize(req, res, ['admin', 'officer']);
+  const user = await authorize(req, res, [...ADMIN_ROLES, OFFICER_ROLE]);
   if (!user) return;
 
   try {
@@ -39,7 +40,7 @@ export default async function handler(req, res) {
       }
       if (req.query?.month) filters.push(getMonthFilter(req.query.month));
       if (req.query?.date) filters.push(getMonthFilter(req.query.date));
-      if (user.role !== 'admin') {
+      if (!isAdminRole(user.role)) {
         const code = normalizeOfficerCode(user.officerCode);
         const ownerConditions = [
           ...(user.officerId ? [{ officerId: String(user.officerId) }] : []),
@@ -61,7 +62,7 @@ export default async function handler(req, res) {
       })));
     }
 
-    if (user.role !== 'admin') {
+    if (!isAdminRole(user.role)) {
       return res.status(403).json({ error: 'এই রিপোর্ট পরিবর্তনের অনুমতি নেই।' });
     }
 

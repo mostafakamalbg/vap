@@ -2,7 +2,6 @@ import dbConnect, { MongoConnectionError } from '../../lib/mongodb.js';
 import {
   clearSessionCookie,
   getSessionUser,
-  hasSuperAdminAccess,
   publicUser
 } from '../../lib/auth.js';
 
@@ -17,7 +16,7 @@ export default async function handler(req, res) {
     const user = await getSessionUser(req);
     if (!user) return res.status(401).json({ error: 'লগইন করা নেই।' });
     return res.status(200).json({
-      user: publicUser(user, user.role === 'admin' && await hasSuperAdminAccess(user))
+      user: publicUser(user)
     });
   } catch (error) {
     if (error instanceof MongoConnectionError) {

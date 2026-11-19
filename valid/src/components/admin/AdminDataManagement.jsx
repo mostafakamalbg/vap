@@ -1,6 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { AlertTriangle, Database, Download, FileUp, ShieldCheck } from 'lucide-react';
 import { useAgro } from '../../context/AgroContext';
+import { isAdminRole } from '../../../shared/roles';
 import StockResetButton from './StockResetButton';
 
 export default function AdminDataManagement() {
@@ -94,7 +95,7 @@ export default function AdminDataManagement() {
           />
           <button
             type="button"
-            disabled={busy || !cloudReady || currentUser?.role !== 'admin'}
+            disabled={busy || !cloudReady || !isAdminRole(currentUser?.role)}
             onClick={() => fileInputRef.current?.click()}
             className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm font-bold text-amber-900 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
           >

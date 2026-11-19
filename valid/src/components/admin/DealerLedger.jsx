@@ -31,6 +31,7 @@ import {
 import { getDealerLedgerTransactions } from '../../../shared/dealerLedger';
 import CompanyLetterhead from './CompanyLetterhead';
 import { getBangladeshBusinessDate, getInvoiceSessionForDate, INVOICE_SESSIONS } from '../../../shared/sessions';
+import { SUPER_ADMIN_ROLE } from '../../../shared/roles';
 
 const createPaymentEntries = () => LEDGER_PAYMENT_TYPES.map(({ value }) => ({
   paymentType: value,
@@ -93,8 +94,10 @@ export default function DealerLedger() {
     getDealerSummary,
     invoices,
     payments,
-    refreshSharedRecords
+    refreshSharedRecords,
+    currentUser
   } = useAgro();
+  const canSetPreviousDue = currentUser?.role === SUPER_ADMIN_ROLE || currentUser?.isSuperAdmin;
 
   const [searchTerm, setSearchTerm] = useState('');
   const [showAddDealerModal, setShowAddDealerModal] = useState(false);
@@ -323,13 +326,15 @@ export default function DealerLedger() {
         </div>
 
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setShowPreviousDueModal(true)}
-            className="no-print rounded-lg border border-amber-300 bg-amber-50 px-3.5 py-2 text-xs font-bold text-amber-900"
-          >
-            পূর্বের বকেয়া ইনপুট
-          </button>
+          {canSetPreviousDue && (
+            <button
+              type="button"
+              onClick={() => setShowPreviousDueModal(true)}
+              className="no-print rounded-lg border border-amber-300 bg-amber-50 px-3.5 py-2 text-xs font-bold text-amber-900"
+            >
+              পূর্বের বকেয়া ইনপুট
+            </button>
+          )}
           <button
             onClick={() => setShowAddDealerModal(true)}
             className="no-print flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 px-3.5 py-2 rounded-lg text-xs font-bold transition"
@@ -709,7 +714,7 @@ export default function DealerLedger() {
         </div>
       )}
 
-      {showPreviousDueModal && (
+      {canSetPreviousDue && showPreviousDueModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <form onSubmit={handlePreviousDueSubmit} className="w-full max-w-lg space-y-4 rounded-xl bg-white p-6 shadow-xl">
             <div className="flex items-center justify-between border-b border-slate-200 pb-3">
