@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { getOfficerSalesTarget, mergeOfficerSalesTargets } from './officerSalesTargets.js';
+import {
+  getOfficerSalesTarget,
+  hasOfficerSessionSalesTarget,
+  mergeOfficerSalesTargets
+} from './officerSalesTargets.js';
 
 const sessions = [
   {
@@ -56,6 +60,14 @@ test('dynamic session targets override legacy session defaults', () => {
     salesTargets: { 'জানুয়ারি - জুন 2027': 6100000 }
   };
   assert.equal(getOfficerSalesTarget(officer, 'January-June 2027'), 6100000);
+});
+
+test('officer target lock detects saved zero values and preconfigured session targets', () => {
+  assert.equal(hasOfficerSessionSalesTarget({
+    salesTargets: { 'জুলাই - ডিসেম্বর 2026': 0 }
+  }, 'জুলাই - ডিসেম্বর 2026'), true);
+  assert.equal(hasOfficerSessionSalesTarget({ code: 'SO-05' }, 'জুলাই - ডিসেম্বর 2026'), true);
+  assert.equal(hasOfficerSessionSalesTarget({ code: 'SO-99' }, 'জুলাই - ডিসেম্বর 2026'), false);
 });
 
 test('updating other officer fields does not discard saved session targets', () => {

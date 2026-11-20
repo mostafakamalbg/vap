@@ -766,6 +766,29 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
   }
 }
 
+.report-invoice-header {
+  display: none;
+}
+
+@media print {
+  .report-print .report-invoice-header {
+    display: block !important;
+    margin-bottom: 4mm;
+    color: #000 !important;
+  }
+
+  .report-print .monthly-stock-table tbody tr {
+    height: 16px !important;
+  }
+
+  .report-print .monthly-stock-table tbody td,
+  .report-print .monthly-stock-table thead th {
+    padding-top: 0.6mm !important;
+    padding-bottom: 0.6mm !important;
+    line-height: 1 !important;
+  }
+}
+
 .company-letterhead {
   display: flex;
   width: 100%;

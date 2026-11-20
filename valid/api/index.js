@@ -14,6 +14,7 @@ import users from '../api-handlers/users.js';
 import dashboardReports from '../api-handlers/dashboard-reports.js';
 import reports from '../api-handlers/reports.js';
 import salesOfficers from '../api-handlers/sales-officers.js';
+import dealerTargets from '../api-handlers/dealer-targets.js';
 
 const handlers = {
   backup,
@@ -30,7 +31,8 @@ const handlers = {
   users,
   'dashboard-reports': dashboardReports,
   reports,
-  'sales-officers': salesOfficers
+  'sales-officers': salesOfficers,
+  'dealer-targets': dealerTargets
 };
 
 function requestPath(value) {

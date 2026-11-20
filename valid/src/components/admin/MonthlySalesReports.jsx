@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Printer, Save, Trash2 } from 'lucide-react';
+import { Save, Trash2 } from 'lucide-react';
 import { useAgro } from '../../context/AgroContext';
-import { getOfficerSalesTarget } from '../../../shared/officerSalesTargets';
 import {
   getInvoiceSessionForDate,
   INVOICE_SESSIONS,
@@ -10,7 +9,6 @@ import {
 } from '../../../shared/sessions';
 import { normalizeOfficerCode } from '../../../shared/codes';
 import { roundAmount } from '../../../shared/salesReports';
-import { SUPER_ADMIN_ROLE } from '../../../shared/roles';
 
 const amount = (value) => Math.round(Number(value) || 0).toLocaleString('en-US');
 const emptyParty = () => ({
@@ -75,13 +73,9 @@ function ReportField({ label, value, onChange, type = 'text', required = false, 
 }
 
 export default function MonthlySalesReports() {
-  const { officers, currentUser } = useAgro();
-  const canEditExistingTargets = currentUser?.role === SUPER_ADMIN_ROLE || currentUser?.isSuperAdmin;
+  const { officers } = useAgro();
   const [reports, setReports] = useState([]);
   const [allReports, setAllReports] = useState([]);
-  const [targetRecords, setTargetRecords] = useState([]);
-  const [targetDrafts, setTargetDrafts] = useState({});
-  const [targetsLoading, setTargetsLoading] = useState(true);
   const [reportDraft, setReportDraft] = useState(createReportDraft);
   const [sessionFilter, setSessionFilter] = useState('ALL');
   const [monthFilter, setMonthFilter] = useState('ALL');
@@ -95,28 +89,8 @@ export default function MonthlySalesReports() {
     requestJson('/api/reports')
       .then((records) => { if (!cancelled) setAllReports(records); })
       .catch((requestError) => { if (!cancelled) setError(requestError.message); });
-    setTargetsLoading(true);
-    requestJson('/api/sales-officers')
-      .then((records) => {
-        if (cancelled) return;
-        setTargetRecords(records);
-        const drafts = Object.fromEntries(records.map((record) => [
-          normalizeOfficerCode(record.officerCode) || record.officerId,
-          {
-            ...record,
-            lastSessionDue: officers.find((officer) => (
-              (record.officerId && officer.id === record.officerId)
-              || normalizeOfficerCode(officer.code, officer.designation)
-                === normalizeOfficerCode(record.officerCode)
-            ))?.lastSessionDue ?? record.lastSessionDue
-          }
-        ]));
-        setTargetDrafts(drafts);
-      })
-      .catch((requestError) => { if (!cancelled) setError(requestError.message); })
-      .finally(() => { if (!cancelled) setTargetsLoading(false); });
     return () => { cancelled = true; };
-  }, [officers]);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -146,9 +120,8 @@ export default function MonthlySalesReports() {
   ), [allReports]);
   const availableSessions = useMemo(() => sortSessionsNewestFirst([
     ...INVOICE_SESSIONS,
-    ...allReports.map((report) => report.session),
-    ...targetRecords.flatMap((record) => Object.keys(record.salesTargets || {}))
-  ].filter(isCurrentSession)), [allReports, targetRecords]);
+    ...allReports.map((report) => report.session)
+  ].filter(isCurrentSession)), [allReports]);
   const selectedReport = reports.find((report) => report._id === selectedReportId);
 
   const updateParty = (index, path, value) => {
@@ -221,155 +194,11 @@ export default function MonthlySalesReports() {
     }
   };
 
-  const saveTargets = async (officer) => {
-    const key = normalizeOfficerCode(officer.code, officer.designation);
-    const previous = targetDrafts[key] || targetRecords.find((record) => (
-      normalizeOfficerCode(record.officerCode) === key
-    )) || {};
-    const slNo = Number(String(key).match(/\d+/)?.[0]);
-    const payload = {
-      ...previous,
-      slNo,
-      officerId: officer.id,
-      officerCode: key,
-      officerName: officer.name,
-      mobileNo: officer.phone,
-      salesTargetJulyDec2026: targetDrafts[key]?.salesTargetJulyDec2026
-        ?? getOfficerSalesTarget(officer, 'জুলাই - ডিসেম্বর 2026'),
-      salesTargetJanJune2027: targetDrafts[key]?.salesTargetJanJune2027
-        ?? getOfficerSalesTarget(officer, 'জানুয়ারি - জুন 2027'),
-      salesTargets: Object.fromEntries(availableSessions.map((session) => [
-        session,
-        roundAmount(targetDrafts[key]?.salesTargets?.[session]
-          ?? getOfficerSalesTarget({ ...officer, ...previous }, session))
-      ])),
-      lastSessionDue: roundAmount(
-        targetDrafts[key]?.lastSessionDue ?? previous.lastSessionDue ?? officer.lastSessionDue
-      )
-    };
-    setBusy(true);
-    setError('');
-    setMessage('');
-    try {
-      const saved = await requestJson('/api/sales-officers', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      setTargetRecords((current) => [
-        ...current.filter((record) => record.slNo !== saved.slNo),
-        saved
-      ]);
-      setTargetDrafts((current) => ({ ...current, [key]: saved }));
-      setMessage(`${officer.name}-এর সেশন টার্গেট সংরক্ষণ হয়েছে।`);
-    } catch (requestError) {
-      setError(requestError.message);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const setTarget = (key, session, value, officer) => {
-    const existing = targetDrafts[key] || targetRecords.find((record) => (
-      normalizeOfficerCode(record.officerCode) === key
-    )) || {};
-    setTargetDrafts((current) => ({
-      ...current,
-      [key]: {
-        ...existing,
-        salesTargets: {
-          ...existing.salesTargets,
-          [session]: value
-        }
-      }
-    }));
-  };
-
   return (
-    <main className="report-print mx-auto max-w-7xl space-y-6 px-4 py-8">
-      <header className="flex items-center justify-between rounded-2xl bg-gradient-to-r from-emerald-900 to-emerald-700 p-6 text-white">
-        <div>
-          <h1 className="text-2xl font-black">মাসিক বিক্রয় টার্গেট ও রিপোর্ট</h1>
-          <p className="mt-1 text-sm text-emerald-100">রিটার্ন বাদ দিয়ে নিট বিক্রয় এবং পূর্ণাঙ্গ মাসিক রিপোর্ট পরিচালনা করুন।</p>
-        </div>
-        <button type="button" onClick={() => window.print()} className="no-print inline-flex items-center gap-2 rounded-lg bg-white/10 px-4 py-2 text-sm font-bold">
-          <Printer className="h-4 w-4" /> প্রিন্ট
-        </button>
-      </header>
+    <div className="space-y-6">
 
       {error && <p role="alert" className="no-print rounded-lg bg-rose-50 p-3 text-sm font-semibold text-rose-700">{error}</p>}
       {message && <p role="status" className="no-print rounded-lg bg-emerald-50 p-3 text-sm font-semibold text-emerald-800">{message}</p>}
-
-      <section className="no-print overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-        <div className="border-b border-slate-100 p-5">
-          <h2 className="font-black text-slate-900">অফিসার সেশন টার্গেট</h2>
-          <p className="text-xs text-slate-500">নতুন সেশন যোগ হলে নতুন টার্গেট কলাম এখানে স্বয়ংক্রিয়ভাবে সম্পাদনাযোগ্য হবে।</p>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[980px] text-left text-sm">
-            <thead className="bg-slate-50 text-xs text-slate-600"><tr>
-              <th className="px-4 py-3">অফিসার</th>
-              {availableSessions.map((session) => <th key={session} className="px-4 py-3">{session}</th>)}
-              <th className="px-4 py-3">Last Session Due (৳)</th>
-              <th className="px-4 py-3">সংরক্ষণ</th>
-            </tr></thead>
-            <tbody className="divide-y divide-slate-100">
-              {officers.map((officer) => {
-                const key = normalizeOfficerCode(officer.code, officer.designation);
-                const existing = targetDrafts[key] || targetRecords.find((record) => (
-                  normalizeOfficerCode(record.officerCode) === key
-                )) || {};
-                const lastSessionDue = existing.lastSessionDue ?? officer.lastSessionDue ?? 0;
-                return (
-                  <tr key={officer.id}>
-                    <td className="px-4 py-3 font-semibold">{officer.name}<span className="ml-2 text-xs text-slate-500">{key}</span></td>
-                    {availableSessions.map((session) => (
-                      <td key={session} className="px-4 py-3">
-                        <input
-                          type="number"
-                          min="0"
-                          step="1"
-                          value={existing.salesTargets?.[session] ?? getOfficerSalesTarget({ ...officer, ...existing }, session)}
-                          onChange={(event) => setTarget(key, session, event.target.value, officer)}
-                          onBlur={(event) => setTarget(key, session, String(roundAmount(event.target.value)), officer)}
-                          disabled={!canEditExistingTargets && existing.salesTargets?.[session] != null}
-                          className="w-36 rounded-lg border border-slate-300 px-3 py-2"
-                          aria-label={`${officer.name} ${session} target`}
-                        />
-                      </td>
-                    ))}
-                    <td className="px-4 py-3">
-                      <input
-                        type="number"
-                        step="1"
-                        value={lastSessionDue}
-                        onChange={(event) => setTargetDrafts((current) => ({
-                          ...current,
-                          [key]: { ...existing, lastSessionDue: event.target.value }
-                        }))}
-                        onBlur={(event) => setTargetDrafts((current) => ({
-                          ...current,
-                          [key]: { ...existing, lastSessionDue: String(roundAmount(event.target.value)) }
-                        }))}
-                        className="w-40 rounded-lg border border-slate-300 px-3 py-2"
-                        aria-label={`${officer.name} Last Session Due`}
-                      />
-                    </td>
-                    <td className="px-4 py-3"><button type="button" disabled={busy} onClick={() => saveTargets(officer)} className="inline-flex items-center gap-1 rounded-lg bg-emerald-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50"><Save className="h-4 w-4" /> সংরক্ষণ</button></td>
-                  </tr>
-                );
-              })}
-              {!officers.length && (
-                <tr>
-                  <td colSpan={availableSessions.length + 3} className="px-4 py-8 text-center text-sm text-slate-500">
-                    {targetsLoading ? 'অফিসারদের টার্গেট লোড হচ্ছে…' : 'টার্গেট দেখানোর জন্য কোনো অফিসার পাওয়া যায়নি।'}
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
 
       <section className="space-y-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="no-print flex flex-wrap items-end justify-between gap-3">
@@ -479,6 +308,6 @@ export default function MonthlySalesReports() {
           </div>
         )}
       </section>
-    </main>
+    </div>
   );
 }

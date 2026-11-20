@@ -189,6 +189,7 @@ const salesOfficerSchema = new Schema({
   officerName: { type: String, required: true, trim: true },
   mobileNo: { type: String, default: '' },
   salesTargets: { type: Schema.Types.Mixed, default: () => ({}) },
+  salesTargetDates: { type: Schema.Types.Mixed, default: () => ({}) },
   salesTargetJulyDec2026: { type: Number, default: 0 },
   salesTargetJanJune2027: { type: Number, default: 0 },
   lastSessionDue: { type: Number, default: 0 },
@@ -205,6 +206,18 @@ const salesOfficerSchema = new Schema({
   paymentPercentage: { type: Number, default: 0 }
 }, flexibleOptions);
 salesOfficerSchema.index({ officerCode: 1 });
+
+const dealerSalesTargetSchema = new Schema({
+  id: { type: String, required: true, unique: true, index: true },
+  dealerId: { type: String, required: true, index: true },
+  dealerCode: { type: String, default: '' },
+  dealerName: { type: String, required: true, trim: true },
+  targetDate: { type: String, required: true, match: /^\d{4}-\d{2}-\d{2}$/ },
+  session: { type: String, required: true, trim: true },
+  targetAmount: { type: Number, required: true, min: 0 },
+  enteredBy: { type: String, default: '' }
+}, flexibleOptions);
+dealerSalesTargetSchema.index({ dealerId: 1, session: 1 }, { unique: true });
 
 const reportPartySchema = new Schema({
   slNo: { type: Number, default: 0 },
@@ -251,5 +264,7 @@ export const Payment = mongoose.models.Payment || mongoose.model('Payment', paym
 export const Order = mongoose.models.Order || mongoose.model('Order', orderSchema);
 export const SalesOfficer = mongoose.models.SalesOfficer
   || mongoose.model('SalesOfficer', salesOfficerSchema);
+export const DealerSalesTarget = mongoose.models.DealerSalesTarget
+  || mongoose.model('DealerSalesTarget', dealerSalesTargetSchema);
 export const MonthlySalesCollection = mongoose.models.MonthlySalesCollection
   || mongoose.model('MonthlySalesCollection', monthlySalesCollectionSchema);

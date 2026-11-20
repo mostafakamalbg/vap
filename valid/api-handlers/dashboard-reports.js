@@ -3,12 +3,38 @@ import { BusinessRecord, Dealer, Invoice, Payment, SalesOfficer } from '../lib/m
 import { authorize } from '../lib/auth.js';
 import { normalizeOfficerCode } from '../shared/codes.js';
 import { getOfficerSalesTarget } from '../shared/officerSalesTargets.js';
+import { resolvePaymentType } from '../shared/paymentMethods.js';
 import { dateRangeCondition, parseReportMonth, parseSessionDateRange } from '../shared/reportDateFilters.js';
 import { getInvoiceSessionForDate } from '../shared/sessions.js';
 import { ADMIN_ROLES, OFFICER_ROLE, isAdminRole } from '../shared/roles.js';
 
 const DAMAGE_TYPES = ['factory_damage', 'depot_factory_return'];
 const RECEIPT_TYPES = new Set(['dealer_collection', 'company_transfer']);
+const RECEIPT_ALIASES = [
+  'dealer_collection',
+  'company_transfer',
+  'company transfer',
+  'company payment',
+  'কোম্পানিতে টাকা পাঠানো'
+];
+const OFFICE_PAY_ALIASES = [
+  'office_pay',
+  'office pay',
+  'office payment',
+  'office expense',
+  'office/depot',
+  'office / depot',
+  'office depot',
+  'depot',
+  'depot pay',
+  'depot payment',
+  'অফিস খরচ',
+  'অফিস/ডিপো',
+  'অফিস / ডিপো',
+  'অফিস ডিপো',
+  'ডিপো',
+  'ডিপো খরচ'
+];
 const EXPENSE_FIELDS = {
   office_pay: 'officePay',
   salary: 'salary',
@@ -111,6 +137,7 @@ function invoicePipeline(match) {
 }
 
 function paymentPipeline(match) {
+  const paymentType = { $toLower: { $trim: { input: { $ifNull: ['$paymentType', ''] } } } };
   return [
     {
       $match: {
@@ -163,20 +190,20 @@ function paymentPipeline(match) {
         },
         collection: {
           $sum: {
-            $cond: [{ $in: ['$paymentType', [...RECEIPT_TYPES]] }, { $ifNull: ['$amount', 0] }, 0]
+            $cond: [{ $in: [paymentType, RECEIPT_ALIASES] }, { $ifNull: ['$amount', 0] }, 0]
           }
         },
         officePay: {
-          $sum: { $cond: [{ $eq: ['$paymentType', 'office_pay'] }, { $ifNull: ['$amount', 0] }, 0] }
+          $sum: { $cond: [{ $in: [paymentType, OFFICE_PAY_ALIASES] }, { $ifNull: ['$amount', 0] }, 0] }
         },
         salary: {
-          $sum: { $cond: [{ $eq: ['$paymentType', 'salary'] }, { $ifNull: ['$amount', 0] }, 0] }
+          $sum: { $cond: [{ $in: [paymentType, ['salary', 'বেতন']] }, { $ifNull: ['$amount', 0] }, 0] }
         },
         fare: {
-          $sum: { $cond: [{ $eq: ['$paymentType', 'vehicle_rent'] }, { $ifNull: ['$amount', 0] }, 0] }
+          $sum: { $cond: [{ $in: [paymentType, ['vehicle_rent', 'vehicle rent', 'গাড়ি ভাড়া']] }, { $ifNull: ['$amount', 0] }, 0] }
         },
         lc: {
-          $sum: { $cond: [{ $eq: ['$paymentType', 'lc_commission'] }, { $ifNull: ['$amount', 0] }, 0] }
+          $sum: { $cond: [{ $in: [paymentType, ['lc_commission', 'lc commission', 'লেস কমিশন (lc)']] }, { $ifNull: ['$amount', 0] }, 0] }
         }
       }
     }
@@ -223,8 +250,10 @@ function addPaymentRows(groups, rows, { periodRange, beforePeriod, user }) {
       lc: 0
     };
     const amount = Number(payment.amount) || 0;
-    if (RECEIPT_TYPES.has(payment.paymentType || 'dealer_collection')) group.collection += amount;
-    const field = EXPENSE_FIELDS[String(payment.paymentType || '')];
+    const type = resolvePaymentType(payment.paymentType)
+      || (!String(payment.paymentType || '').trim() ? 'dealer_collection' : '');
+    if (RECEIPT_TYPES.has(type)) group.collection += amount;
+    const field = EXPENSE_FIELDS[type];
     if (field) group[field] += amount;
     groups.set(key, group);
   });

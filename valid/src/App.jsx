@@ -18,7 +18,7 @@ import DealerLedger from './components/admin/DealerLedger';
 import OfficerPerformance from './components/admin/OfficerPerformance';
 import DashboardReports from './components/admin/DashboardReports';
 import SalesAgreement from './components/admin/SalesAgreement';
-import MonthlySalesReports from './components/admin/MonthlySalesReports';
+import MonthlyTargetReports from './components/admin/MonthlyTargetReports';
 import AdminDataManagement from './components/admin/AdminDataManagement';
 import FactoryDataReset from './components/admin/FactoryDataReset';
 import { isAdminRole } from '../shared/roles';
@@ -138,7 +138,7 @@ function AppContent() {
     if (activeTab === 'data-management') return <AdminDataManagement />;
     if (activeTab === 'factory-reset') return <FactoryDataReset />;
     if (activeTab === 'sales-agreements') return <SalesAgreement />;
-    if (activeTab === 'monthly-sales-reports') return <MonthlySalesReports />;
+    if (activeTab === 'monthly-sales-reports') return <MonthlyTargetReports />;
     return <Home onNavigate={handleNavigate} />;
   };
 

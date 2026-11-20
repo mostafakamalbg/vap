@@ -223,20 +223,39 @@ export default function OfficerDashboard() {
     (sum, party) => sum + (Number(party.lastMonthDues) || 0),
     0
   );
-  const financeSummary = calculateOfficerFinancials({
-    invoices: periodInvoices,
-    payments: periodPayments,
-    salesTarget: sessionSalesTarget,
-    lastSessionDue: latestMonthlyReport
-      ? latestReportOpeningDue
-      : monthFilter === 'ALL' ? currentOfficer?.lastSessionDue : 0
-  });
   const ledgerDealers = officerLedgerDealers ?? availableDealers;
   const officerLedgerIdentity = {
     officerIds: [currentUser?.officerId, currentOfficer?.id],
     officerCode,
     designation: currentOfficer?.designation
   };
+  const officerPreviousDues = useMemo(() => getOfficerPreviousDueByDealer(
+    ledgerDealers,
+    officerLedgerIdentity,
+    { session: sessionFilter, month: monthFilter }
+  ), [
+    ledgerDealers,
+    sessionFilter,
+    monthFilter,
+    currentUser?.officerId,
+    currentOfficer?.id,
+    currentOfficer?.designation,
+    officerCode
+  ]);
+  const previousDueTotal = [...officerPreviousDues.values()].reduce(
+    (sum, due) => sum + due.amount,
+    0
+  );
+  const financeSummary = calculateOfficerFinancials({
+    invoices: periodInvoices,
+    payments: periodPayments,
+    salesTarget: sessionSalesTarget,
+    lastSessionDue: officerPreviousDues.size
+      ? previousDueTotal
+      : latestMonthlyReport
+        ? latestReportOpeningDue
+        : monthFilter === 'ALL' ? currentOfficer?.lastSessionDue : 0
+  });
   const officerProductSales = useMemo(() => {
     const sales = new Map();
     filteredSalesInvoices.forEach((invoice) => {
@@ -281,13 +300,9 @@ export default function OfficerDashboard() {
         });
       }
     }));
-    const previousDues = getOfficerPreviousDueByDealer(ledgerDealers, officerLedgerIdentity, {
-      session: sessionFilter,
-      month: monthFilter
-    });
     const ledgers = new Map(ledgerDealers.map((dealer) => {
       const dealerId = String(dealer.id);
-      const previousDue = previousDues.get(dealerId);
+      const previousDue = officerPreviousDues.get(dealerId);
       const reportDue = reportDueByName.get(String(dealer.shopName || '').trim().toLowerCase());
       const openingDue = previousDue || (reportDue
         ? { amount: reportDue.amount, date: reportDue.reportingDate, session: reportDue.session }
@@ -356,6 +371,7 @@ export default function OfficerDashboard() {
     })).sort((left, right) => left.dealerName.localeCompare(right.dealerName));
   }, [
     ledgerDealers,
+    officerPreviousDues,
     monthFilter,
     monthlyReports,
     periodInvoices,
@@ -373,6 +389,13 @@ export default function OfficerDashboard() {
     received: totals.received + ledger.received,
     due: totals.due + ledger.due
   }), { lastSessionDue: 0, sales: 0, returns: 0, received: 0, due: 0 });
+  const salesHistoryPreviousDues = sessionFilter === 'ALL'
+    ? [...officerPreviousDues.entries()].map(([id, due]) => ({
+      id,
+      dealerName: ledgerDealers.find((dealer) => String(dealer.id) === id)?.shopName || id,
+      ...due
+    }))
+    : [];
   const salesHistoryTotals = visibleInvoices.reduce((totals, invoice) => {
     const amount = getInvoiceSalesAmount(invoice);
     const cartons = getInvoicePackageCount(invoice);
@@ -386,6 +409,8 @@ export default function OfficerDashboard() {
     totals.due += Math.max(0, amount - (Number(invoice.paidAmount) || 0));
     return totals;
   }, { cartons: 0, sales: 0, due: 0 });
+  salesHistoryTotals.previousDue = previousDueTotal;
+  salesHistoryTotals.due += previousDueTotal;
   const productSalesTotals = officerProductSales.reduce((totals, item) => ({
     cartons: totals.cartons + item.cartons,
     units: totals.units + item.pieces,
@@ -515,6 +540,19 @@ export default function OfficerDashboard() {
                   <th className="px-4 py-3">{t('officer.invoice')}</th><th className="px-4 py-3">{t('officer.date')} / সেশন</th><th className="px-4 py-3">{t('officer.dealer')}</th><th className="px-4 py-3 text-right">কার্টুন</th><th className="px-4 py-3 text-right">{t('officer.sales')}</th><th className="px-4 py-3 text-right">বকেয়া</th>
                 </tr></thead>
                 <tbody className="divide-y divide-slate-100">
+                  {salesHistoryPreviousDues.map((entry) => (
+                    <tr key={`previous-due-${entry.id}`} className="bg-amber-50">
+                      <td className="px-4 py-3 font-bold text-amber-900">পূর্বের বাকি</td>
+                      <td className="px-4 py-3">
+                        {entry.date || '—'}
+                        <p className="text-[10px] text-slate-500">{entry.session || 'ঐতিহাসিক বাকি'}</p>
+                      </td>
+                      <td className="px-4 py-3">{entry.dealerName}</td>
+                      <td className="px-4 py-3 text-right">—</td>
+                      <td className="px-4 py-3 text-right">—</td>
+                      <td className="px-4 py-3 text-right font-semibold text-amber-900">{formatMoney(entry.amount)}</td>
+                    </tr>
+                  ))}
                   {visibleInvoices.map((invoice) => {
                     const isReturn = invoice.invoiceType === 'dealer_return';
                     const salesAmount = getInvoiceSalesAmount(invoice);

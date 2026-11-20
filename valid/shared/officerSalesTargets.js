@@ -84,3 +84,8 @@ export function getOfficerSalesTarget(officer, session = 'ALL') {
     ?? officer?.target
   ) || 0);
 }
+
+export function hasOfficerSessionSalesTarget(officer, session) {
+  return officer?.salesTargets?.[session] != null
+    || getOfficerSalesTarget(officer, session) > 0;
+}

@@ -1,10 +1,14 @@
 import dbConnect from '../lib/mongodb.js';
 import { BusinessRecord, Invoice, Payment, SalesOfficer } from '../lib/models.js';
-import { authorize, hasSuperAdminAccess } from '../lib/auth.js';
+import { authorize } from '../lib/auth.js';
 import { normalizeOfficerCode } from '../shared/codes.js';
 import { roundAmount } from '../shared/salesReports.js';
 import { calculateOfficerFinancials, filterOfficerRecordsByPeriod } from '../shared/officerFinancials.js';
-import { getOfficerSalesTarget, mergeOfficerSalesTargets } from '../shared/officerSalesTargets.js';
+import {
+  getOfficerSalesTarget,
+  hasOfficerSessionSalesTarget,
+  mergeOfficerSalesTargets
+} from '../shared/officerSalesTargets.js';
 import { parseReportMonth, parseSessionDateRange } from '../shared/reportDateFilters.js';
 import { normalizeSessionText } from '../shared/sessions.js';
 import { ADMIN_ROLES, OFFICER_ROLE, isAdminRole } from '../shared/roles.js';
@@ -37,8 +41,48 @@ function normalizeSalesOfficer(record) {
   };
 }
 
+function validDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(date.valueOf()) && date.toISOString().slice(0, 10) === value;
+}
+
+function getOfficerSummaryFilter(officer) {
+  return {
+    $or: [
+      ...(officer.id ? [{ officerId: officer.id }] : []),
+      ...(officer.code ? [{ officerCode: officer.code }] : [])
+    ]
+  };
+}
+
+function hasLegacyTarget(record, session) {
+  return hasOfficerSessionSalesTarget(record, session);
+}
+
+async function setOfficerSessionTarget(record, { session, date, amount }) {
+  const targetPath = `salesTargets.${session}`;
+  const datePath = `salesTargetDates.${session}`;
+  if (record.salesTargets?.[session] != null || hasLegacyTarget(record, session)) {
+    const error = new Error('এই অফিসারের সেশনের টার্গেট অলরেডি ইমপোর্ট করা আছে।');
+    error.statusCode = 409;
+    throw error;
+  }
+  const saved = await SalesOfficer.findOneAndUpdate(
+    { _id: record._id, [targetPath]: { $exists: false } },
+    { $set: { [targetPath]: amount, [datePath]: date } },
+    { new: true, runValidators: true }
+  );
+  if (!saved) {
+    const error = new Error('এই অফিসারের সেশনের টার্গেট অলরেডি ইমপোর্ট করা আছে।');
+    error.statusCode = 409;
+    throw error;
+  }
+  return saved;
+}
+
 export default async function handler(req, res) {
-  if (!['GET', 'PUT'].includes(req.method)) {
+  if (!['GET', 'POST', 'PUT'].includes(req.method)) {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
   if (!await dbConnect()) return res.status(503).json({ error: 'MongoDB is not configured.' });
@@ -110,6 +154,106 @@ export default async function handler(req, res) {
     if (!isAdminRole(user.role)) {
       return res.status(403).json({ error: 'টার্গেট পরিবর্তনের অনুমতি নেই।' });
     }
+
+    if (req.method === 'POST') {
+      const body = req.body || {};
+      const officerId = String(body.officerId || '').trim();
+      const officerCode = normalizeOfficerCode(body.officerCode);
+      const session = normalizeSessionText(body.session);
+      const date = String(body.date || '');
+      const targetAmount = Number(body.targetAmount);
+      const sessionRange = parseSessionDateRange(session);
+      if ((!officerId && !officerCode)
+        || !sessionRange
+        || !validDate(date)
+        || date < sessionRange.start
+        || date >= sessionRange.end
+        || String(body.targetAmount ?? '').trim() === ''
+        || !Number.isFinite(targetAmount)
+        || targetAmount < 0) {
+        return res.status(400).json({ error: 'অফিসার, সেশন, তারিখ ও টার্গেটের পরিমাণ সঠিকভাবে দিন।' });
+      }
+
+      try {
+        const officerRecords = await BusinessRecord.find({ type: 'officers' }).select('data').lean();
+        const officer = officerRecords.map((record) => record.data).find((record) => (
+          (officerId && String(record?.id || record?.officerId || '') === officerId)
+          || (officerCode && normalizeOfficerCode(record?.code, record?.designation) === officerCode)
+        ));
+        if (!officer) return res.status(404).json({ error: 'নির্বাচিত অফিসার পাওয়া যায়নি।' });
+
+        const normalizedOfficer = {
+          id: String(officer.id || officer.officerId || ''),
+          code: normalizeOfficerCode(officer.code, officer.designation),
+          name: String(officer.name || officer.officerName || '').trim(),
+          mobileNo: String(officer.phone || officer.mobileNo || '').trim()
+        };
+        if (hasLegacyTarget({ ...officer, ...normalizedOfficer }, session)) {
+          return res.status(409).json({
+            error: 'এই অফিসারের সেশনের টার্গেট অলরেডি ইমপোর্ট করা আছে।'
+          });
+        }
+        let summary = await SalesOfficer.findOne(getOfficerSummaryFilter(normalizedOfficer)).lean();
+        if (summary) {
+          const saved = await setOfficerSessionTarget(summary, {
+            session,
+            date,
+            amount: roundAmount(targetAmount)
+          });
+          return res.status(201).json(normalizeSalesOfficer(saved.toObject()));
+        }
+
+        const requestedSlNo = Number(normalizedOfficer.code.match(/\d+/)?.[0]);
+        const highestSummary = await SalesOfficer.findOne({}).sort({ slNo: -1 }).select('slNo').lean();
+        let slNo = Number.isSafeInteger(requestedSlNo) && requestedSlNo > 0
+          ? requestedSlNo
+          : (highestSummary?.slNo || 0) + 1;
+        if (await SalesOfficer.exists({ slNo })) slNo = (highestSummary?.slNo || 0) + 1;
+
+        let saved;
+        try {
+          [saved] = await SalesOfficer.create([{
+            slNo,
+            officerId: normalizedOfficer.id,
+            officerCode: normalizedOfficer.code,
+            officerName: normalizedOfficer.name,
+            mobileNo: normalizedOfficer.mobileNo,
+            salesTargets: { [session]: roundAmount(targetAmount) },
+            salesTargetDates: { [session]: date }
+          }]);
+        } catch (error) {
+          if (error?.code !== 11000) throw error;
+          summary = await SalesOfficer.findOne(getOfficerSummaryFilter(normalizedOfficer)).lean();
+          if (summary) {
+            saved = await setOfficerSessionTarget(summary, {
+              session,
+              date,
+              amount: roundAmount(targetAmount)
+            });
+          } else {
+            const retrySlNo = (highestSummary?.slNo || 0) + 1;
+            [saved] = await SalesOfficer.create([{
+              slNo: retrySlNo,
+              officerId: normalizedOfficer.id,
+              officerCode: normalizedOfficer.code,
+              officerName: normalizedOfficer.name,
+              mobileNo: normalizedOfficer.mobileNo,
+              salesTargets: { [session]: roundAmount(targetAmount) },
+              salesTargetDates: { [session]: date }
+            }]);
+          }
+        }
+        return res.status(201).json(normalizeSalesOfficer(saved.toObject()));
+      } catch (error) {
+        if (error.statusCode) return res.status(error.statusCode).json({ error: error.message });
+        if (error?.code === 11000) {
+          return res.status(409).json({ error: 'এই অফিসারের সেশনের টার্গেট অলরেডি ইমপোর্ট করা আছে।' });
+        }
+        console.error('Officer target import failed:', error);
+        return res.status(500).json({ error: 'অফিসার টার্গেট সংরক্ষণ করা যায়নি।' });
+      }
+    }
+
     const body = req.body || {};
     const slNo = Number(body.slNo);
     const officerName = String(body.officerName || '').trim();
@@ -127,6 +271,13 @@ export default async function handler(req, res) {
     for (const field of numericFields) {
       if (body[field] != null && !Number.isFinite(Number(body[field]))) {
         return res.status(400).json({ error: 'টার্গেট বা সারাংশের টাকার পরিমাণ সঠিক নয়।' });
+      }
+      if (['salesTargetJulyDec2026', 'salesTargetJanJune2027'].includes(field)
+        && body[field] != null
+        && roundAmount(body[field]) !== roundAmount(existingTarget?.[field])) {
+        return res.status(409).json({
+          error: 'সেশন টার্গেট তারিখসহ নতুন টার্গেট ফর্মে ইমপোর্ট করুন; সংরক্ষিত টার্গেট পরিবর্তন করা যাবে না।'
+        });
       }
       values[field] = body[field] == null
         ? roundAmount(existingTarget?.[field])
@@ -150,20 +301,23 @@ export default async function handler(req, res) {
     )) {
       return res.status(400).json({ error: 'সেশন টার্গেটের তালিকা সঠিক নয়।' });
     }
-    const superAdmin = await hasSuperAdminAccess(user);
     values.salesTargets = mergeOfficerSalesTargets(existingTarget?.salesTargets);
     for (const [rawSession, target] of Object.entries(body.salesTargets || {})) {
       const session = normalizeSessionText(rawSession);
       if (!parseSessionDateRange(session) || !Number.isFinite(Number(target)) || Number(target) < 0) {
         return res.status(400).json({ error: 'সেশন টার্গেটের পরিমাণ সঠিক নয়।' });
       }
+      if (existingTarget?.salesTargets?.[session] == null) {
+        return res.status(409).json({
+          error: `${session} সেশনের নতুন টার্গেট তারিখসহ নতুন টার্গেট ফর্মে ইমপোর্ট করুন।`
+        });
+      }
       if (
         existingTarget?.salesTargets?.[session] != null
         && roundAmount(existingTarget.salesTargets[session]) !== roundAmount(target)
-        && !superAdmin
       ) {
         return res.status(409).json({
-          error: `${session} সেশনে এই অফিসারের টার্গেট আগে থেকেই সংরক্ষিত আছে। পরিবর্তন শুধু সুপার অ্যাডমিন করতে পারবেন।`
+          error: `${session} সেশনে এই অফিসারের টার্গেট অলরেডি ইমপোর্ট করা আছে।`
         });
       }
       values.salesTargets = mergeOfficerSalesTargets(values.salesTargets, {

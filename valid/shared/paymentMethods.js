@@ -8,7 +8,7 @@ export const PAYMENT_METHODS = [
 export const PAYMENT_TYPES = [
   { value: 'dealer_collection', label: 'ডিলার কালেকশন' },
   { value: 'company_transfer', label: 'কোম্পানিতে টাকা পাঠানো' },
-  { value: 'office_pay', label: 'অফিস খরচ' },
+  { value: 'office_pay', label: 'অফিস / ডিপো' },
   { value: 'salary', label: 'বেতন' },
   { value: 'vehicle_rent', label: 'গাড়ি ভাড়া' },
   { value: 'lc_commission', label: 'লেস কমিশন (LC)' }
@@ -32,12 +32,14 @@ const PAYMENT_TYPE_ALIASES = new Map([
   ['office payment', 'office_pay'],
   ['office expense', 'office_pay'],
   ['office/depot', 'office_pay'],
+  ['office / depot', 'office_pay'],
   ['office depot', 'office_pay'],
   ['depot', 'office_pay'],
   ['depot pay', 'office_pay'],
   ['depot payment', 'office_pay'],
   ['অফিস খরচ', 'office_pay'],
   ['অফিস/ডিপো', 'office_pay'],
+  ['অফিস / ডিপো', 'office_pay'],
   ['অফিস ডিপো', 'office_pay'],
   ['ডিপো', 'office_pay'],
   ['ডিপো খরচ', 'office_pay'],
