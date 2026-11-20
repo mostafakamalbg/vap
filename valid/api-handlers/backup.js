@@ -5,6 +5,7 @@ import { User } from '../lib/models.js';
 import { BusinessRecord, Dealer, Invoice, Order, Payment, Product } from '../lib/models.js';
 import { normalizeDealerAssignment } from '../shared/codes.js';
 import {
+  getPaymentRecordTypeValue,
   normalizePaymentMethod,
   normalizePaymentType,
   resolvePaymentRecordType
@@ -53,6 +54,9 @@ function isValidBackup(value) {
       Array.isArray(value.data?.[type])
       && value.data[type].every((record) => (
         record && typeof record === 'object' && !Array.isArray(record)
+        && (type !== 'payments'
+          || !getPaymentRecordTypeValue(record)
+          || Boolean(resolvePaymentRecordType(record)))
       ))
     ));
 }

@@ -464,7 +464,8 @@ export default function OfficerDashboard() {
     { label: 'মোট পাওনা', value: formatMoney(financeSummary.totalAmountDues), Icon: TrendingUp }
   ];
   const expenseSummaryCards = [
-    { label: 'অফিস / ডিপো', value: formatMoney(financeSummary.paymentAndExpense.officePay), Icon: TrendingUp },
+    { label: 'মোট খরচ', value: formatMoney(financeSummary.totalExpenses), Icon: TrendingUp },
+    { label: 'অফিস পেমেন্ট', value: formatMoney(financeSummary.paymentAndExpense.officePayment), Icon: TrendingUp },
     { label: 'ভাড়া / Fare', value: formatMoney(financeSummary.paymentAndExpense.fare), Icon: TrendingUp },
     { label: 'বেতন / Salary', value: formatMoney(financeSummary.paymentAndExpense.salary), Icon: TrendingUp },
     { label: 'L/C খরচ', value: formatMoney(financeSummary.paymentAndExpense.lc), Icon: TrendingUp }
@@ -500,7 +501,7 @@ export default function OfficerDashboard() {
       <section className="space-y-5">
         <div><h2 className="mb-2 text-sm font-black text-slate-800">টার্গেট সারাংশ</h2><div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{renderSummaryCards(targetSummaryCards)}</div></div>
         <div><h2 className="mb-2 text-sm font-black text-slate-800">লেনদেন সারাংশ</h2><div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">{renderSummaryCards(transactionSummaryCards)}</div></div>
-        <div><h2 className="mb-2 text-sm font-black text-slate-800">খরচের বিবরণ</h2><div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">{renderSummaryCards(expenseSummaryCards)}</div></div>
+        <div><h2 className="mb-2 text-sm font-black text-slate-800">খরচের বিবরণ</h2><div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">{renderSummaryCards(expenseSummaryCards)}</div></div>
         <div><h2 className="mb-2 text-sm font-black text-slate-800">পেমেন্ট সারাংশ</h2><div className="grid gap-4 sm:grid-cols-2">{renderSummaryCards(paymentSummaryCards)}</div></div>
       </section>
 
@@ -636,7 +637,8 @@ export default function OfficerDashboard() {
                 ['রিটার্ন', financeSummary.returnAmount],
                 ['নিট সেলস', financeSummary.totalNetSales],
                 ['বকেয়া', financeSummary.totalAmountDues],
-                ['অফিস / ডিপো', financeSummary.paymentAndExpense.officePay],
+                ['মোট খরচ', financeSummary.totalExpenses],
+                ['অফিস পেমেন্ট', financeSummary.paymentAndExpense.officePayment],
                 ['বেতন', financeSummary.paymentAndExpense.salary],
                 ['ভাড়া / Fare', financeSummary.paymentAndExpense.fare],
                 ['L/C খরচ', financeSummary.paymentAndExpense.lc],

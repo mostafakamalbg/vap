@@ -26,7 +26,8 @@ import {
   PAYMENT_TYPES,
   LEDGER_PAYMENT_TYPES,
   normalizePaymentMethod,
-  normalizePaymentType
+  normalizePaymentType,
+  resolvePaymentRecordType
 } from '../../../shared/paymentMethods';
 import { getDealerLedgerTransactions } from '../../../shared/dealerLedger';
 import CompanyLetterhead from './CompanyLetterhead';
@@ -92,7 +93,9 @@ function getTransactionDetails(transaction) {
   if (transaction.sourceType !== 'payment') return transaction.description;
   const payment = transaction.source;
   const paymentType = PAYMENT_TYPES.find(
-    (type) => type.value === normalizePaymentType(payment.paymentType)
+    (type) => type.value === normalizePaymentType(
+      resolvePaymentRecordType(payment) || payment.paymentType
+    )
   )?.label;
   const paymentMethod = PAYMENT_METHODS.find(
     (method) => method.value === normalizePaymentMethod(payment.paymentMethod)

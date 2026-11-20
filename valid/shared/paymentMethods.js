@@ -7,8 +7,7 @@ export const PAYMENT_METHODS = [
 
 export const PAYMENT_TYPES = [
   { value: 'dealer_collection', label: 'ডিলার কালেকশন' },
-  { value: 'company_transfer', label: 'কোম্পানিতে টাকা পাঠানো' },
-  { value: 'office_pay', label: 'অফিস / ডিপো' },
+  { value: 'office_payment', label: 'অফিস পেমেন্ট' },
   { value: 'salary', label: 'বেতন' },
   { value: 'vehicle_rent', label: 'গাড়ি ভাড়া' },
   { value: 'lc_commission', label: 'লেস কমিশন (LC)' }
@@ -16,42 +15,52 @@ export const PAYMENT_TYPES = [
 
 export const DEALER_BALANCE_CREDIT_TYPES = new Set([
   'dealer_collection',
-  'company_transfer',
-  'office_pay',
+  'office_payment',
   'salary',
   'vehicle_rent',
   'lc_commission'
 ]);
 
 export const LEDGER_PAYMENT_TYPES = PAYMENT_TYPES.filter((entry) => (
-  entry.value !== 'dealer_collection' && entry.value !== 'office_pay'
+  entry.value !== 'dealer_collection'
 ));
 
 const PAYMENT_TYPE_ALIASES = new Map([
-  ['office pay', 'office_pay'],
-  ['office payment', 'office_pay'],
-  ['office expense', 'office_pay'],
-  ['office/depot', 'office_pay'],
-  ['office / depot', 'office_pay'],
-  ['office depot', 'office_pay'],
-  ['office and depot', 'office_pay'],
-  ['depot', 'office_pay'],
-  ['depot pay', 'office_pay'],
-  ['depot payment', 'office_pay'],
-  ['অফিস খরচ', 'office_pay'],
-  ['অফিস/ডিপো', 'office_pay'],
-  ['অফিস / ডিপো', 'office_pay'],
-  ['অফিস ও ডিপো', 'office_pay'],
-  ['অফিস এবং ডিপো', 'office_pay'],
-  ['অফিস ডিপো', 'office_pay'],
-  ['ডিপো/অফিস', 'office_pay'],
-  ['ডিপো', 'office_pay'],
-  ['ডিপো খরচ', 'office_pay'],
-  ['company transfer', 'company_transfer'],
-  ['company payment', 'company_transfer'],
-  ['কোম্পানিতে টাকা পাঠানো', 'company_transfer']
+  ['office pay', 'office_payment'],
+  ['office payment', 'office_payment'],
+  ['office_pay', 'office_payment'],
+  ['office expense', 'office_payment'],
+  ['office', 'office_payment'],
+  ['office/depot', 'office_payment'],
+  ['office / depot', 'office_payment'],
+  ['office depot', 'office_payment'],
+  ['office and depot', 'office_payment'],
+  ['depot', 'office_payment'],
+  ['depot pay', 'office_payment'],
+  ['depot payment', 'office_payment'],
+  ['অফিস খরচ', 'office_payment'],
+  ['অফিস/ডিপো', 'office_payment'],
+  ['অফিস / ডিপো', 'office_payment'],
+  ['অফিস ও ডিপো', 'office_payment'],
+  ['অফিস এবং ডিপো', 'office_payment'],
+  ['অফিস ডিপো', 'office_payment'],
+  ['ডিপো/অফিস', 'office_payment'],
+  ['ডিপো', 'office_payment'],
+  ['ডিপো খরচ', 'office_payment'],
+  ['company transfer', 'office_payment'],
+  ['company_transfer', 'office_payment'],
+  ['company payment', 'office_payment'],
+  ['টাকা কোম্পানিতে পাঠানো', 'office_payment'],
+  ['কোম্পানিতে টাকা পাঠানো', 'office_payment'],
+  ['কোম্পানিতে টাকা জমা', 'office_payment'],
+  ['বেতন', 'salary'],
+  ['গাড়ি ভাড়া', 'vehicle_rent'],
+  ['ভাড়া', 'vehicle_rent'],
+  ['lc commission', 'lc_commission'],
+  ['লেস কমিশন (lc)', 'lc_commission'],
+  ['lc', 'lc_commission']
 ]);
-const PAYMENT_TYPE_FIELDS = [
+export const PAYMENT_TYPE_FIELDS = Object.freeze([
   'paymentType',
   'purpose',
   'category',
@@ -60,18 +69,33 @@ const PAYMENT_TYPE_FIELDS = [
   'paymentPurpose',
   'transactionType',
   'type'
-];
+]);
 
-export function resolvePaymentType(type) {
-  const value = String(type || '').trim().toLowerCase();
-  if (PAYMENT_TYPES.some((entry) => entry.value === value)) return value;
-
-  const alias = value
+function normalizePaymentTypeAlias(type) {
+  return String(type || '')
+    .trim()
+    .toLowerCase()
     .replace(/[._-]+/g, ' ')
     .replace(/\s*\/\s*/g, '/')
     .replace(/\s+/g, ' ')
     .trim();
-  return PAYMENT_TYPE_ALIASES.get(alias) || '';
+}
+
+export function resolvePaymentType(type) {
+  const value = String(type || '').trim().toLowerCase();
+  if (PAYMENT_TYPES.some((entry) => entry.value === value)) return value;
+  return PAYMENT_TYPE_ALIASES.get(normalizePaymentTypeAlias(value)) || '';
+}
+
+export function getPaymentTypeAliases(type) {
+  const resolvedType = resolvePaymentType(type);
+  if (!resolvedType) return [];
+  return [...new Set([
+    normalizePaymentTypeAlias(resolvedType),
+    ...[...PAYMENT_TYPE_ALIASES]
+      .filter(([, value]) => value === resolvedType)
+      .map(([alias]) => normalizePaymentTypeAlias(alias))
+  ])];
 }
 
 export function resolvePaymentRecordType(payment) {
@@ -99,17 +123,15 @@ export function normalizePaymentType(type) {
 
 export function isDealerCollection(payment) {
   const resolvedType = resolvePaymentRecordType(payment);
-  const type = resolvedType || (!String(payment?.paymentType || '').trim()
-    && !String(payment?.purpose || '').trim()
+  const type = resolvedType || (!getPaymentRecordTypeValue(payment)
     ? 'dealer_collection'
     : '');
-  return type === 'dealer_collection' || type === 'company_transfer';
+  return type === 'dealer_collection' || type === 'office_payment';
 }
 
 export function isDealerBalanceCredit(payment) {
   const resolvedType = resolvePaymentRecordType(payment);
-  const type = resolvedType || (!String(payment?.paymentType || '').trim()
-    && !String(payment?.purpose || '').trim()
+  const type = resolvedType || (!getPaymentRecordTypeValue(payment)
     ? 'dealer_collection'
     : '');
   return DEALER_BALANCE_CREDIT_TYPES.has(type);

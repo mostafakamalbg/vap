@@ -28,7 +28,13 @@ const numericFields = [
   'salesPercentage',
   'paymentPercentage'
 ];
-const expenseFields = ['officePay', 'fare', 'salary', 'lc'];
+const expenseFields = ['officePayment', 'fare', 'salary', 'lc'];
+
+function getStoredExpense(record, field) {
+  return field === 'officePayment'
+    ? record?.paymentAndExpense?.officePayment ?? record?.paymentAndExpense?.officePay
+    : record?.paymentAndExpense?.[field];
+}
 
 function normalizeSalesOfficer(record) {
   return {
@@ -36,7 +42,7 @@ function normalizeSalesOfficer(record) {
     ...Object.fromEntries(numericFields.map((field) => [field, roundAmount(record[field])])),
     paymentAndExpense: Object.fromEntries(expenseFields.map((field) => [
       field,
-      roundAmount(record.paymentAndExpense?.[field])
+      roundAmount(getStoredExpense(record, field))
     ]))
   };
 }
@@ -297,7 +303,7 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'খরচের পরিমাণ সঠিক নয়।' });
       }
       values.paymentAndExpense[field] = body.paymentAndExpense?.[field] == null
-        ? roundAmount(existingTarget?.paymentAndExpense?.[field])
+        ? roundAmount(getStoredExpense(existingTarget, field))
         : roundAmount(body.paymentAndExpense[field]);
     }
 

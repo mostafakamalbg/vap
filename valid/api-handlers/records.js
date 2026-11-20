@@ -38,6 +38,15 @@ function getRecordId(record, index) {
   return String(record?.id || record?.officerId || record?._id || `${Date.now()}-${index}`);
 }
 
+function normalizePaymentRecord(payment) {
+  const paymentType = resolvePaymentRecordType(payment);
+  return {
+    ...payment,
+    ...(paymentType ? { paymentType } : {}),
+    paymentMethod: normalizePaymentMethod(payment.paymentMethod)
+  };
+}
+
 export default async function handler(req, res) {
   if (!['GET', 'PUT'].includes(req.method)) {
     return res.status(405).json({ error: 'Method Not Allowed' });
@@ -157,7 +166,7 @@ export default async function handler(req, res) {
           }
           return true;
         });
-        return res.status(200).json([...typed, ...legacy]);
+        return res.status(200).json([...typed, ...legacy].map(normalizePaymentRecord));
       }
       if (Model) {
         let filter = {};

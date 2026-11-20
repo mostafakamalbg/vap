@@ -6,6 +6,7 @@ import {
   normalizePaymentMethod,
   normalizePaymentType,
   PAYMENT_TYPES,
+  getPaymentRecordTypeValue,
   resolvePaymentRecordType
 } from '../shared/paymentMethods.js';
 import { roundCurrency } from '../shared/invoiceTotals.js';
@@ -75,8 +76,7 @@ export default async function handler(req, res) {
     const id = String(req.body?.id || '').trim();
     const update = req.body?.payment;
     if (!id || !update) return res.status(400).json({ error: 'পেমেন্টের সঠিক তথ্য দিন।' });
-    if ((update.paymentType || update.purpose)
-      && !resolvePaymentRecordType(update)) {
+    if (getPaymentRecordTypeValue(update) && !resolvePaymentRecordType(update)) {
       return res.status(400).json({ error: 'পেমেন্টের ধরন সঠিক নয়।' });
     }
     if (!isValidDate(String(update.date || ''))

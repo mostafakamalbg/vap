@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { getDealerLedgerTransactions } from './dealerLedger.js';
 
-test('expense postings and receipts both reduce dealer balance', () => {
+test('legacy company transfers and office payments normalize to office payment', () => {
   const transactions = getDealerLedgerTransactions({
     openingDue: 500,
     payments: [
@@ -12,6 +12,7 @@ test('expense postings and receipts both reduce dealer balance', () => {
   });
   const balance = transactions[transactions.length - 1].balance;
   assert.equal(balance, 360);
+  assert.equal(transactions.find((entry) => entry.id === 'payment-receipt').description, 'অফিস পেমেন্ট');
   assert.equal(transactions.find((entry) => entry.id === 'payment-expense').credit, 40);
 });
 
@@ -38,6 +39,6 @@ test('legacy purpose labels resolve to the saved payment category in dealer ledg
   const payment = transactions.find((entry) => entry.id === 'payment-legacy-office');
 
   assert.equal(payment.credit, 25);
-  assert.equal(payment.description, 'অফিস / ডিপো');
+  assert.equal(payment.description, 'অফিস পেমেন্ট');
   assert.equal(transactions[transactions.length - 1].balance, 75);
 });

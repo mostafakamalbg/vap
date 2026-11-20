@@ -23,18 +23,19 @@ test('officer summary deducts return invoices and classifies payment categories'
 
   assert.equal(summary.totalNetSales, 9380);
   assert.equal(summary.totalReceivedAmount, 4500);
-  assert.equal(summary.paymentAndExpense.officePay, 100);
+  assert.equal(summary.paymentAndExpense.officePayment, 600);
   assert.equal(summary.paymentAndExpense.fare, 300);
   assert.equal(summary.paymentAndExpense.salary, 200);
   assert.equal(summary.paymentAndExpense.lc, 400);
   assert.equal(summary.totalAmountDues, 6880);
   assert.equal(summary.totalSalesDues, -1380);
-  assert.equal(summary.expensePercentage, 11);
+  assert.equal(summary.totalExpenses, 1500);
+  assert.equal(summary.expensePercentage, 16);
   assert.equal(summary.salesPercentage, 114);
   assert.equal(summary.paymentPercentage, 40);
 });
 
-test('officer summary recognizes saved office and depot category labels', () => {
+test('officer summary combines legacy company, office and depot categories as office payment', () => {
   const summary = calculateOfficerFinancials({
     payments: [
       { paymentType: 'Office Pay', amount: 100 },
@@ -49,8 +50,9 @@ test('officer summary recognizes saved office and depot category labels', () => 
     ]
   });
 
-  assert.equal(summary.paymentAndExpense.officePay, 269);
+  assert.equal(summary.paymentAndExpense.officePayment, 349);
   assert.equal(summary.totalReceivedAmount, 349);
+  assert.equal(summary.totalExpenses, 349);
 });
 
 test('collected payments produce the expected ratio for a positive receivable', () => {
@@ -78,7 +80,10 @@ test('payment percentage remains zero for zero or negative receivables', () => {
 
 test('unknown payment categories are not silently counted as dealer collections', () => {
   const summary = calculateOfficerFinancials({
-    payments: [{ paymentType: 'unrecognized category', amount: 500 }]
+    payments: [
+      { paymentType: 'unrecognized category', amount: 500 },
+      { category: 'unrecognized category', amount: 250 }
+    ]
   });
 
   assert.equal(summary.totalReceivedAmount, 0);

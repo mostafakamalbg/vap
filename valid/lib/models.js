@@ -147,7 +147,7 @@ const paymentSchema = new Schema({
   session: { type: String, required: true, trim: true, maxlength: 100, index: true },
   paymentType: {
     type: String,
-    enum: ['dealer_collection', 'company_transfer', 'office_pay', 'salary', 'vehicle_rent', 'lc_commission'],
+    enum: ['dealer_collection', 'office_payment', 'salary', 'vehicle_rent', 'lc_commission'],
     default: 'dealer_collection',
     index: true
   },
@@ -176,7 +176,7 @@ const orderSchema = new Schema({
 orderSchema.index({ invoiceNo: 1 }, { unique: true, sparse: true });
 
 const paymentAndExpenseSchema = new Schema({
-  officePay: { type: Number, default: 0 },
+  officePayment: { type: Number, default: 0 },
   fare: { type: Number, default: 0 },
   salary: { type: Number, default: 0 },
   lc: { type: Number, default: 0 }

@@ -93,7 +93,8 @@ export default function DashboardReports() {
     returns: sum.returns + party.returns,
     netSales: sum.netSales + party.netSales,
     salary: sum.salary + party.salary,
-    officePay: sum.officePay + party.officePay,
+    officePayment: sum.officePayment + party.officePayment,
+    totalExpenses: sum.totalExpenses + party.officePayment + party.salary + party.fare + party.lc,
     fare: sum.fare + party.fare,
     lc: sum.lc + party.lc,
     invoicePaid: sum.invoicePaid + party.invoicePaid,
@@ -104,8 +105,8 @@ export default function DashboardReports() {
     dues: sum.dues + party.dues,
     ledgerDues: sum.ledgerDues + party.ledgerDues
   }), {
-    previousDue: 0, sales: 0, returns: 0, netSales: 0, salary: 0, officePay: 0,
-    fare: 0, lc: 0, invoicePaid: 0, collection: 0, totalCollection: 0,
+    previousDue: 0, sales: 0, returns: 0, netSales: 0, salary: 0, officePayment: 0,
+    totalExpenses: 0, fare: 0, lc: 0, invoicePaid: 0, collection: 0, totalCollection: 0,
     actualReceived: 0, previousPlusNetSales: 0, dues: 0, ledgerDues: 0
   });
   const totals = officers.reduce((sum, officer) => ({
@@ -114,7 +115,8 @@ export default function DashboardReports() {
     sales: sum.sales + officer.salesAmount,
     returns: sum.returns + officer.returnAmount,
     previousPlusNetSales: sum.previousPlusNetSales + officer.previousPlusNetSales,
-    officePay: sum.officePay + officer.paymentAndExpense.officePay,
+    officePayment: sum.officePayment + officer.paymentAndExpense.officePayment,
+    expenses: sum.expenses + officer.totalExpenses,
     fare: sum.fare + officer.paymentAndExpense.fare,
     salary: sum.salary + officer.paymentAndExpense.salary,
     lc: sum.lc + officer.paymentAndExpense.lc,
@@ -123,7 +125,7 @@ export default function DashboardReports() {
     salesDues: sum.salesDues + officer.totalSalesDues
   }), {
     target: 0, lastDue: 0, sales: 0, returns: 0, previousPlusNetSales: 0,
-    officePay: 0, fare: 0, salary: 0, lc: 0, received: 0, dues: 0,
+    officePayment: 0, expenses: 0, fare: 0, salary: 0, lc: 0, received: 0, dues: 0,
     salesDues: 0
   });
   const periodLabel = period === 'month'
@@ -221,7 +223,7 @@ export default function DashboardReports() {
                 <th rowSpan="2" className="px-2 py-1">Sales Amount (Tk)</th>
                 <th rowSpan="2" className="px-2 py-1">Return Amount (Tk)</th>
                 <th rowSpan="2" className="px-2 py-1">Previous + Net Sales (Tk)</th>
-                <th colSpan="4" className="px-2 py-1 text-center">Payment &amp; Expense</th>
+                <th colSpan="5" className="px-2 py-1 text-center">Payment &amp; Expense</th>
                 <th rowSpan="2" className="px-2 py-1">Total Received Amount</th>
                 <th rowSpan="2" className="px-2 py-1">Total Amount Dues</th>
                 <th rowSpan="2" className="px-2 py-1">Total Sales Dues</th>
@@ -229,8 +231,9 @@ export default function DashboardReports() {
                 <th rowSpan="2" className="px-2 py-1">Payment Percentage (%)</th>
               </tr>
               <tr>
-                <th className="px-2 py-1">Office Pay</th><th className="px-2 py-1">Fare</th>
+                <th className="px-2 py-1">অফিস পেমেন্ট</th><th className="px-2 py-1">Fare</th>
                 <th className="px-2 py-1">Salary</th><th className="px-2 py-1">L/C</th>
+                <th className="px-2 py-1">মোট খরচ</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-slate-700">
@@ -241,8 +244,9 @@ export default function DashboardReports() {
                   <td className="px-2 py-1">{amount(period === 'year' ? officer.yearlyTarget : officer.sessionTarget)}</td><td className="px-2 py-1">{amount(officer.lastDue)}</td>
                   <td className="px-2 py-1">{amount(officer.salesAmount)}</td><td className="px-2 py-1">{amount(officer.returnAmount)}</td>
                   <td className="px-2 py-1 font-semibold">{amount(officer.previousPlusNetSales)}</td>
-                  <td className="px-2 py-1">{amount(officer.paymentAndExpense.officePay)}</td><td className="px-2 py-1">{amount(officer.paymentAndExpense.fare)}</td>
+                  <td className="px-2 py-1">{amount(officer.paymentAndExpense.officePayment)}</td><td className="px-2 py-1">{amount(officer.paymentAndExpense.fare)}</td>
                   <td className="px-2 py-1">{amount(officer.paymentAndExpense.salary)}</td><td className="px-2 py-1">{amount(officer.paymentAndExpense.lc)}</td>
+                  <td className="px-2 py-1">{amount(officer.totalExpenses)}</td>
                   <td className="px-2 py-1 font-bold text-emerald-800">{amount(officer.totalReceivedAmount)}</td>
                   <td className="px-2 py-1 font-bold text-rose-700">{amount(officer.totalAmountDues)}</td>
                   <td className="px-2 py-1">{amount(officer.totalSalesDues)}</td>
@@ -253,13 +257,14 @@ export default function DashboardReports() {
                 <td colSpan="2" className="sticky left-0 bg-emerald-50 px-2 py-1 text-left">TOTAL</td>
                 <td className="px-2 py-1">{amount(totals.target)}</td><td className="px-2 py-1">{amount(totals.lastDue)}</td>
                 <td className="px-2 py-1">{amount(totals.sales)}</td><td className="px-2 py-1">{amount(totals.returns)}</td>
-                <td className="px-2 py-1">{amount(totals.previousPlusNetSales)}</td><td className="px-2 py-1">{amount(totals.officePay)}</td>
+                <td className="px-2 py-1">{amount(totals.previousPlusNetSales)}</td><td className="px-2 py-1">{amount(totals.officePayment)}</td>
                 <td className="px-2 py-1">{amount(totals.fare)}</td><td className="px-2 py-1">{amount(totals.salary)}</td>
-                <td className="px-2 py-1">{amount(totals.lc)}</td><td className="px-2 py-1">{amount(totals.received)}</td>
+                <td className="px-2 py-1">{amount(totals.lc)}</td><td className="px-2 py-1">{amount(totals.expenses)}</td>
+                <td className="px-2 py-1">{amount(totals.received)}</td>
                 <td className="px-2 py-1">{amount(totals.dues)}</td>
                 <td className="px-2 py-1">{amount(totals.salesDues)}</td><td className="px-2 py-1">—</td><td className="px-2 py-1">—</td>
               </tr>
-              {!officers.length && <tr><td colSpan="16" className="px-4 py-10 text-center text-slate-500">{loading ? 'লাইভ রিপোর্ট লোড হচ্ছে…' : 'এই সময়সীমায় কোনো অফিসার বা লেনদেন নেই।'}</td></tr>}
+              {!officers.length && <tr><td colSpan="17" className="px-4 py-10 text-center text-slate-500">{loading ? 'লাইভ রিপোর্ট লোড হচ্ছে…' : 'এই সময়সীমায় কোনো অফিসার বা লেনদেন নেই।'}</td></tr>}
             </tbody>
           </table>
         </TableFrame>
@@ -275,6 +280,7 @@ export default function DashboardReports() {
               ['Session Target', amount(selected.sessionTarget)],
               ['Sales Achievement', `${amount(selected.totalNetSales)} • ${selected.salesPercentage}%`],
               ['Total Invoices', number(selected.invoiceCount)],
+              ['মোট খরচ', amount(selected.totalExpenses)],
               ['Total Dues', amount(selected.totalAmountDues)],
               ['Total Net Sales', amount(selected.totalNetSales)],
               ['Total Sales Dues', amount(selected.totalSalesDues)],
@@ -298,7 +304,7 @@ export default function DashboardReports() {
             <TableFrame>
               <table className="officer-party-table w-full min-w-[1400px] border-separate border-spacing-0 text-right text-[10px]">
                 <thead className="sticky top-0 z-10 bg-emerald-900 text-white"><tr>
-                  {['SL', 'ডিলারের নাম', 'Previous Dues', 'Sales Amount (Tk)', 'Return Goods (Tk)', 'Actual Sales (Tk)', 'Salary', 'Depot', 'Fare', 'L/C', 'Received (Amount Tk)', 'Dues'].map((header) => <th key={header} className="px-2 py-1">{header}</th>)}
+                  {['SL', 'ডিলারের নাম', 'Previous Dues', 'Sales Amount (Tk)', 'Return Goods (Tk)', 'Actual Sales (Tk)', 'Salary', 'অফিস পেমেন্ট', 'Fare', 'L/C', 'Received (Amount Tk)', 'Dues'].map((header) => <th key={header} className="px-2 py-1">{header}</th>)}
                 </tr></thead>
                 <tbody className="divide-y divide-slate-100">
                   {selected.parties.map((party) => (
@@ -306,7 +312,7 @@ export default function DashboardReports() {
                       <td className="px-2 py-1">{party.slNo}</td><td className="px-2 py-1 text-left">{party.dealerName || '—'}</td>
                       <td className="px-2 py-1">{amount(party.previousDue)}</td><td className="px-2 py-1">{amount(party.sales)}</td>
                       <td className="px-2 py-1">{amount(party.returns)}</td><td className="px-2 py-1 font-bold">{amount(party.netSales)}</td>
-                      <td className="px-2 py-1">{amount(party.salary)}</td><td className="px-2 py-1">{amount(party.officePay)}</td>
+                      <td className="px-2 py-1">{amount(party.salary)}</td><td className="px-2 py-1">{amount(party.officePayment)}</td>
                       <td className="px-2 py-1">{amount(party.fare)}</td><td className="px-2 py-1">{amount(party.lc)}</td>
                       <td className="px-2 py-1 font-bold text-emerald-800">{amount(party.actualReceived)}</td>
                       <td className="px-2 py-1 font-bold text-rose-700">{amount(party.dues)}</td>
@@ -319,7 +325,7 @@ export default function DashboardReports() {
                     <td className="px-2 py-1">{amount(selectedPartyTotals.returns)}</td>
                     <td className="px-2 py-1">{amount(selectedPartyTotals.netSales)}</td>
                     <td className="px-2 py-1">{amount(selectedPartyTotals.salary)}</td>
-                    <td className="px-2 py-1">{amount(selectedPartyTotals.officePay)}</td>
+                    <td className="px-2 py-1">{amount(selectedPartyTotals.officePayment)}</td>
                     <td className="px-2 py-1">{amount(selectedPartyTotals.fare)}</td>
                     <td className="px-2 py-1">{amount(selectedPartyTotals.lc)}</td>
                     <td className="px-2 py-1">{amount(selectedPartyTotals.actualReceived)}</td>
@@ -342,8 +348,8 @@ export default function DashboardReports() {
             <TableFrame>
               <table className="officer-monthly-party-table w-full min-w-[1400px] border-separate border-spacing-0 text-right text-[10px]">
                 <thead className="sticky top-0 z-10 bg-emerald-900 text-white">
-                  <tr><th rowSpan="2" className="border border-black px-2 py-1">SL</th><th rowSpan="2" className="border border-black px-2 py-1 text-left">Name of the party</th><th rowSpan="2" className="border border-black px-2 py-1">Last Month Dues</th><th colSpan="3" className="border border-black px-2 py-1 text-center">Present Month</th><th rowSpan="2" className="border border-black px-2 py-1">Last &amp; Present Net Sales</th><th colSpan="6" className="border border-black px-2 py-1 text-center">Present Month Collection &amp; Expenses</th></tr>
-                  <tr>{['Sales', 'Return', 'Net Sales', 'Salary', 'Collection', 'Fare', 'L/C', 'Total Collection', 'Dues'].map((header) => <th key={header} className="border border-black px-2 py-1">{header}</th>)}</tr>
+                  <tr><th rowSpan="2" className="border border-black px-2 py-1">SL</th><th rowSpan="2" className="border border-black px-2 py-1 text-left">Name of the party</th><th rowSpan="2" className="border border-black px-2 py-1">Last Month Dues</th><th colSpan="3" className="border border-black px-2 py-1 text-center">Present Month</th><th rowSpan="2" className="border border-black px-2 py-1">Last &amp; Present Net Sales</th><th colSpan="8" className="border border-black px-2 py-1 text-center">Present Month Collection &amp; Expenses</th></tr>
+                  <tr>{['Sales', 'Return', 'Net Sales', 'Salary', 'অফিস পেমেন্ট', 'Collection', 'Fare', 'L/C', 'Total Expenses', 'Total Collection', 'Dues'].map((header) => <th key={header} className="border border-black px-2 py-1">{header}</th>)}</tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {selected.parties.map((party) => (
@@ -352,8 +358,10 @@ export default function DashboardReports() {
                       <td className="border border-black px-2 py-1">{amount(party.previousDue)}</td><td className="border border-black px-2 py-1">{amount(party.sales)}</td>
                       <td className="border border-black px-2 py-1">{amount(party.returns)}</td><td className="border border-black px-2 py-1">{amount(party.netSales)}</td>
                       <td className="border border-black px-2 py-1 font-semibold">{amount(party.previousPlusNetSales)}</td><td className="border border-black px-2 py-1">{amount(party.salary)}</td>
-                      <td className="border border-black px-2 py-1">{amount(party.collection + party.invoicePaid)}</td><td className="border border-black px-2 py-1">{amount(party.fare)}</td>
-                      <td className="border border-black px-2 py-1">{amount(party.lc)}</td><td className="border border-black px-2 py-1 font-bold">{amount(party.totalCollection + party.invoicePaid)}</td>
+                      <td className="border border-black px-2 py-1">{amount(party.officePayment)}</td><td className="border border-black px-2 py-1">{amount(party.collection + party.invoicePaid)}</td>
+                      <td className="border border-black px-2 py-1">{amount(party.fare)}</td><td className="border border-black px-2 py-1">{amount(party.lc)}</td>
+                      <td className="border border-black px-2 py-1">{amount(party.officePayment + party.salary + party.fare + party.lc)}</td>
+                      <td className="border border-black px-2 py-1 font-bold">{amount(party.totalCollection + party.invoicePaid)}</td>
                       <td className="border border-black px-2 py-1 font-bold text-rose-700">{amount(party.ledgerDues - party.invoicePaid)}</td>
                     </tr>
                   ))}
@@ -366,13 +374,15 @@ export default function DashboardReports() {
                     <td className="border border-black px-2 py-1">{amount(selectedPartyTotals.netSales)}</td>
                     <td className="border border-black px-2 py-1">{amount(selectedPartyTotals.previousPlusNetSales)}</td>
                     <td className="border border-black px-2 py-1">{amount(selectedPartyTotals.salary)}</td>
+                    <td className="border border-black px-2 py-1">{amount(selectedPartyTotals.officePayment)}</td>
                     <td className="border border-black px-2 py-1">{amount(selectedPartyTotals.collection + selectedPartyTotals.invoicePaid)}</td>
                     <td className="border border-black px-2 py-1">{amount(selectedPartyTotals.fare)}</td>
                     <td className="border border-black px-2 py-1">{amount(selectedPartyTotals.lc)}</td>
+                    <td className="border border-black px-2 py-1">{amount(selectedPartyTotals.totalExpenses)}</td>
                     <td className="border border-black px-2 py-1">{amount(selectedPartyTotals.totalCollection + selectedPartyTotals.invoicePaid)}</td>
                     <td className="border border-black px-2 py-1">{amount(selectedPartyTotals.ledgerDues - selectedPartyTotals.invoicePaid)}</td>
                   </tr>
-                  {!selected.parties.length && <tr><td colSpan="13" className="px-4 py-8 text-center text-slate-500">কোনো পার্টি লেনদেন পাওয়া যায়নি।</td></tr>}
+                  {!selected.parties.length && <tr><td colSpan="15" className="px-4 py-8 text-center text-slate-500">কোনো পার্টি লেনদেন পাওয়া যায়নি।</td></tr>}
                 </tbody>
               </table>
             </TableFrame>

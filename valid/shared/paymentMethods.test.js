@@ -1,33 +1,54 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  LEDGER_PAYMENT_TYPES,
   PAYMENT_TYPES,
+  isDealerCollection,
   resolvePaymentRecordType,
   resolvePaymentType
 } from './paymentMethods.js';
 
-test('office and depot payment labels resolve to the canonical office_pay category', () => {
-  const officePay = PAYMENT_TYPES.find((entry) => entry.value === 'office_pay');
+test('office payment is the only active category for legacy company, office and depot values', () => {
+  const officePayment = PAYMENT_TYPES.find((entry) => entry.value === 'office_payment');
 
-  assert.equal(officePay.label, 'অফিস / ডিপো');
+  assert.equal(officePayment.label, 'অফিস পেমেন্ট');
+  assert.equal(PAYMENT_TYPES.some((entry) => ['company_transfer', 'office_pay'].includes(entry.value)), false);
+  assert.ok(LEDGER_PAYMENT_TYPES.some((entry) => entry.value === 'office_payment'));
+
   [
+    'office_payment',
+    ' OFFICE PAYMENT ',
     'office_pay',
     'Office Pay',
     'Office / Depot',
     ' OFFICE /   DEPOT ',
+    'office_depot',
+    'Office',
     'Depot',
     'Depot Payment',
     'অফিস / ডিপো',
+    'অফিস/ডিপো',
     'অফিস   /   ডিপো',
     'অফিস ও ডিপো',
-    'office_depot',
-    'অফিস খরচ',
-    'ডিপো'
-  ].forEach((label) => assert.equal(resolvePaymentType(label), 'office_pay'));
-  assert.equal(resolvePaymentRecordType({ purpose: 'Office Pay' }), 'office_pay');
-  assert.equal(resolvePaymentRecordType({ category: 'office_depot' }), 'office_pay');
+    'office expense',
+    'company_transfer',
+    'Company Transfer',
+    'কোম্পানিতে টাকা পাঠানো',
+    'টাকা কোম্পানিতে পাঠানো'
+  ].forEach((label) => assert.equal(resolvePaymentType(label), 'office_payment'));
+
+  assert.equal(resolvePaymentRecordType({ purpose: 'Office Pay' }), 'office_payment');
+  assert.equal(resolvePaymentRecordType({ category: 'office_depot' }), 'office_payment');
+  assert.equal(isDealerCollection({ paymentType: 'company_transfer' }), true);
+  assert.equal(resolvePaymentType('বেতন'), 'salary');
+  assert.equal(resolvePaymentType('গাড়ি ভাড়া'), 'vehicle_rent');
+  assert.equal(resolvePaymentType('লেস কমিশন (LC)'), 'lc_commission');
+});
+
+test('the first recognized category wins and unknown populated categories are not defaulted', () => {
   assert.equal(resolvePaymentRecordType({
     paymentType: 'unrecognized',
     expenseType: 'Depot'
-  }), 'office_pay');
+  }), 'office_payment');
+  assert.equal(resolvePaymentRecordType({ category: 'unrecognized category' }), '');
 });

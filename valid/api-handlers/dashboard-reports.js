@@ -5,6 +5,9 @@ import { normalizeOfficerCode } from '../shared/codes.js';
 import { getOfficerSalesTarget } from '../shared/officerSalesTargets.js';
 import {
   getPaymentRecordTypeValue,
+  getPaymentTypeAliases,
+  PAYMENT_TYPE_FIELDS,
+  PAYMENT_TYPES,
   resolvePaymentRecordType
 } from '../shared/paymentMethods.js';
 import { dateRangeCondition, parseReportMonth, parseSessionDateRange } from '../shared/reportDateFilters.js';
@@ -12,44 +15,9 @@ import { getInvoiceSessionForDate, normalizeSessionText } from '../shared/sessio
 import { ADMIN_ROLES, OFFICER_ROLE, isAdminRole } from '../shared/roles.js';
 
 const DAMAGE_TYPES = ['factory_damage', 'depot_factory_return'];
-const RECEIPT_TYPES = new Set(['dealer_collection', 'company_transfer']);
-const RECEIPT_ALIASES = [
-  'dealer_collection',
-  'company_transfer',
-  'company transfer',
-  'company payment',
-  'কোম্পানিতে টাকা পাঠানো'
-];
-const OFFICE_PAY_ALIASES = [
-  'office_pay',
-  'office pay',
-  'office payment',
-  'office expense',
-  'office/depot',
-  'office / depot',
-  'office depot',
-  'depot',
-  'depot pay',
-  'depot payment',
-  'অফিস খরচ',
-  'অফিস/ডিপো',
-  'অফিস / ডিপো',
-  'অফিস ডিপো',
-  'ডিপো',
-  'ডিপো খরচ'
-];
-const OFFICE_PAY_PATTERNS = [
-  '^office\\s*(?:pay(?:ment)?|expense)$',
-  '^office\\s*/\\s*depot$',
-  '^office(?:[_\\s-]+and)?[_\\s-]+depot$',
-  '^depot(?:\\s+(?:pay|payment))?$',
-  '^অফিস\\s*(?:/\\s*ডিপো|ও\\s*ডিপো|এবং\\s*ডিপো|খরচ)$',
-  '^ডিপো\\s*/\\s*অফিস$',
-  '^ডিপো(?:\\s+খরচ)?$'
-];
-const RECEIPT_PATTERNS = ['^company\\s+(?:transfer|payment)$'];
+const RECEIPT_TYPES = new Set(['dealer_collection']);
 const EXPENSE_FIELDS = {
-  office_pay: 'officePay',
+  office_payment: 'officePayment',
   salary: 'salary',
   vehicle_rent: 'fare',
   lc_commission: 'lc'
@@ -154,28 +122,59 @@ function invoicePipeline(match) {
 }
 
 export function paymentPipeline(match) {
-  const paymentTypes = [
-    'paymentType',
-    'purpose',
-    'category',
-    'expenseType',
-    'expenseCategory',
-    'paymentPurpose',
-    'transactionType',
-    'type'
-  ].map((field) => ({
-    $toLower: { $trim: { input: { $ifNull: [`$${field}`, ''] } } }
-  }));
-  const matchesPaymentType = (aliases, patterns = []) => ({
-    $or: [
-      ...paymentTypes.flatMap((paymentType) => [
-        { $in: [paymentType, aliases] },
-        ...patterns.map((regex) => ({
-          $regexMatch: { input: paymentType, regex }
-        }))
-      ])
-    ]
+  const normalizeTypeField = (field) => ({
+    $toLower: {
+      $trim: {
+        input: {
+          $regexReplace: {
+            input: {
+              $regexReplace: {
+                input: {
+                  $regexReplace: {
+                    input: {
+                      $convert: {
+                        input: `$${field}`,
+                        to: 'string',
+                        onError: '',
+                        onNull: ''
+                      }
+                    },
+                    regex: '[._-]+',
+                    replacement: ' '
+                  }
+                },
+                regex: '\\s*/\\s*',
+                replacement: '/'
+              }
+            },
+            regex: '\\s+',
+            replacement: ' '
+          }
+        }
+      }
+    }
   });
+  const paymentTypeBranches = PAYMENT_TYPE_FIELDS.flatMap((field) => (
+    PAYMENT_TYPES.map((type) => ({
+      case: { $in: [normalizeTypeField(field), getPaymentTypeAliases(type.value)] },
+      then: type.value
+    }))
+  ));
+  const blankCategoryFields = PAYMENT_TYPE_FIELDS
+    .filter((field) => field !== 'type')
+    .map((field) => ({ $eq: [normalizeTypeField(field), ''] }));
+  const resolvedPaymentType = {
+    $switch: {
+      branches: paymentTypeBranches,
+      default: {
+        $cond: [
+          { $and: blankCategoryFields },
+          'dealer_collection',
+          ''
+        ]
+      }
+    }
+  };
   return [
     {
       $match: {
@@ -201,6 +200,7 @@ export function paymentPipeline(match) {
       }
     },
     { $set: { dealerProfile: { $first: '$dealerProfile' } } },
+    { $set: { resolvedPaymentType } },
     {
       $group: {
         _id: {
@@ -229,16 +229,16 @@ export function paymentPipeline(match) {
         collection: {
           $sum: {
             $cond: [
-              matchesPaymentType(RECEIPT_ALIASES, RECEIPT_PATTERNS),
+              { $eq: ['$resolvedPaymentType', 'dealer_collection'] },
               { $ifNull: ['$amount', 0] },
               0
             ]
           }
         },
-        officePay: {
+        officePayment: {
           $sum: {
             $cond: [
-              matchesPaymentType(OFFICE_PAY_ALIASES, OFFICE_PAY_PATTERNS),
+              { $eq: ['$resolvedPaymentType', 'office_payment'] },
               { $ifNull: ['$amount', 0] },
               0
             ]
@@ -247,7 +247,7 @@ export function paymentPipeline(match) {
         salary: {
           $sum: {
             $cond: [
-              matchesPaymentType(['salary', 'বেতন'], ['^salary$', '^বেতন$']),
+              { $eq: ['$resolvedPaymentType', 'salary'] },
               { $ifNull: ['$amount', 0] },
               0
             ]
@@ -256,10 +256,7 @@ export function paymentPipeline(match) {
         fare: {
           $sum: {
             $cond: [
-              matchesPaymentType(
-                ['vehicle_rent', 'vehicle rent', 'গাড়ি ভাড়া', 'ভাড়া'],
-                ['^vehicle[_\\s-]+rent$', '^গাড়ি\\s+ভাড়া$', '^ভাড়া$']
-              ),
+              { $eq: ['$resolvedPaymentType', 'vehicle_rent'] },
               { $ifNull: ['$amount', 0] },
               0
             ]
@@ -268,10 +265,7 @@ export function paymentPipeline(match) {
         lc: {
           $sum: {
             $cond: [
-              matchesPaymentType(
-                ['lc_commission', 'lc commission', 'লেস কমিশন (lc)', 'lc'],
-                ['^lc[_\\s-]+commission$', '^লেস কমিশন\\s*\\(lc\\)$']
-              ),
+              { $eq: ['$resolvedPaymentType', 'lc_commission'] },
               { $ifNull: ['$amount', 0] },
               0
             ]
@@ -322,7 +316,7 @@ function addPaymentRows(groups, rows, { period, periodValue, periodRange, before
         mobileNo: payment.dealerPhone || ''
       },
       collection: 0,
-      officePay: 0,
+      officePayment: 0,
       salary: 0,
       fare: 0,
       lc: 0
@@ -482,7 +476,7 @@ export default async function handler(req, res) {
           invoicePaid: 0,
           invoiceCount: 0,
           salary: 0,
-          officePay: 0,
+          officePayment: 0,
           fare: 0,
           lc: 0,
           collection: 0
@@ -500,7 +494,7 @@ export default async function handler(req, res) {
       };
       priorOfficerInvoices.forEach((row) => addInvoice(row, true));
       periodOfficerInvoices.forEach((row) => addInvoice(row, false));
-      const expenses = { officePay: 0, fare: 0, salary: 0, lc: 0 };
+      const expenses = { officePayment: 0, fare: 0, salary: 0, lc: 0 };
       const collectPayments = (paymentRows, isPrior) => paymentRows.forEach((row) => {
         const group = row._id;
         const dealerKey = group.dealerId || group.dealerName || group.mobileNo;
@@ -515,21 +509,21 @@ export default async function handler(req, res) {
             invoicePaid: 0,
             invoiceCount: 0,
             salary: 0,
-            officePay: 0,
+            officePayment: 0,
             fare: 0,
             lc: 0,
             collection: 0
           };
           if (isPrior) {
             party.previousDue -= roundAmount(row.collection)
-              + roundAmount(row.officePay)
+              + roundAmount(row.officePayment)
               + roundAmount(row.salary)
               + roundAmount(row.fare)
               + roundAmount(row.lc);
           }
           else {
             party.collection += roundAmount(row.collection);
-            party.officePay += roundAmount(row.officePay);
+            party.officePayment += roundAmount(row.officePayment);
             party.salary += roundAmount(row.salary);
             party.fare += roundAmount(row.fare);
             party.lc += roundAmount(row.lc);
@@ -537,7 +531,7 @@ export default async function handler(req, res) {
           partyMap.set(dealerKey, party);
         }
         if (!isPrior) {
-          expenses.officePay += roundAmount(row.officePay);
+          expenses.officePayment += roundAmount(row.officePayment);
           expenses.fare += roundAmount(row.fare);
           expenses.salary += roundAmount(row.salary);
           expenses.lc += roundAmount(row.lc);
@@ -548,7 +542,7 @@ export default async function handler(req, res) {
 
       const parties = [...partyMap.values()].map((party, partyIndex) => {
         const netSales = party.sales - party.returns;
-        const expensesForParty = party.officePay + party.salary + party.fare + party.lc;
+        const expensesForParty = party.officePayment + party.salary + party.fare + party.lc;
         const actualReceived = party.invoicePaid + party.collection + expensesForParty;
         const previousPlusNetSales = party.previousDue + netSales;
         const totalCollection = expensesForParty + party.collection;

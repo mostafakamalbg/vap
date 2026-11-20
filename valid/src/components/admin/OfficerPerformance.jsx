@@ -59,20 +59,22 @@ export default function OfficerPerformance() {
   const totalCompanyReturns = officerSummaries.reduce((acc, curr) => acc + (curr?.returnAmount || 0), 0);
   const totalCompanyCartons = officerSummaries.reduce((acc, curr) => acc + (curr?.totalCartonsSold || 0), 0);
   const totalCompanyCollected = officerSummaries.reduce((acc, curr) => acc + (curr?.totalCollected || 0), 0);
+  const totalCompanyExpenses = officerSummaries.reduce((acc, curr) => acc + (curr?.totalExpenses || 0), 0);
   const tableTotals = filteredOfficers.reduce((totals, officer) => ({
     invoices: totals.invoices + officer.invoiceCount,
     cartons: totals.cartons + officer.totalCartonsSold,
     sales: totals.sales + officer.salesAmount,
     returns: totals.returns + officer.returnAmount,
     collected: totals.collected + officer.totalCollected,
-    officePay: totals.officePay + officer.paymentAndExpense.officePay,
+    officePayment: totals.officePayment + officer.paymentAndExpense.officePayment,
     salary: totals.salary + officer.paymentAndExpense.salary,
     fare: totals.fare + officer.paymentAndExpense.fare,
     lc: totals.lc + officer.paymentAndExpense.lc,
+    expenses: totals.expenses + officer.totalExpenses,
     due: totals.due + officer.totalAmountDues
   }), {
     invoices: 0, cartons: 0, sales: 0, returns: 0, collected: 0,
-    officePay: 0, salary: 0, fare: 0, lc: 0, due: 0
+    officePayment: 0, salary: 0, fare: 0, lc: 0, expenses: 0, due: 0
   });
 
   const handleSubmitNewOfficer = (e) => {
@@ -159,7 +161,7 @@ export default function OfficerPerformance() {
       )}
 
       {/* KPI Overview: Client requested Cartons only, NOT pieces */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
           <div>
             <p className="text-xs font-semibold text-slate-500 uppercase">মোট কার্টুন বিক্রয় (Total Cartons)</p>
@@ -202,6 +204,16 @@ export default function OfficerPerformance() {
             <span className="font-bold text-base">৳</span>
           </div>
         </div>
+
+        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+          <div>
+            <p className="text-xs font-semibold text-slate-500 uppercase">মোট খরচ</p>
+            <p className="text-2xl font-black text-slate-800 mt-1 font-mono">৳{totalCompanyExpenses.toLocaleString()}</p>
+          </div>
+          <div className="w-10 h-10 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center">
+            <TrendingUp className="w-5 h-5" />
+          </div>
+        </div>
       </div>
 
       {/* Officers Table */}
@@ -231,10 +243,11 @@ export default function OfficerPerformance() {
                 <th className="px-1.5 py-1 text-right">মোট সেলস (৳)</th>
                 <th className="px-1.5 py-1 text-right">মোট ফেরত (৳)</th>
                 <th className="px-1.5 py-1 text-right">মোট আদায় (৳)</th>
-                <th className="px-1.5 py-1 text-right">অফিস (৳)</th>
+                <th className="px-1.5 py-1 text-right">অফিস পেমেন্ট (৳)</th>
                 <th className="px-1.5 py-1 text-right">বেতন (৳)</th>
                 <th className="px-1.5 py-1 text-right">ভাড়া (৳)</th>
                 <th className="px-1.5 py-1 text-right">LC (৳)</th>
+                <th className="px-1.5 py-1 text-right">মোট খরচ (৳)</th>
                 <th className="px-1.5 py-1 text-right">মোট পাওনা (৳)</th>
                 <th className="px-1.5 py-1 text-center">পেমেন্ট হার</th>
                 <th className="no-print px-1.5 py-1 text-center">অ্যাকশন</th>
@@ -311,11 +324,15 @@ export default function OfficerPerformance() {
                     ৳{Math.round(off.totalCollected).toLocaleString()}
                   </td>
 
-                  {['officePay', 'salary', 'fare', 'lc'].map((field) => (
+                  {['officePayment', 'salary', 'fare', 'lc'].map((field) => (
                     <td key={field} className="px-1.5 py-1 text-right font-mono">
                       ৳{Math.round(off.paymentAndExpense[field]).toLocaleString()}
                     </td>
                   ))}
+
+                  <td className="px-1.5 py-1 text-right font-mono font-bold">
+                    ৳{Math.round(off.totalExpenses).toLocaleString()}
+                  </td>
 
                   <td className="px-1.5 py-1 text-right font-mono font-bold text-rose-700">
                     ৳{Math.round(off.totalAmountDues).toLocaleString()}
@@ -344,10 +361,11 @@ export default function OfficerPerformance() {
                 <td className="px-1.5 py-1 text-right">৳{Math.round(tableTotals.sales).toLocaleString()}</td>
                 <td className="px-1.5 py-1 text-right">৳{Math.round(tableTotals.returns).toLocaleString()}</td>
                 <td className="px-1.5 py-1 text-right">৳{Math.round(tableTotals.collected).toLocaleString()}</td>
-                <td className="px-1.5 py-1 text-right">৳{Math.round(tableTotals.officePay).toLocaleString()}</td>
+                <td className="px-1.5 py-1 text-right">৳{Math.round(tableTotals.officePayment).toLocaleString()}</td>
                 <td className="px-1.5 py-1 text-right">৳{Math.round(tableTotals.salary).toLocaleString()}</td>
                 <td className="px-1.5 py-1 text-right">৳{Math.round(tableTotals.fare).toLocaleString()}</td>
                 <td className="px-1.5 py-1 text-right">৳{Math.round(tableTotals.lc).toLocaleString()}</td>
+                <td className="px-1.5 py-1 text-right">৳{Math.round(tableTotals.expenses).toLocaleString()}</td>
                 <td className="px-1.5 py-1 text-right">৳{Math.round(tableTotals.due).toLocaleString()}</td>
                 <td className="px-1.5 py-1 text-center">—</td>
                 <td className="no-print px-1.5 py-1">—</td>
@@ -408,7 +426,7 @@ export default function OfficerPerformance() {
               </div>
               <div className="col-span-2 grid grid-cols-2 gap-2 sm:col-span-3 sm:grid-cols-4">
                 {[
-                  ['অফিস / ডিপো', selectedOfficerDetail.paymentAndExpense.officePay],
+                  ['অফিস পেমেন্ট', selectedOfficerDetail.paymentAndExpense.officePayment],
                   ['বেতন', selectedOfficerDetail.paymentAndExpense.salary],
                   ['ভাড়া', selectedOfficerDetail.paymentAndExpense.fare],
                   ['LC', selectedOfficerDetail.paymentAndExpense.lc]

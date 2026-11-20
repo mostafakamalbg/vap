@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { AdminSeat, DealerSalesTarget, SalesOfficer, User } from './models.js';
+import { AdminSeat, DealerSalesTarget, Payment, SalesOfficer, User } from './models.js';
 import {
   ADMIN_ROLE,
   LEGACY_ADMIN_ROLE,
@@ -27,6 +27,14 @@ test('user status schema accepts canonical and legacy active values', () => {
   for (const status of USER_STATUS_VALUES) {
     assert.ok(allowedStatuses.includes(status));
   }
+});
+
+test('payment schemas expose only the canonical office payment category', () => {
+  const paymentTypes = Payment.schema.path('paymentType').enumValues;
+  assert.ok(paymentTypes.includes('office_payment'));
+  assert.equal(paymentTypes.includes('company_transfer'), false);
+  assert.equal(paymentTypes.includes('office_pay'), false);
+  assert.ok(SalesOfficer.schema.path('paymentAndExpense.officePayment'));
 });
 
 test('target uniqueness stays scoped to dealer identity and session', () => {
