@@ -45,7 +45,7 @@ export default function Navbar({ activeTab, setActiveTab }) {
     { id: 'inventory', label: t('nav.stock'), icon: Package },
     { id: 'dealer-ledger', label: t('nav.dealerLedger'), icon: Users },
     { id: 'sales-agreements', label: 'সেলস ও কালেকশন চুক্তি', icon: FileText },
-    { id: 'monthly-sales-reports', label: 'মাসিক বিক্রয় ও টার্গেট', icon: FileText },
+    { id: 'monthly-sales-reports', label: 'মাসিক বিক্রয় টার্গেট', icon: FileText },
     { id: 'officer-tracking', label: t('nav.officerTracking'), icon: UserCheck },
     { id: 'dashboard-reports', label: 'লাইভ ড্যাশবোর্ড রিপোর্ট', icon: FileText },
     { id: 'data-management', label: 'ডেটা এক্সপোর্ট/ইমপোর্ট', icon: Download },

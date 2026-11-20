@@ -19,8 +19,13 @@ test('last session due is used as the ledger opening balance', () => {
   const transactions = getDealerLedgerTransactions({
     openingDue: 100,
     lastSessionDue: 250,
+    previousDueDate: '2026-10-01',
+    previousDueSession: 'জুলাই - ডিসেম্বর 2026',
     invoices: [{ id: 'sale', date: '2026-10-01', invoiceType: 'regular', grandTotal: 500 }]
   });
   assert.equal(transactions[0].balance, 250);
+  assert.equal(transactions[0].date, '2026-10-01');
+  assert.equal(transactions[0].reference, 'জুলাই - ডিসেম্বর 2026');
+  assert.equal(transactions[0].description, 'পূর্বের বাকি পোস্টিং');
   assert.equal(transactions[transactions.length - 1].balance, 750);
 });

@@ -81,6 +81,7 @@ export default function MonthlySalesReports() {
   const [allReports, setAllReports] = useState([]);
   const [targetRecords, setTargetRecords] = useState([]);
   const [targetDrafts, setTargetDrafts] = useState({});
+  const [targetsLoading, setTargetsLoading] = useState(true);
   const [reportDraft, setReportDraft] = useState(createReportDraft);
   const [sessionFilter, setSessionFilter] = useState('ALL');
   const [monthFilter, setMonthFilter] = useState('ALL');
@@ -94,6 +95,7 @@ export default function MonthlySalesReports() {
     requestJson('/api/reports')
       .then((records) => { if (!cancelled) setAllReports(records); })
       .catch((requestError) => { if (!cancelled) setError(requestError.message); });
+    setTargetsLoading(true);
     requestJson('/api/sales-officers')
       .then((records) => {
         if (cancelled) return;
@@ -111,7 +113,8 @@ export default function MonthlySalesReports() {
         ]));
         setTargetDrafts(drafts);
       })
-      .catch((requestError) => { if (!cancelled) setError(requestError.message); });
+      .catch((requestError) => { if (!cancelled) setError(requestError.message); })
+      .finally(() => { if (!cancelled) setTargetsLoading(false); });
     return () => { cancelled = true; };
   }, [officers]);
 
@@ -286,7 +289,7 @@ export default function MonthlySalesReports() {
     <main className="report-print mx-auto max-w-7xl space-y-6 px-4 py-8">
       <header className="flex items-center justify-between rounded-2xl bg-gradient-to-r from-emerald-900 to-emerald-700 p-6 text-white">
         <div>
-          <h1 className="text-2xl font-black">মাসিক বিক্রয়, কালেকশন ও টার্গেট</h1>
+          <h1 className="text-2xl font-black">মাসিক বিক্রয় টার্গেট ও রিপোর্ট</h1>
           <p className="mt-1 text-sm text-emerald-100">রিটার্ন বাদ দিয়ে নিট বিক্রয় এবং পূর্ণাঙ্গ মাসিক রিপোর্ট পরিচালনা করুন।</p>
         </div>
         <button type="button" onClick={() => window.print()} className="no-print inline-flex items-center gap-2 rounded-lg bg-white/10 px-4 py-2 text-sm font-bold">
@@ -356,6 +359,13 @@ export default function MonthlySalesReports() {
                   </tr>
                 );
               })}
+              {!officers.length && (
+                <tr>
+                  <td colSpan={availableSessions.length + 3} className="px-4 py-8 text-center text-sm text-slate-500">
+                    {targetsLoading ? 'অফিসারদের টার্গেট লোড হচ্ছে…' : 'টার্গেট দেখানোর জন্য কোনো অফিসার পাওয়া যায়নি।'}
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -420,7 +430,7 @@ export default function MonthlySalesReports() {
             <ReportField label="রিপোর্টের মাস *" value={reportDraft.monthOfReport} required onChange={(event) => updateReportHeader('monthOfReport', event.target.value)} placeholder="October/26" />
             <label className="block text-xs font-semibold text-slate-600">সেশন *
               <select required value={reportDraft.session} onChange={(event) => updateReportHeader('session', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm">
-                {[...new Set(SESSION_OPTIONS)].map((session) => <option key={session} value={session}>{session}</option>)}
+                {availableSessions.map((session) => <option key={session} value={session}>{session}</option>)}
               </select>
             </label>
             <ReportField label="রিপোর্টিং তারিখ *" type="date" value={reportDraft.reportingDate} required onChange={(event) => updateReportHeader('reportingDate', event.target.value)} />

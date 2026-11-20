@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { getOfficerSalesTarget } from './officerSalesTargets.js';
+import { getOfficerSalesTarget, mergeOfficerSalesTargets } from './officerSalesTargets.js';
 
 const sessions = [
   {
@@ -56,4 +56,16 @@ test('dynamic session targets override legacy session defaults', () => {
     salesTargets: { 'জানুয়ারি - জুন 2027': 6100000 }
   };
   assert.equal(getOfficerSalesTarget(officer, 'January-June 2027'), 6100000);
+});
+
+test('updating other officer fields does not discard saved session targets', () => {
+  const existing = { 'জুলাই - ডিসেম্বর 2026': 1200000 };
+  assert.deepEqual(mergeOfficerSalesTargets(existing), existing);
+  assert.deepEqual(
+    mergeOfficerSalesTargets(existing, { 'জানুয়ারি - জুন 2027': 2400000 }),
+    {
+      'জুলাই - ডিসেম্বর 2026': 1200000,
+      'জানুয়ারি - জুন 2027': 2400000
+    }
+  );
 });

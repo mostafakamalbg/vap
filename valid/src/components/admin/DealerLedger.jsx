@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Users,
   PlusCircle,
@@ -49,6 +49,17 @@ const createPaymentForm = (dealerId = '', officerId = '') => ({
   note: '',
   entries: createPaymentEntries()
 });
+
+const createPreviousDueForm = () => {
+  const date = getBangladeshBusinessDate();
+  return {
+    dealerId: '',
+    officerId: '',
+    session: getInvoiceSessionForDate(date),
+    date,
+    amount: 0
+  };
+};
 
 function findDealerOfficer(dealer, officers) {
   const assignedId = String(dealer?.assignedOfficerId || dealer?.officerId || '');
@@ -110,17 +121,33 @@ export default function DealerLedger() {
   const [showAddDealerModal, setShowAddDealerModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showPreviousDueModal, setShowPreviousDueModal] = useState(false);
-  const [previousDueForm, setPreviousDueForm] = useState({
-    dealerId: '',
-    officerId: '',
-    session: INVOICE_SESSIONS[0] || '',
-    date: getBangladeshBusinessDate(),
-    amount: 0
-  });
+  const [previousDueForm, setPreviousDueForm] = useState(createPreviousDueForm);
+  const [previousDueError, setPreviousDueError] = useState('');
+  const [previousDueSaving, setPreviousDueSaving] = useState(false);
+  const [previousDueConfirmation, setPreviousDueConfirmation] = useState(null);
 
   const availableOfficers = officers;
   const [selectedDealerForLedger, setSelectedDealerForLedger] = useState(null);
+  const ledgerTriggerRef = useRef(null);
+  const wasLedgerOpenRef = useRef(false);
   const [successMsg, setSuccessMsg] = useState('');
+  const closeDealerLedger = () => setSelectedDealerForLedger(null);
+
+  useEffect(() => {
+    if (!selectedDealerForLedger) return undefined;
+    wasLedgerOpenRef.current = true;
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') setSelectedDealerForLedger(null);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedDealerForLedger]);
+
+  useEffect(() => {
+    if (selectedDealerForLedger || !wasLedgerOpenRef.current) return;
+    wasLedgerOpenRef.current = false;
+    ledgerTriggerRef.current?.focus();
+  }, [selectedDealerForLedger]);
 
   // Payment Form State
   const [paymentForm, setPaymentForm] = useState(() => (
@@ -144,6 +171,18 @@ export default function DealerLedger() {
   const dealerSummaries = dealers.map((d) => getDealerSummary(d.id));
   const ledgerTransactions = selectedDealerForLedger
     ? getDealerLedgerTransactions(selectedDealerForLedger)
+    : [];
+  const previousDueHistory = selectedDealerForLedger
+    ? selectedDealerForLedger.previousDueHistory?.length
+      ? [...selectedDealerForLedger.previousDueHistory].reverse()
+      : selectedDealerForLedger.previousDueDate
+        ? [{
+            date: selectedDealerForLedger.previousDueDate,
+            session: selectedDealerForLedger.previousDueSession,
+            amount: selectedDealerForLedger.previousDue ?? selectedDealerForLedger.lastSessionDue,
+            officerId: selectedDealerForLedger.previousDueOfficerId
+          }]
+        : []
     : [];
 
   // Totals
@@ -250,10 +289,13 @@ export default function DealerLedger() {
   const handlePreviousDueSubmit = async (event) => {
     event.preventDefault();
     if (!previousDueForm.dealerId || !previousDueForm.officerId || !previousDueForm.session
-      || !previousDueForm.date || Number(previousDueForm.amount) < 0) {
-      setSuccessMsg('ডিলার, অফিসার, সেশন, তারিখ ও বকেয়া সঠিকভাবে দিন।');
+      || !previousDueForm.date || !Number.isFinite(Number(previousDueForm.amount))
+      || Number(previousDueForm.amount) < 0) {
+      setPreviousDueError('ডিলার, অফিসার, সেশন, তারিখ ও বকেয়া সঠিকভাবে দিন।');
       return;
     }
+    setPreviousDueError('');
+    setPreviousDueSaving(true);
     try {
       const response = await fetch('/api/dealers', {
         method: 'PATCH',
@@ -262,11 +304,30 @@ export default function DealerLedger() {
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'পূর্বের বকেয়া সংরক্ষণ করা যায়নি।');
-      await refreshSharedRecords('dealers');
-      setSuccessMsg('পূর্বের বকেয়া সংরক্ষিত হয়েছে এবং ডিলার লেজার হালনাগাদ হয়েছে।');
+      const dealer = dealers.find((entry) => entry.id === previousDueForm.dealerId);
       setShowPreviousDueModal(false);
+      setPreviousDueForm(createPreviousDueForm());
+      setPreviousDueConfirmation({
+        dealerName: dealer?.shopName || result.shopName || 'ডিলার',
+        amount: Number(previousDueForm.amount),
+        date: previousDueForm.date,
+        session: previousDueForm.session
+      });
+      try {
+        const updatedDealers = await refreshSharedRecords('dealers');
+        const updatedDealer = updatedDealers.find((entry) => entry.id === previousDueForm.dealerId);
+        if (updatedDealer && selectedDealerForLedger?.id === updatedDealer.id) {
+          setSelectedDealerForLedger(updatedDealer);
+        }
+        setSuccessMsg('পূর্বের বকেয়া সংরক্ষিত হয়েছে এবং ডিলার লেজার হালনাগাদ হয়েছে।');
+        setTimeout(() => setSuccessMsg(''), 4500);
+      } catch (refreshError) {
+        setPreviousDueError(`বকেয়া সংরক্ষিত হয়েছে, কিন্তু লেজার রিফ্রেশ করা যায়নি: ${refreshError.message}`);
+      }
     } catch (error) {
-      window.alert(error.message);
+      setPreviousDueError(error.message);
+    } finally {
+      setPreviousDueSaving(false);
     }
   };
 
@@ -320,7 +381,10 @@ export default function DealerLedger() {
           {canSetPreviousDue && (
             <button
               type="button"
-              onClick={() => setShowPreviousDueModal(true)}
+              onClick={() => {
+                setPreviousDueError('');
+                setShowPreviousDueModal(true);
+              }}
               className="no-print rounded-lg border border-amber-300 bg-amber-50 px-3.5 py-2 text-xs font-bold text-amber-900"
             >
               পূর্বের বকেয়া ইনপুট
@@ -356,6 +420,9 @@ export default function DealerLedger() {
           <CheckCircle className="w-5 h-5 text-emerald-600" />
           <span className="font-semibold text-sm">{successMsg}</span>
         </div>
+      )}
+      {previousDueError && !showPreviousDueModal && (
+        <p role="alert" className="rounded-lg bg-amber-50 p-3 text-sm font-semibold text-amber-800">{previousDueError}</p>
       )}
 
       {/* KPI Cards */}
@@ -504,7 +571,10 @@ export default function DealerLedger() {
                         </button>
 
                         <button
-                          onClick={() => setSelectedDealerForLedger(d)}
+                          onClick={(event) => {
+                            ledgerTriggerRef.current = event.currentTarget;
+                            setSelectedDealerForLedger(d);
+                          }}
                           title="বিস্তারিত খতিয়ান দেখুন"
                           className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-2 py-1 rounded text-xs font-semibold transition"
                         >
@@ -725,8 +795,9 @@ export default function DealerLedger() {
           <form onSubmit={handlePreviousDueSubmit} className="w-full max-w-lg space-y-4 rounded-xl bg-white p-6 shadow-xl">
             <div className="flex items-center justify-between border-b border-slate-200 pb-3">
               <h3 className="text-base font-bold text-slate-800">ডিলারের পূর্বের বকেয়া ইনপুট</h3>
-              <button type="button" onClick={() => setShowPreviousDueModal(false)} className="text-slate-400">✕</button>
+              <button type="button" aria-label="বন্ধ করুন" onClick={() => setShowPreviousDueModal(false)} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100">✕</button>
             </div>
+            {previousDueError && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm font-semibold text-rose-700">{previousDueError}</p>}
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="text-xs font-semibold text-slate-600">ডিলার সিলেক্ট *
                 <select required value={previousDueForm.dealerId} onChange={(e) => setPreviousDueForm({ ...previousDueForm, dealerId: e.target.value })} className="mt-1 w-full rounded border border-slate-300 p-2">
@@ -746,7 +817,11 @@ export default function DealerLedger() {
                 </select>
               </label>
               <label className="text-xs font-semibold text-slate-600">তারিখ *
-                <input required type="date" value={previousDueForm.date} onChange={(e) => setPreviousDueForm({ ...previousDueForm, date: e.target.value })} className="mt-1 w-full rounded border border-slate-300 p-2" />
+                <input required type="date" value={previousDueForm.date} onChange={(e) => setPreviousDueForm({
+                  ...previousDueForm,
+                  date: e.target.value,
+                  session: getInvoiceSessionForDate(e.target.value)
+                })} className="mt-1 w-full rounded border border-slate-300 p-2" />
               </label>
               <label className="text-xs font-semibold text-slate-600 sm:col-span-2">Previous Due Amount *
                 <input required type="number" min="0" step="1" value={previousDueForm.amount} onChange={(e) => setPreviousDueForm({ ...previousDueForm, amount: e.target.value })} className="mt-1 w-full rounded border border-slate-300 p-2 font-bold text-rose-700" />
@@ -754,9 +829,33 @@ export default function DealerLedger() {
             </div>
             <div className="flex justify-end gap-2 border-t border-slate-200 pt-3">
               <button type="button" onClick={() => setShowPreviousDueModal(false)} className="rounded border border-slate-300 px-4 py-2 text-xs font-bold">বাতিল</button>
-              <button type="submit" className="rounded bg-emerald-700 px-4 py-2 text-xs font-bold text-white">সংরক্ষণ করুন</button>
+              <button type="submit" disabled={previousDueSaving} className="rounded bg-emerald-700 px-4 py-2 text-xs font-bold text-white disabled:cursor-wait disabled:opacity-60">
+                {previousDueSaving ? 'সংরক্ষণ হচ্ছে…' : 'সংরক্ষণ করুন'}
+              </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {previousDueConfirmation && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4">
+          <section role="dialog" aria-modal="true" aria-labelledby="previous-due-confirmation-title" className="w-full max-w-md space-y-4 rounded-xl bg-white p-6 shadow-2xl">
+            <div className="flex items-start gap-3">
+              <CheckCircle className="mt-0.5 h-6 w-6 shrink-0 text-emerald-600" />
+              <div>
+                <h3 id="previous-due-confirmation-title" className="text-lg font-black text-slate-900">পূর্বের বকেয়া সংরক্ষিত হয়েছে</h3>
+                <p className="mt-2 text-sm text-slate-700">{previousDueConfirmation.dealerName}</p>
+                <p className="mt-1 text-sm font-bold text-slate-900">৳{previousDueConfirmation.amount.toLocaleString()}</p>
+                <p className="mt-1 text-xs text-slate-600">তারিখ: {previousDueConfirmation.date} • {previousDueConfirmation.session}</p>
+                <p className="mt-2 text-xs text-slate-500">তারিখসহ পোস্টিংটি সংরক্ষিত হয়েছে।</p>
+              </div>
+            </div>
+            <div className="flex justify-end border-t border-slate-200 pt-3">
+              <button type="button" autoFocus onClick={() => setPreviousDueConfirmation(null)} className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-800">
+                বন্ধ করুন
+              </button>
+            </div>
+          </section>
         </div>
       )}
 
@@ -899,14 +998,15 @@ export default function DealerLedger() {
       {/* MODAL 3: Detailed Ledger Statement (Printable) */}
       {selectedDealerForLedger && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 overflow-y-auto">
-          <div className="dealer-ledger-print bg-white rounded-xl shadow-2xl max-w-3xl w-full p-6 space-y-4 my-8">
-            <div className="flex justify-between items-center border-b border-slate-200 pb-3 no-print">
-              <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
+          <div role="dialog" aria-modal="true" aria-labelledby="dealer-ledger-dialog-title" className="dealer-ledger-print bg-white rounded-xl shadow-2xl max-w-3xl w-full p-6 space-y-4 my-8">
+            <div className="sticky top-0 z-10 flex flex-wrap justify-between items-center gap-3 border-b border-slate-200 bg-white pb-3 no-print">
+              <h3 id="dealer-ledger-dialog-title" className="text-base font-bold text-slate-800 flex items-center gap-2">
                 <FileText className="w-5 h-5 text-emerald-700" />
                 ডিলার খতিয়ান ও লেনদেন বিবরণী
               </h3>
               <div className="flex items-center gap-2">
                 <button
+                  type="button"
                   onClick={() => window.print()}
                   className="flex items-center gap-1.5 bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold shadow hover:bg-emerald-800"
                 >
@@ -914,8 +1014,10 @@ export default function DealerLedger() {
                   প্রিন্ট খতিয়ান
                 </button>
                 <button
-                  onClick={() => setSelectedDealerForLedger(null)}
-                  className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-100"
+                  type="button"
+                  onClick={closeDealerLedger}
+                  aria-label="ডিলার খতিয়ান বন্ধ করুন"
+                  className="inline-flex items-center gap-1 rounded-lg border-2 border-rose-300 bg-rose-50 px-4 py-2 text-sm font-bold text-rose-800 hover:bg-rose-100 focus:outline-none focus:ring-2 focus:ring-rose-500"
                 >
                   <X className="h-4 w-4" /> বন্ধ করুন / ফিরে যান
                 </button>
@@ -941,11 +1043,34 @@ export default function DealerLedger() {
               <div className="text-right">
                 <p><span className="font-bold">ডিলার কোড:</span> {formatDealerCode(selectedDealerForLedger.code)}</p>
                 <p><span className="font-bold">Last Session Due:</span> ৳{selectedDealerForLedger.lastSessionDue.toLocaleString()}</p>
+                {selectedDealerForLedger.previousDueDate && <p><span className="font-bold">পূর্বের বকেয়ার তারিখ:</span> {selectedDealerForLedger.previousDueDate}</p>}
                 <p><span className="font-bold text-emerald-700">মোট পরিশোধ:</span> ৳{selectedDealerForLedger.totalPaid.toLocaleString()}</p>
                 <p><span className="font-bold text-sky-700">মোট রিটার্ন ক্রেডিট:</span> − ৳{selectedDealerForLedger.totalReturnCredits.toLocaleString()}</p>
                 <p className={`mt-1 text-sm font-extrabold ${selectedDealerForLedger.currentDue < 0 ? 'text-sky-700' : 'text-rose-700'}`}>
                   {getBalanceLabel(selectedDealerForLedger.currentDue)}: {formatBalanceAmount(selectedDealerForLedger.currentDue)}
                 </p>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <h4 className="text-xs font-bold text-slate-700">পূর্বের বকেয়া পোস্টিং হিস্ট্রি</h4>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs border border-slate-200">
+                  <thead className="bg-slate-100 font-bold text-slate-700">
+                    <tr><th className="p-2">তারিখ</th><th className="p-2">সেশন</th><th className="p-2">অফিসার</th><th className="p-2 text-right">বকেয়া</th></tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200">
+                    {previousDueHistory.map((entry, index) => (
+                      <tr key={`${entry.date}-${entry.postedAt || index}-${index}`}>
+                        <td className="p-2 font-mono">{entry.date}</td>
+                        <td className="p-2">{entry.session || '—'}</td>
+                        <td className="p-2">{officers.find((officer) => officer.id === entry.officerId)?.name || entry.officerId || '—'}</td>
+                        <td className="p-2 text-right font-mono font-bold">৳{Number(entry.amount || 0).toLocaleString()}</td>
+                      </tr>
+                    ))}
+                    {previousDueHistory.length === 0 && <tr><td colSpan={4} className="p-3 text-center text-slate-400">কোনো পোস্টিং হিস্ট্রি নেই</td></tr>}
+                  </tbody>
+                </table>
               </div>
             </div>
 
@@ -1004,6 +1129,11 @@ export default function DealerLedger() {
               </div>
               <div>
                 <div className="border-t border-slate-400 pt-1">হিসাবরক্ষক / ম্যানেজার, নিশিন্দারা বগুড়া</div>
+              </div>
+              <div className="no-print flex justify-end border-t border-slate-200 pt-3">
+                <button type="button" onClick={closeDealerLedger} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-100">
+                  বন্ধ করুন / ফিরে যান
+                </button>
               </div>
             </div>
           </div>

@@ -4,7 +4,7 @@ import { authorize, hasSuperAdminAccess } from '../lib/auth.js';
 import { normalizeOfficerCode } from '../shared/codes.js';
 import { roundAmount } from '../shared/salesReports.js';
 import { calculateOfficerFinancials, filterOfficerRecordsByPeriod } from '../shared/officerFinancials.js';
-import { getOfficerSalesTarget } from '../shared/officerSalesTargets.js';
+import { getOfficerSalesTarget, mergeOfficerSalesTargets } from '../shared/officerSalesTargets.js';
 import { parseReportMonth, parseSessionDateRange } from '../shared/reportDateFilters.js';
 import { normalizeSessionText } from '../shared/sessions.js';
 import { ADMIN_ROLES, OFFICER_ROLE, isAdminRole } from '../shared/roles.js';
@@ -123,11 +123,14 @@ export default async function handler(req, res) {
       officerName,
       mobileNo: String(body.mobileNo || '').trim()
     };
+    const existingTarget = await SalesOfficer.findOne({ slNo }).lean();
     for (const field of numericFields) {
       if (body[field] != null && !Number.isFinite(Number(body[field]))) {
         return res.status(400).json({ error: 'টার্গেট বা সারাংশের টাকার পরিমাণ সঠিক নয়।' });
       }
-      values[field] = roundAmount(body[field]);
+      values[field] = body[field] == null
+        ? roundAmount(existingTarget?.[field])
+        : roundAmount(body[field]);
     }
     values.paymentAndExpense = {};
     for (const field of expenseFields) {
@@ -135,7 +138,9 @@ export default async function handler(req, res) {
         && !Number.isFinite(Number(body.paymentAndExpense[field]))) {
         return res.status(400).json({ error: 'খরচের পরিমাণ সঠিক নয়।' });
       }
-      values.paymentAndExpense[field] = roundAmount(body.paymentAndExpense?.[field]);
+      values.paymentAndExpense[field] = body.paymentAndExpense?.[field] == null
+        ? roundAmount(existingTarget?.paymentAndExpense?.[field])
+        : roundAmount(body.paymentAndExpense[field]);
     }
 
     if (body.salesTargets != null && (
@@ -145,9 +150,8 @@ export default async function handler(req, res) {
     )) {
       return res.status(400).json({ error: 'সেশন টার্গেটের তালিকা সঠিক নয়।' });
     }
-    values.salesTargets = {};
-    const existingTarget = await SalesOfficer.findOne({ slNo }).lean();
     const superAdmin = await hasSuperAdminAccess(user);
+    values.salesTargets = mergeOfficerSalesTargets(existingTarget?.salesTargets);
     for (const [rawSession, target] of Object.entries(body.salesTargets || {})) {
       const session = normalizeSessionText(rawSession);
       if (!parseSessionDateRange(session) || !Number.isFinite(Number(target)) || Number(target) < 0) {
@@ -162,7 +166,9 @@ export default async function handler(req, res) {
           error: `${session} সেশনে এই অফিসারের টার্গেট আগে থেকেই সংরক্ষিত আছে। পরিবর্তন শুধু সুপার অ্যাডমিন করতে পারবেন।`
         });
       }
-      values.salesTargets[session] = roundAmount(target);
+      values.salesTargets = mergeOfficerSalesTargets(values.salesTargets, {
+        [session]: roundAmount(target)
+      });
     }
 
     const saved = await SalesOfficer.findOneAndUpdate(

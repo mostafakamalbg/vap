@@ -50,7 +50,17 @@ const dealerSchema = new Schema({
   previousDue: { type: Number, default: 0 },
   previousDueSession: { type: String, default: '' },
   previousDueDate: { type: String, default: '' },
-  previousDueOfficerId: { type: String, default: '' }
+  previousDueOfficerId: { type: String, default: '' },
+  previousDueHistory: {
+    type: [{
+      date: { type: String, required: true },
+      session: { type: String, required: true },
+      amount: { type: Number, min: 0, required: true },
+      officerId: { type: String, default: '' },
+      postedAt: { type: Date, default: Date.now }
+    }],
+    default: []
+  }
 }, flexibleOptions);
 
 const invoiceItemSchema = new Schema({
@@ -178,6 +188,7 @@ const salesOfficerSchema = new Schema({
   officerCode: { type: String, default: '', index: true },
   officerName: { type: String, required: true, trim: true },
   mobileNo: { type: String, default: '' },
+  salesTargets: { type: Schema.Types.Mixed, default: () => ({}) },
   salesTargetJulyDec2026: { type: Number, default: 0 },
   salesTargetJanJune2027: { type: Number, default: 0 },
   lastSessionDue: { type: Number, default: 0 },

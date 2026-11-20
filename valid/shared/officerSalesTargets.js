@@ -24,6 +24,15 @@ export const OFFICER_TARGET_SESSIONS = Object.freeze([
   'জানুয়ারি - জুন 2027'
 ]);
 
+export function mergeOfficerSalesTargets(existingTargets, updates) {
+  return {
+    ...(existingTargets && typeof existingTargets === 'object' && !Array.isArray(existingTargets)
+      ? existingTargets
+      : {}),
+    ...(updates && typeof updates === 'object' && !Array.isArray(updates) ? updates : {})
+  };
+}
+
 function getSessionTarget(officer, session) {
   const sessionText = String(session || '');
   const storedTargets = officer?.salesTargets || {};

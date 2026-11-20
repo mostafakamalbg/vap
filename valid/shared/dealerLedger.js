@@ -28,10 +28,10 @@ export function getDealerLedgerTransactions(summary = {}) {
   if (openingDue !== 0) {
     addTransaction({
       id: 'opening-balance',
-      date: '',
-      reference: '—',
+      date: summary.previousDueDate || '',
+      reference: summary.previousDueSession || '—',
       sourceType: 'opening',
-      description: 'প্রারম্ভিক বাকি',
+      description: summary.previousDueDate ? 'পূর্বের বাকি পোস্টিং' : 'প্রারম্ভিক বাকি',
       debit: Math.max(openingDue, 0),
       credit: Math.max(-openingDue, 0),
       priority: 0

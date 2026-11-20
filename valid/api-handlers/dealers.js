@@ -46,10 +46,14 @@ export default async function handler(req, res) {
 
   if (req.method === 'PATCH') {
     const { dealerId, officerId, session, date, amount } = req.body || {};
+    const dateValue = String(date || '');
+    const parsedDate = new Date(`${dateValue}T00:00:00.000Z`);
     if (!String(dealerId || '').trim()
       || !String(officerId || '').trim()
       || !String(session || '').trim()
-      || !/^\d{4}-\d{2}-\d{2}$/.test(String(date || ''))
+      || !/^\d{4}-\d{2}-\d{2}$/.test(dateValue)
+      || Number.isNaN(parsedDate.valueOf())
+      || parsedDate.toISOString().slice(0, 10) !== dateValue
       || !Number.isFinite(Number(amount))
       || Number(amount) < 0
       || !parseSessionDateRange(normalizeSessionText(session))) {
@@ -59,6 +63,7 @@ export default async function handler(req, res) {
     }
     try {
       const due = Math.round(Number(amount));
+      const normalizedSession = normalizeSessionText(session);
       const dealer = await Dealer.findOneAndUpdate(
         { id: String(dealerId) },
         {
@@ -66,9 +71,18 @@ export default async function handler(req, res) {
             previousDue: due,
             openingDue: due,
             lastSessionDue: due,
-            previousDueSession: normalizeSessionText(session),
-            previousDueDate: String(date),
+            previousDueSession: normalizedSession,
+            previousDueDate: dateValue,
             previousDueOfficerId: String(officerId)
+          },
+          $push: {
+            previousDueHistory: {
+              date: dateValue,
+              session: normalizedSession,
+              amount: due,
+              officerId: String(officerId),
+              postedAt: new Date()
+            }
           }
         },
         { new: true, runValidators: true }
