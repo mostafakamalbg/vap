@@ -4,7 +4,7 @@ import { Dealer, Payment } from '../lib/models.js';
 import { authorize, hasSuperAdminAccess } from '../lib/auth.js';
 import { normalizePaymentMethod, PAYMENT_TYPES } from '../shared/paymentMethods.js';
 import { roundCurrency } from '../shared/invoiceTotals.js';
-import { transactionOptions, withTransactionFallback } from '../lib/transactions.js';
+import { transactionCreateOptions, transactionOptions, withTransactionFallback } from '../lib/transactions.js';
 import { parseSessionDateRange } from '../shared/reportDateFilters.js';
 import { normalizeSessionText } from '../shared/sessions.js';
 import { ADMIN_ROLES } from '../shared/roles.js';
@@ -142,7 +142,7 @@ export default async function handler(req, res) {
     const newPayments = values.filter((payment) => !existingById.has(payment.id));
     if (newPayments.length) {
       await withTransactionFallback(async (session) => {
-        await Payment.create(newPayments, transactionOptions(session));
+        await Payment.create(newPayments, transactionCreateOptions(session));
       });
     }
     return res.status(201).json(values);

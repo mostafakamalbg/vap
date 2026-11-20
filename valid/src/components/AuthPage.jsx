@@ -22,6 +22,7 @@ export default function AuthPage({ initialRole = 'admin', onNavigate, onLoginSuc
     phone: ''
   });
   const [message, setMessage] = useState('');
+  const [warning, setWarning] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -33,11 +34,13 @@ export default function AuthPage({ initialRole = 'admin', onNavigate, onLoginSuc
     event.preventDefault();
     setError('');
     setMessage('');
+    setWarning('');
     setBusy(true);
     try {
       if (isRegistering) {
         const result = await registerOfficer(form);
         setMessage(result.message);
+        setWarning(result.warning || '');
         setIsRegistering(false);
         setRole(OFFICER_ROLE);
         setForm((previous) => ({ ...previous, password: '' }));
@@ -66,6 +69,7 @@ export default function AuthPage({ initialRole = 'admin', onNavigate, onLoginSuc
     setShowAdminHelp(false);
     setError('');
     setMessage('');
+    setWarning('');
   };
 
   return (
@@ -199,6 +203,7 @@ export default function AuthPage({ initialRole = 'admin', onNavigate, onLoginSuc
           </label>
 
           {error && <p role="alert" className="rounded-lg bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">{error}</p>}
+          {warning && <p role="status" className="rounded-lg bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800">{warning}</p>}
           {message && <p role="status" className="rounded-lg bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-800">{message}</p>}
 
           <button disabled={busy} className="w-full rounded-lg bg-emerald-700 px-4 py-3 text-sm font-black text-white shadow transition hover:bg-emerald-800 disabled:cursor-wait disabled:opacity-60">
@@ -209,13 +214,13 @@ export default function AuthPage({ initialRole = 'admin', onNavigate, onLoginSuc
 
         <div className="mt-5 border-t border-slate-100 pt-4 text-center">
           {showAdminHelp ? null : isRegistering ? (
-            <button type="button" onClick={() => { setForm((previous) => ({ ...previous, email: deviceOwnerEmail, password: '' })); setPasswordFieldActive(false); setShowPassword(false); setIsRegistering(false); setMessage(''); setError(''); }} className="text-sm font-bold text-emerald-700 hover:underline">
+            <button type="button" onClick={() => { setForm((previous) => ({ ...previous, email: deviceOwnerEmail, password: '' })); setPasswordFieldActive(false); setShowPassword(false); setIsRegistering(false); setMessage(''); setWarning(''); setError(''); }} className="text-sm font-bold text-emerald-700 hover:underline">
               {t('auth.existingOfficer')}
             </button>
           ) : (
             <div className="flex flex-wrap justify-center gap-4">
               {role === OFFICER_ROLE && (
-                <button type="button" onClick={() => { setForm((previous) => ({ ...previous, email: '', password: '' })); setPasswordFieldActive(false); setShowPassword(false); setIsRegistering(true); setMessage(''); setError(''); }} className="text-sm font-bold text-emerald-700 hover:underline">
+                <button type="button" onClick={() => { setForm((previous) => ({ ...previous, email: '', password: '' })); setPasswordFieldActive(false); setShowPassword(false); setIsRegistering(true); setMessage(''); setWarning(''); setError(''); }} className="text-sm font-bold text-emerald-700 hover:underline">
                   {t('auth.newOfficer')}
                 </button>
               )}

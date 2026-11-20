@@ -16,7 +16,7 @@ export default async function handler(req, res) {
     if (req.method === 'GET') {
       const status = req.query?.status === 'active' ? 'active' : 'pending';
       const users = await User.find({ role: 'officer', status })
-        .select('name email officerCode phone createdAt')
+        .select('name email officerCode phone officerPhoneMismatch registeredOfficerPhone createdAt')
         .sort({ createdAt: 1 })
         .lean();
       return res.status(200).json(users.map((user) => ({
@@ -25,6 +25,8 @@ export default async function handler(req, res) {
         email: user.email,
         officerCode: user.officerCode,
         phone: user.phone,
+        officerPhoneMismatch: Boolean(user.officerPhoneMismatch),
+        registeredOfficerPhone: user.registeredOfficerPhone || '',
         createdAt: user.createdAt
       })));
     }
@@ -83,7 +85,9 @@ export default async function handler(req, res) {
             name: pendingUser.name,
             designation: record?.data?.designation || 'ফিল্ড সেলস অফিসার (FSO)',
             territory: record?.data?.territory || '',
-            phone: pendingUser.phone,
+            phone: pendingUser.officerPhoneMismatch
+              ? pendingUser.registeredOfficerPhone
+              : pendingUser.phone,
             joinDate: record?.data?.joinDate || new Date().toISOString().slice(0, 10)
           };
           await BusinessRecord.findOneAndUpdate(

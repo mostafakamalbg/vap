@@ -34,9 +34,8 @@ export default async function handler(req, res) {
       || normalizeOfficerCode(entry.code, entry.designation) === officerCode
     ));
     const listedOfficer = savedOfficerRecord?.data || rosterOfficer;
-    if (listedOfficer && normalizePhone(listedOfficer.phone) !== phone) {
-      return res.status(400).json({ error: 'এই অফিসার কোডের নিবন্ধিত ফোন নম্বরের সঙ্গে মিলছে না।' });
-    }
+    const registeredPhone = normalizePhone(listedOfficer?.phone);
+    const officerPhoneMismatch = Boolean(listedOfficer && registeredPhone !== phone);
     const existingUsers = await User.find({ role: 'officer' }).select('officerCode').lean();
     if (
       await User.exists({ email })
@@ -53,9 +52,17 @@ export default async function handler(req, res) {
       status: 'pending',
       officerId: listedOfficer?.id || listedOfficer?.officerId || `OFF-${randomUUID().slice(0, 8).toUpperCase()}`,
       officerCode,
-      phone: listedOfficer?.phone || phone
+      phone,
+      officerPhoneMismatch,
+      registeredOfficerPhone: officerPhoneMismatch ? listedOfficer.phone : ''
     });
-    return res.status(201).json({ message: 'নিবন্ধন সফল। অ্যাডমিন অনুমোদনের পর লগইন করতে পারবেন।' });
+    return res.status(201).json({
+      message: 'নিবন্ধন সফল। অ্যাডমিন অনুমোদনের পর লগইন করতে পারবেন।',
+      officerPhoneMismatch,
+      warning: officerPhoneMismatch
+        ? 'আপনার দেওয়া ফোন নম্বরটি অফিসার কোডের নিবন্ধিত নম্বরের সঙ্গে মেলেনি। আবেদনটি অ্যাডমিন পর্যালোচনা করবেন।'
+        : ''
+    });
   } catch (error) {
     if (error instanceof MongoConnectionError) {
       return res.status(503).json({ error: 'ডাটাবেস সাময়িকভাবে উপলব্ধ নয়।' });

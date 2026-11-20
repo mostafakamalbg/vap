@@ -7,7 +7,7 @@ import { getItemCartons } from '../shared/invoiceCartons.js';
 import { calculateInvoiceTotals, roundCurrency } from '../shared/invoiceTotals.js';
 import { dateRangeCondition, invoiceSessionCondition, parseReportMonth } from '../shared/reportDateFilters.js';
 import { STOCK_RECONCILIATION_START_DATE } from '../shared/stockReconciliation.js';
-import { transactionOptions, withTransactionFallback } from '../lib/transactions.js';
+import { transactionCreateOptions, transactionOptions, withTransactionFallback } from '../lib/transactions.js';
 import { normalizeSessionText } from '../shared/sessions.js';
 import { parseSessionDateRange } from '../shared/reportDateFilters.js';
 import { ADMIN_ROLES, OFFICER_ROLE, isAdminRole } from '../shared/roles.js';
@@ -177,7 +177,7 @@ async function syncInvoicePayment(invoice, session) {
     ]
   }, options);
   if (invoice.paidAmount > 0) {
-    await Payment.create([getInvoicePaymentValues(invoice)], options);
+    await Payment.create([getInvoicePaymentValues(invoice)], transactionCreateOptions(session));
   }
 }
 
@@ -412,7 +412,7 @@ export default async function handler(req, res) {
           throw error;
         }
         await applyInvoiceStockChanges(null, values, session);
-        [invoice] = await Invoice.create([values], transactionOptions(session));
+        [invoice] = await Invoice.create([values], transactionCreateOptions(session));
         await syncInvoicePayment(invoice, session);
       });
       return res.status(201).json(invoice.toObject());

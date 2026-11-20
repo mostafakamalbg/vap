@@ -170,6 +170,11 @@ export default function AdminAccess({ onInvoiceCreated }) {
               <div>
                 <p className="font-bold text-slate-900">{user.name}</p>
                 <p className="text-xs text-slate-500">{user.email} • অফিসার কোড {formatOfficerCode(user.officerCode)} • {user.phone}</p>
+                {user.officerPhoneMismatch && (
+                  <p className="mt-1 text-xs font-semibold text-amber-700">
+                    ফোন নম্বর মেলেনি — নিবন্ধিত নম্বর: {user.registeredOfficerPhone || 'পাওয়া যায়নি'}
+                  </p>
+                )}
               </div>
               <div className="flex gap-2">
                 <button disabled={busyId === user.id} onClick={() => updateOfficer(user.id, 'active')} className="inline-flex items-center gap-1 rounded-lg bg-emerald-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50"><Check className="h-4 w-4" /> অনুমোদন</button>

@@ -23,3 +23,7 @@ export async function withTransactionFallback(operation) {
 export function transactionOptions(session) {
   return session ? { session } : {};
 }
+
+export function transactionCreateOptions(session) {
+  return { ...transactionOptions(session), ordered: true };
+}

@@ -18,7 +18,9 @@ const userSchema = new Schema({
   },
   officerId: { type: String, default: '' },
   officerCode: { type: String, default: '' },
-  phone: { type: String, default: '' }
+  phone: { type: String, default: '' },
+  officerPhoneMismatch: { type: Boolean, default: false },
+  registeredOfficerPhone: { type: String, default: '' }
 }, { timestamps: true });
 
 const adminSeatSchema = new Schema({

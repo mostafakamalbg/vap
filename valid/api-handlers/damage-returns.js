@@ -1,7 +1,7 @@
 import dbConnect from '../lib/mongodb.js';
 import { authorize } from '../lib/auth.js';
 import { BusinessRecord, Product } from '../lib/models.js';
-import { transactionOptions, withTransactionFallback } from '../lib/transactions.js';
+import { transactionCreateOptions, transactionOptions, withTransactionFallback } from '../lib/transactions.js';
 import { ADMIN_ROLES } from '../shared/roles.js';
 import { STOCK_RECONCILIATION_START_DATE } from '../shared/stockReconciliation.js';
 
@@ -102,7 +102,7 @@ export default async function handler(req, res) {
         type: 'damageLogs',
         recordId: savedEntry.id,
         data: savedEntry
-      }], options);
+      }], transactionCreateOptions(session));
       savedProduct = {
         id: product.id,
         variants: product.variants.map((item) => (

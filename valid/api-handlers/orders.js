@@ -255,7 +255,7 @@ export default async function handler(req, res) {
             netPayable: totalAmount,
             note: pendingOrder.note || ''
           };
-          [createdInvoice] = await Invoice.create([invoiceValues], { session });
+          [createdInvoice] = await Invoice.create([invoiceValues], { session, ordered: true });
         }
 
         pendingOrder.status = status;
