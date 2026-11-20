@@ -29,3 +29,15 @@ test('last session due is used as the ledger opening balance', () => {
   assert.equal(transactions[0].description, 'পূর্বের বাকি পোস্টিং');
   assert.equal(transactions[transactions.length - 1].balance, 750);
 });
+
+test('legacy purpose labels resolve to the saved payment category in dealer ledgers', () => {
+  const transactions = getDealerLedgerTransactions({
+    openingDue: 100,
+    payments: [{ id: 'legacy-office', purpose: 'Office Pay', amount: 25 }]
+  });
+  const payment = transactions.find((entry) => entry.id === 'payment-legacy-office');
+
+  assert.equal(payment.credit, 25);
+  assert.equal(payment.description, 'অফিস / ডিপো');
+  assert.equal(transactions[transactions.length - 1].balance, 75);
+});

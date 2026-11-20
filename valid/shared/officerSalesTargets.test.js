@@ -62,12 +62,18 @@ test('dynamic session targets override legacy session defaults', () => {
   assert.equal(getOfficerSalesTarget(officer, 'January-June 2027'), 6100000);
 });
 
-test('officer target lock detects saved zero values and preconfigured session targets', () => {
+test('officer target lock is scoped to explicitly saved values, including zero', () => {
   assert.equal(hasOfficerSessionSalesTarget({
     salesTargets: { 'জুলাই - ডিসেম্বর 2026': 0 }
   }, 'জুলাই - ডিসেম্বর 2026'), true);
-  assert.equal(hasOfficerSessionSalesTarget({ code: 'SO-05' }, 'জুলাই - ডিসেম্বর 2026'), true);
+  assert.equal(hasOfficerSessionSalesTarget({ code: 'SO-05' }, 'জুলাই - ডিসেম্বর 2026'), false);
   assert.equal(hasOfficerSessionSalesTarget({ code: 'SO-99' }, 'জুলাই - ডিসেম্বর 2026'), false);
+  assert.equal(hasOfficerSessionSalesTarget({
+    salesTargets: { 'জানুয়ারি - জুন 2027': 250 }
+  }, 'January-June 2027'), true);
+  assert.equal(hasOfficerSessionSalesTarget({
+    salesTargetJulyDec2026: 250
+  }, 'জুলাই - ডিসেম্বর 2026'), true);
 });
 
 test('updating other officer fields does not discard saved session targets', () => {

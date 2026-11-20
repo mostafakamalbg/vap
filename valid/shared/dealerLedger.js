@@ -1,4 +1,8 @@
-import { isDealerBalanceCredit, PAYMENT_TYPES } from './paymentMethods.js';
+import {
+  isDealerBalanceCredit,
+  PAYMENT_TYPES,
+  resolvePaymentRecordType
+} from './paymentMethods.js';
 
 function amountOrZero(value) {
   const amount = Number(value);
@@ -63,7 +67,7 @@ export function getDealerLedgerTransactions(summary = {}) {
 
   (summary.payments || []).forEach((payment, index) => {
     if (!isDealerBalanceCredit(payment)) return;
-    const paymentType = String(payment.paymentType || 'dealer_collection');
+    const paymentType = resolvePaymentRecordType(payment) || 'dealer_collection';
     const paymentLabel = PAYMENT_TYPES.find((type) => type.value === paymentType)?.label
       || 'ডিলার কালেকশন';
     addTransaction({

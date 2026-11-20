@@ -81,6 +81,48 @@ async function setOfficerSessionTarget(record, { session, date, amount }) {
   return saved;
 }
 
+async function createOfficerTargetSummary(normalizedOfficer, target) {
+  const filter = getOfficerSummaryFilter(normalizedOfficer);
+  let summary = await SalesOfficer.findOne(filter).lean();
+  if (summary) return setOfficerSessionTarget(summary, target);
+
+  const requestedSlNo = Number(normalizedOfficer.code.match(/\d+/)?.[0]);
+  const highestSummary = await SalesOfficer.findOne({}).sort({ slNo: -1 }).select('slNo').lean();
+  let slNo = Number.isSafeInteger(requestedSlNo) && requestedSlNo > 0
+    ? requestedSlNo
+    : (highestSummary?.slNo || 0) + 1;
+  if (await SalesOfficer.exists({ slNo })) slNo = (highestSummary?.slNo || 0) + 1;
+
+  while (true) {
+    try {
+      const [saved] = await SalesOfficer.create([{
+        slNo,
+        officerId: normalizedOfficer.id,
+        officerCode: normalizedOfficer.code,
+        officerName: normalizedOfficer.name,
+        mobileNo: normalizedOfficer.mobileNo,
+        salesTargets: { [target.session]: target.amount },
+        salesTargetDates: { [target.session]: target.date }
+      }]);
+      return saved;
+    } catch (error) {
+      const keyPattern = Object.keys(error?.keyPattern || {});
+      const isSerialNumberConflict = error?.code === 11000
+        && ((keyPattern.length === 1 && keyPattern[0] === 'slNo')
+          || error?.keyValue?.slNo != null
+          || /index:\s*slNo_1/i.test(String(error?.message || '')));
+      if (!isSerialNumberConflict) throw error;
+      summary = await SalesOfficer.findOne(filter).lean();
+      if (summary) return setOfficerSessionTarget(summary, target);
+      const latestSummary = await SalesOfficer.findOne({})
+        .sort({ slNo: -1 })
+        .select('slNo')
+        .lean();
+      slNo = Math.max(slNo + 1, (latestSummary?.slNo || 0) + 1);
+    }
+  }
+}
+
 export default async function handler(req, res) {
   if (!['GET', 'POST', 'PUT'].includes(req.method)) {
     return res.status(405).json({ error: 'Method Not Allowed' });
@@ -188,12 +230,12 @@ export default async function handler(req, res) {
           name: String(officer.name || officer.officerName || '').trim(),
           mobileNo: String(officer.phone || officer.mobileNo || '').trim()
         };
-        if (hasLegacyTarget({ ...officer, ...normalizedOfficer }, session)) {
+        if (hasLegacyTarget({ salesTargets: officer.salesTargets }, session)) {
           return res.status(409).json({
             error: 'এই অফিসারের সেশনের টার্গেট অলরেডি ইমপোর্ট করা আছে।'
           });
         }
-        let summary = await SalesOfficer.findOne(getOfficerSummaryFilter(normalizedOfficer)).lean();
+        const summary = await SalesOfficer.findOne(getOfficerSummaryFilter(normalizedOfficer)).lean();
         if (summary) {
           const saved = await setOfficerSessionTarget(summary, {
             session,
@@ -202,47 +244,11 @@ export default async function handler(req, res) {
           });
           return res.status(201).json(normalizeSalesOfficer(saved.toObject()));
         }
-
-        const requestedSlNo = Number(normalizedOfficer.code.match(/\d+/)?.[0]);
-        const highestSummary = await SalesOfficer.findOne({}).sort({ slNo: -1 }).select('slNo').lean();
-        let slNo = Number.isSafeInteger(requestedSlNo) && requestedSlNo > 0
-          ? requestedSlNo
-          : (highestSummary?.slNo || 0) + 1;
-        if (await SalesOfficer.exists({ slNo })) slNo = (highestSummary?.slNo || 0) + 1;
-
-        let saved;
-        try {
-          [saved] = await SalesOfficer.create([{
-            slNo,
-            officerId: normalizedOfficer.id,
-            officerCode: normalizedOfficer.code,
-            officerName: normalizedOfficer.name,
-            mobileNo: normalizedOfficer.mobileNo,
-            salesTargets: { [session]: roundAmount(targetAmount) },
-            salesTargetDates: { [session]: date }
-          }]);
-        } catch (error) {
-          if (error?.code !== 11000) throw error;
-          summary = await SalesOfficer.findOne(getOfficerSummaryFilter(normalizedOfficer)).lean();
-          if (summary) {
-            saved = await setOfficerSessionTarget(summary, {
-              session,
-              date,
-              amount: roundAmount(targetAmount)
-            });
-          } else {
-            const retrySlNo = (highestSummary?.slNo || 0) + 1;
-            [saved] = await SalesOfficer.create([{
-              slNo: retrySlNo,
-              officerId: normalizedOfficer.id,
-              officerCode: normalizedOfficer.code,
-              officerName: normalizedOfficer.name,
-              mobileNo: normalizedOfficer.mobileNo,
-              salesTargets: { [session]: roundAmount(targetAmount) },
-              salesTargetDates: { [session]: date }
-            }]);
-          }
-        }
+        const saved = await createOfficerTargetSummary(normalizedOfficer, {
+          session,
+          date,
+          amount: roundAmount(targetAmount)
+        });
         return res.status(201).json(normalizeSalesOfficer(saved.toObject()));
       } catch (error) {
         if (error.statusCode) return res.status(error.statusCode).json({ error: error.message });

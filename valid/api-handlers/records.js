@@ -9,7 +9,12 @@ import {
 } from '../shared/codes.js';
 import { getDealersWithOfficerCodes } from '../lib/dealerAssignments.js';
 import { dateRangeCondition, parseReportMonth, parseSessionDateRange } from '../shared/reportDateFilters.js';
-import { normalizePaymentMethod, normalizePaymentType, PAYMENT_TYPES } from '../shared/paymentMethods.js';
+import {
+  normalizePaymentMethod,
+  normalizePaymentType,
+  PAYMENT_TYPES,
+  resolvePaymentRecordType
+} from '../shared/paymentMethods.js';
 import { dealerHasOfficerPreviousDue } from '../shared/officerLedger.js';
 import { roundCurrency } from '../shared/invoiceTotals.js';
 import { getInvoiceSessionForDate } from '../shared/sessions.js';
@@ -189,17 +194,22 @@ export default async function handler(req, res) {
 
     if (type === 'payments') {
       const validTypes = new Set(PAYMENT_TYPES.map((entry) => entry.value));
-      if (records.some((record) => !record || typeof record !== 'object'
-        || !Number.isFinite(Number(record.amount))
-        || Number(record.amount) < 0
-        || (record.paymentType && !validTypes.has(String(record.paymentType))))) {
+      if (records.some((record) => {
+        const paymentType = resolvePaymentRecordType(record);
+        const hasPaymentType = String(record?.paymentType || '').trim()
+          || String(record?.purpose || '').trim();
+        return !record || typeof record !== 'object'
+          || !Number.isFinite(Number(record.amount))
+          || Number(record.amount) < 0
+          || (hasPaymentType && !validTypes.has(paymentType));
+      })) {
         return res.status(400).json({ error: 'পেমেন্টের ধরন ও টাকার পরিমাণ সঠিক নয়।' });
       }
       const normalized = records.map((record, index) => ({
         ...record,
         id: getRecordId(record, index),
         session: String(record.session || getInvoiceSessionForDate(record.date) || '').trim(),
-        paymentType: normalizePaymentType(record.paymentType),
+        paymentType: normalizePaymentType(resolvePaymentRecordType(record)),
         amount: roundCurrency(record.amount),
         paymentMethod: normalizePaymentMethod(record.paymentMethod)
       }));
@@ -234,6 +244,9 @@ export default async function handler(req, res) {
     return res.status(200).json({ saved: records.length });
   } catch (error) {
     console.error(`Record sync failed for ${type}:`, error);
+    if (error?.name === 'ValidationError') {
+      return res.status(400).json({ error: 'রেকর্ডের তথ্য সঠিক নয়।' });
+    }
     return res.status(500).json({ error: 'রেকর্ড পড়া বা সংরক্ষণ করা যায়নি।' });
   }
 }

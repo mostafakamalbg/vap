@@ -3,7 +3,7 @@ import { BusinessRecord, Dealer, Invoice, Payment, SalesOfficer } from '../lib/m
 import { authorize } from '../lib/auth.js';
 import { normalizeOfficerCode } from '../shared/codes.js';
 import { getOfficerSalesTarget } from '../shared/officerSalesTargets.js';
-import { resolvePaymentType } from '../shared/paymentMethods.js';
+import { resolvePaymentRecordType } from '../shared/paymentMethods.js';
 import { dateRangeCondition, parseReportMonth, parseSessionDateRange } from '../shared/reportDateFilters.js';
 import { getInvoiceSessionForDate } from '../shared/sessions.js';
 import { ADMIN_ROLES, OFFICER_ROLE, isAdminRole } from '../shared/roles.js';
@@ -35,6 +35,15 @@ const OFFICE_PAY_ALIASES = [
   'ডিপো',
   'ডিপো খরচ'
 ];
+const OFFICE_PAY_PATTERNS = [
+  '^office\\s*(?:pay(?:ment)?|expense)$',
+  '^office\\s*/\\s*depot$',
+  '^office\\s+depot$',
+  '^depot(?:\\s+(?:pay|payment))?$',
+  '^অফিস\\s*(?:/\\s*ডিপো|খরচ)$',
+  '^ডিপো(?:\\s+খরচ)?$'
+];
+const RECEIPT_PATTERNS = ['^company\\s+(?:transfer|payment)$'];
 const EXPENSE_FIELDS = {
   office_pay: 'officePay',
   salary: 'salary',
@@ -137,7 +146,27 @@ function invoicePipeline(match) {
 }
 
 function paymentPipeline(match) {
-  const paymentType = { $toLower: { $trim: { input: { $ifNull: ['$paymentType', ''] } } } };
+  const paymentType = {
+    $toLower: {
+      $trim: {
+        input: {
+          $cond: [
+            { $ne: [{ $trim: { input: { $ifNull: ['$paymentType', ''] } } }, ''] },
+            '$paymentType',
+            { $ifNull: ['$purpose', ''] }
+          ]
+        }
+      }
+    }
+  };
+  const matchesPaymentType = (aliases, patterns = []) => ({
+    $or: [
+      { $in: [paymentType, aliases] },
+      ...patterns.map((regex) => ({
+        $regexMatch: { input: paymentType, regex }
+      }))
+    ]
+  });
   return [
     {
       $match: {
@@ -190,11 +219,21 @@ function paymentPipeline(match) {
         },
         collection: {
           $sum: {
-            $cond: [{ $in: [paymentType, RECEIPT_ALIASES] }, { $ifNull: ['$amount', 0] }, 0]
+            $cond: [
+              matchesPaymentType(RECEIPT_ALIASES, RECEIPT_PATTERNS),
+              { $ifNull: ['$amount', 0] },
+              0
+            ]
           }
         },
         officePay: {
-          $sum: { $cond: [{ $in: [paymentType, OFFICE_PAY_ALIASES] }, { $ifNull: ['$amount', 0] }, 0] }
+          $sum: {
+            $cond: [
+              matchesPaymentType(OFFICE_PAY_ALIASES, OFFICE_PAY_PATTERNS),
+              { $ifNull: ['$amount', 0] },
+              0
+            ]
+          }
         },
         salary: {
           $sum: { $cond: [{ $in: [paymentType, ['salary', 'বেতন']] }, { $ifNull: ['$amount', 0] }, 0] }
@@ -250,7 +289,7 @@ function addPaymentRows(groups, rows, { periodRange, beforePeriod, user }) {
       lc: 0
     };
     const amount = Number(payment.amount) || 0;
-    const type = resolvePaymentType(payment.paymentType)
+    const type = resolvePaymentRecordType(payment)
       || (!String(payment.paymentType || '').trim() ? 'dealer_collection' : '');
     if (RECEIPT_TYPES.has(type)) group.collection += amount;
     const field = EXPENSE_FIELDS[type];
@@ -509,7 +548,9 @@ export default async function handler(req, res) {
         totalNetSales: roundAmount(totalNetSales),
         totalSalesDues: roundAmount(target - previousPlusNetSales),
         salesPercentage: target ? roundAmount(previousPlusNetSales / target * 100) : 0,
-        paymentPercentage: previousPlusNetSales
+        paymentPercentage: Number.isFinite(previousPlusNetSales)
+          && previousPlusNetSales > 0
+          && Number.isFinite(totalReceivedAmount)
           ? roundAmount(totalReceivedAmount / previousPlusNetSales * 100)
           : 0,
         invoiceCount: parties.reduce((sum, party) => sum + party.invoiceCount, 0),

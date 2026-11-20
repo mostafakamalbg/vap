@@ -2,7 +2,12 @@ import { randomUUID } from 'node:crypto';
 import dbConnect from '../lib/mongodb.js';
 import { Dealer, Payment } from '../lib/models.js';
 import { authorize, hasSuperAdminAccess } from '../lib/auth.js';
-import { normalizePaymentMethod, PAYMENT_TYPES } from '../shared/paymentMethods.js';
+import {
+  normalizePaymentMethod,
+  normalizePaymentType,
+  PAYMENT_TYPES,
+  resolvePaymentRecordType
+} from '../shared/paymentMethods.js';
 import { roundCurrency } from '../shared/invoiceTotals.js';
 import { transactionCreateOptions, transactionOptions, withTransactionFallback } from '../lib/transactions.js';
 import { parseSessionDateRange } from '../shared/reportDateFilters.js';
@@ -20,7 +25,7 @@ function paymentValues(payment) {
     id: String(payment.id || `PAY-${randomUUID()}`),
     date: payment.date,
     session: normalizeSessionText(payment.session),
-    paymentType: payment.paymentType,
+    paymentType: normalizePaymentType(resolvePaymentRecordType(payment)),
     amount: roundCurrency(payment.amount),
     paymentMethod: normalizePaymentMethod(payment.paymentMethod),
     dealerId: String(payment.dealerId || ''),
@@ -70,6 +75,10 @@ export default async function handler(req, res) {
     const id = String(req.body?.id || '').trim();
     const update = req.body?.payment;
     if (!id || !update) return res.status(400).json({ error: 'পেমেন্টের সঠিক তথ্য দিন।' });
+    if ((update.paymentType || update.purpose)
+      && !resolvePaymentRecordType(update)) {
+      return res.status(400).json({ error: 'পেমেন্টের ধরন সঠিক নয়।' });
+    }
     if (!isValidDate(String(update.date || ''))
       || !parseSessionDateRange(normalizeSessionText(update.session))) {
       return res.status(400).json({ error: 'তারিখ ও সেশন নির্বাচন করুন।' });
@@ -84,6 +93,9 @@ export default async function handler(req, res) {
       return res.status(200).json(saved);
     } catch (error) {
       console.error('Payment update failed:', error);
+      if (error?.name === 'ValidationError') {
+        return res.status(400).json({ error: 'পেমেন্টের তথ্য সঠিক নয়।' });
+      }
       const message = error?.message || 'পেমেন্ট সম্পাদনা করা যায়নি।';
       return res.status(500).json({ error: message, message });
     }
@@ -93,14 +105,13 @@ export default async function handler(req, res) {
   if (!Array.isArray(payments) || payments.length < 1 || payments.length > PAYMENT_TYPES.length) {
     return res.status(400).json({ error: 'পেমেন্টের তালিকা সঠিক নয়।' });
   }
-  const validTypes = new Set(PAYMENT_TYPES.map(({ value }) => value));
   if (payments.some((payment) => (
     !payment
     || !isValidDate(String(payment.date || ''))
     || !String(payment.session || '').trim()
     || String(payment.session).length > 100
     || !parseSessionDateRange(normalizeSessionText(payment.session))
-    || !validTypes.has(String(payment.paymentType || ''))
+    || !resolvePaymentRecordType(payment)
     || !Number.isFinite(Number(payment.amount))
     || Number(payment.amount) <= 0
     || !String(payment.dealerId || '').trim()
@@ -149,6 +160,9 @@ export default async function handler(req, res) {
   } catch (error) {
     if (error?.code === 11000) {
       return res.status(409).json({ error: 'পেমেন্টটি ইতোমধ্যে সংরক্ষিত হয়েছে।' });
+    }
+    if (error?.name === 'ValidationError') {
+      return res.status(400).json({ error: 'পেমেন্টের তথ্য সঠিক নয়।' });
     }
     console.error('Payment posting failed:', error);
     const message = error?.message || 'পেমেন্ট সংরক্ষণ করা যায়নি।';

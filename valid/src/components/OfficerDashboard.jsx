@@ -20,12 +20,10 @@ import { calculateOfficerFinancials, filterOfficerRecordsByPeriod } from '../../
 import { getOfficerPreviousDueByDealer } from '../../shared/officerLedger';
 import { getInvoiceSalesAmount } from '../../shared/invoiceTotals';
 import { isDealerBalanceCredit } from '../../shared/paymentMethods';
+import { readJsonResponse } from '../utils/api';
 
 async function requestJson(url, options) {
-  const response = await fetch(url, { cache: 'no-store', ...options });
-  const result = await response.json();
-  if (!response.ok) throw new Error(result.error || 'অনুরোধ সম্পন্ন করা যায়নি।');
-  return result;
+  return readJsonResponse(await fetch(url, { cache: 'no-store', ...options }));
 }
 
 function printDashboardSection(sectionId) {

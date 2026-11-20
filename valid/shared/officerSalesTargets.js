@@ -86,6 +86,30 @@ export function getOfficerSalesTarget(officer, session = 'ALL') {
 }
 
 export function hasOfficerSessionSalesTarget(officer, session) {
-  return officer?.salesTargets?.[session] != null
-    || getOfficerSalesTarget(officer, session) > 0;
+  const requestedSession = canonicalTargetSession(session);
+  const savedTargets = officer?.salesTargets;
+  if (savedTargets && typeof savedTargets === 'object' && !Array.isArray(savedTargets)) {
+    if (Object.entries(savedTargets).some(([savedSession, amount]) => (
+      canonicalTargetSession(savedSession) === requestedSession && amount != null
+    ))) return true;
+  }
+
+  const sessionText = String(session || '');
+  const year = sessionText.match(/\b(20\d{2})\b/)?.[1];
+  if (year === '2027' && /জানুয়ারি|january/i.test(sessionText)) {
+    return Number(officer?.salesTargetJanJune2027) > 0;
+  }
+  if (year === '2026' && /জুলাই|july/i.test(sessionText)) {
+    return Number(officer?.salesTargetJulyDec2026) > 0;
+  }
+  return false;
+}
+
+function canonicalTargetSession(session) {
+  const text = String(session || '');
+  const year = text.match(/\b(20\d{2})\b/)?.[1];
+  if (!year) return text.trim().toLowerCase();
+  if (/জানুয়ারি|january/i.test(text)) return `জানুয়ারি - জুন ${year}`;
+  if (/জুলাই|july/i.test(text)) return `জুলাই - ডিসেম্বর ${year}`;
+  return text.trim().toLowerCase();
 }

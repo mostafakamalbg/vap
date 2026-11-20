@@ -60,19 +60,30 @@ export function resolvePaymentType(type) {
   return PAYMENT_TYPE_ALIASES.get(alias) || '';
 }
 
+export function resolvePaymentRecordType(payment) {
+  const paymentType = String(payment?.paymentType || '').trim() || payment?.purpose;
+  return resolvePaymentType(paymentType);
+}
+
 export function normalizePaymentType(type) {
   return resolvePaymentType(type) || 'dealer_collection';
 }
 
 export function isDealerCollection(payment) {
-  const resolvedType = resolvePaymentType(payment?.paymentType);
-  const type = resolvedType || (!String(payment?.paymentType || '').trim() ? 'dealer_collection' : '');
+  const resolvedType = resolvePaymentRecordType(payment);
+  const type = resolvedType || (!String(payment?.paymentType || '').trim()
+    && !String(payment?.purpose || '').trim()
+    ? 'dealer_collection'
+    : '');
   return type === 'dealer_collection' || type === 'company_transfer';
 }
 
 export function isDealerBalanceCredit(payment) {
-  const resolvedType = resolvePaymentType(payment?.paymentType);
-  const type = resolvedType || (!String(payment?.paymentType || '').trim() ? 'dealer_collection' : '');
+  const resolvedType = resolvePaymentRecordType(payment);
+  const type = resolvedType || (!String(payment?.paymentType || '').trim()
+    && !String(payment?.purpose || '').trim()
+    ? 'dealer_collection'
+    : '');
   return DEALER_BALANCE_CREDIT_TYPES.has(type);
 }
 

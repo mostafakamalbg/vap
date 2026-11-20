@@ -7,6 +7,7 @@ import {
   sortSessionsNewestFirst
 } from '../../../shared/sessions';
 import { useAgro } from '../../context/AgroContext';
+import { readJsonResponse } from '../../utils/api';
 import { isAdminRole } from '../../../shared/roles';
 
 const currentMonth = new Date().toISOString().slice(0, 7);
@@ -15,10 +16,7 @@ const amount = (value) => `৳${Math.round(Number(value) || 0).toLocaleString('e
 const number = (value) => Math.round(Number(value) || 0).toLocaleString('en-US');
 
 async function requestReport(query) {
-  const response = await fetch(`/api/dashboard-reports?${query}`, { cache: 'no-store' });
-  const result = await response.json();
-  if (!response.ok) throw new Error(result.error || 'রিপোর্ট লোড করা যায়নি।');
-  return result;
+  return readJsonResponse(await fetch(`/api/dashboard-reports?${query}`, { cache: 'no-store' }));
 }
 
 function TableFrame({ children }) {

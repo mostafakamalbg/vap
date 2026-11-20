@@ -9,6 +9,7 @@ import {
 } from '../../../shared/sessions';
 import { normalizeOfficerCode } from '../../../shared/codes';
 import { roundAmount } from '../../../shared/salesReports';
+import { readJsonResponse } from '../../utils/api';
 
 const amount = (value) => Math.round(Number(value) || 0).toLocaleString('en-US');
 const emptyParty = () => ({
@@ -38,10 +39,7 @@ function createReportDraft() {
 }
 
 async function requestJson(url, options) {
-  const response = await fetch(url, options);
-  const result = await response.json();
-  if (!response.ok) throw new Error(result.error || 'অনুরোধ সম্পন্ন করা যায়নি।');
-  return result;
+  return readJsonResponse(await fetch(url, options));
 }
 
 function partyTotals(party) {

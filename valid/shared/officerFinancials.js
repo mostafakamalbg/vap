@@ -1,7 +1,7 @@
 import { getInvoiceSalesAmount, roundCurrency } from './invoiceTotals.js';
 import { getInvoiceSessionForDate } from './sessions.js';
 import { parseSessionDateRange } from './reportDateFilters.js';
-import { resolvePaymentType } from './paymentMethods.js';
+import { resolvePaymentRecordType } from './paymentMethods.js';
 
 const SALES_EXCLUDED = new Set(['dealer_return', 'factory_damage', 'depot_factory_return']);
 const RECEIPTS = new Set(['dealer_collection', 'company_transfer']);
@@ -53,7 +53,7 @@ export function calculateOfficerFinancials({
   const standalone = payments.filter((payment) => !isInvoicePayment(payment));
   const paymentAndExpense = { officePay: 0, fare: 0, salary: 0, lc: 0 };
   standalone.forEach((payment) => {
-    const field = EXPENSE_FIELDS[resolvePaymentType(payment.paymentType)];
+    const field = EXPENSE_FIELDS[resolvePaymentRecordType(payment)];
     if (field) paymentAndExpense[field] += roundCurrency(payment.amount);
   });
   Object.keys(paymentAndExpense).forEach((key) => {
@@ -61,8 +61,9 @@ export function calculateOfficerFinancials({
   });
   const totalReceivedAmount = roundCurrency(invoiceReceipts + standalone
     .filter((payment) => {
-      const type = resolvePaymentType(payment.paymentType);
+      const type = resolvePaymentRecordType(payment);
       return RECEIPTS.has(type || (!String(payment.paymentType || '').trim()
+        && !String(payment.purpose || '').trim()
         ? 'dealer_collection'
         : ''));
     })

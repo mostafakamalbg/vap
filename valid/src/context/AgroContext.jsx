@@ -30,6 +30,7 @@ import { STOCK_RECONCILIATION_START_DATE } from '../../shared/stockReconciliatio
 import { normalizeHotlineNumber } from '../../shared/companyContact';
 import { normalizeProductDisplayNames } from '../../shared/productNames';
 import { isAdminRole, SUPER_ADMIN_ROLE } from '../../shared/roles';
+import { readJsonResponse } from '../utils/api';
 
 const AgroContext = createContext();
 
@@ -146,23 +147,6 @@ function createExcelWorksheet(name, rows) {
   )).join('');
 
   return `<Worksheet ss:Name="${name}"><Table>${xmlRows}</Table></Worksheet>`;
-}
-
-async function readJsonResponse(response) {
-  const contentType = response.headers.get('content-type') || '';
-  if (!/json/i.test(contentType)) {
-    throw new Error(import.meta.env.DEV
-      ? 'স্থানীয় Vite preview API routes চালায় না। API চালাতে Vercel login ও project environment-সহ npm run dev:vercel ব্যবহার করুন।'
-      : 'সার্ভার থেকে সঠিক প্রতিক্রিয়া পাওয়া যায়নি।');
-  }
-  let result;
-  try {
-    result = await response.json();
-  } catch {
-    throw new Error('সার্ভার থেকে সঠিক প্রতিক্রিয়া পাওয়া যায়নি।');
-  }
-  if (!response.ok) throw new Error(result.message || result.error || 'অনুরোধ সম্পন্ন করা যায়নি।');
-  return result;
 }
 
 export function AgroProvider({ children }) {

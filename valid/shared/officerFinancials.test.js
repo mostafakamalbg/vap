@@ -40,12 +40,14 @@ test('officer summary recognizes saved office and depot category labels', () => 
       { paymentType: 'Office Pay', amount: 100 },
       { paymentType: 'Depot', amount: 40 },
       { paymentType: 'অফিস / ডিপো', amount: 60 },
+      { paymentType: 'অফিস   /   ডিপো', amount: 20 },
+      { purpose: 'Depot', amount: 10 },
       { paymentType: 'কোম্পানিতে টাকা পাঠানো', amount: 80 }
     ]
   });
 
-  assert.equal(summary.paymentAndExpense.officePay, 200);
-  assert.equal(summary.totalReceivedAmount, 280);
+  assert.equal(summary.paymentAndExpense.officePay, 230);
+  assert.equal(summary.totalReceivedAmount, 310);
 });
 
 test('payment percentage remains zero for zero or negative receivables', () => {

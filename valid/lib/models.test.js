@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { AdminSeat, User } from './models.js';
+import { AdminSeat, DealerSalesTarget, SalesOfficer, User } from './models.js';
 import {
   ADMIN_ROLE,
   LEGACY_ADMIN_ROLE,
@@ -27,4 +27,16 @@ test('user status schema accepts canonical and legacy active values', () => {
   for (const status of USER_STATUS_VALUES) {
     assert.ok(allowedStatuses.includes(status));
   }
+});
+
+test('target uniqueness stays scoped to dealer identity and session', () => {
+  const dealerUniqueIndexes = DealerSalesTarget.schema.indexes()
+    .filter(([, options]) => options.unique)
+    .map(([fields]) => fields);
+  assert.deepEqual(dealerUniqueIndexes, [{ id: 1 }, { dealerId: 1, session: 1 }]);
+
+  const officerUniqueIndexes = SalesOfficer.schema.indexes()
+    .filter(([, options]) => options.unique)
+    .map(([fields]) => fields);
+  assert.deepEqual(officerUniqueIndexes, [{ slNo: 1 }]);
 });

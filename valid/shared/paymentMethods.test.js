@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { PAYMENT_TYPES, resolvePaymentType } from './paymentMethods.js';
+import {
+  PAYMENT_TYPES,
+  resolvePaymentRecordType,
+  resolvePaymentType
+} from './paymentMethods.js';
 
 test('office and depot payment labels resolve to the canonical office_pay category', () => {
   const officePay = PAYMENT_TYPES.find((entry) => entry.value === 'office_pay');
@@ -10,9 +14,13 @@ test('office and depot payment labels resolve to the canonical office_pay catego
     'office_pay',
     'Office Pay',
     'Office / Depot',
+    ' OFFICE /   DEPOT ',
     'Depot',
+    'Depot Payment',
     'অফিস / ডিপো',
+    'অফিস   /   ডিপো',
     'অফিস খরচ',
     'ডিপো'
   ].forEach((label) => assert.equal(resolvePaymentType(label), 'office_pay'));
+  assert.equal(resolvePaymentRecordType({ purpose: 'Office Pay' }), 'office_pay');
 });

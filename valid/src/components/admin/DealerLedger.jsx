@@ -32,6 +32,7 @@ import { getDealerLedgerTransactions } from '../../../shared/dealerLedger';
 import CompanyLetterhead from './CompanyLetterhead';
 import { getBangladeshBusinessDate, getInvoiceSessionForDate, INVOICE_SESSIONS } from '../../../shared/sessions';
 import { SUPER_ADMIN_ROLE } from '../../../shared/roles';
+import { readJsonResponse } from '../../utils/api';
 
 const createPaymentEntries = () => LEDGER_PAYMENT_TYPES.map(({ value }) => ({
   paymentType: value,
@@ -302,8 +303,7 @@ export default function DealerLedger() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(previousDueForm)
       });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || 'পূর্বের বকেয়া সংরক্ষণ করা যায়নি।');
+      const result = await readJsonResponse(response);
       const dealer = dealers.find((entry) => entry.id === previousDueForm.dealerId);
       setShowPreviousDueModal(false);
       setPreviousDueForm(createPreviousDueForm());

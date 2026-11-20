@@ -45,7 +45,22 @@ function requestPath(value) {
   return path.startsWith('/api/') ? path : '';
 }
 
-export default function handler(req, res) {
+export default async function handler(req, res) {
+  const json = res.json.bind(res);
+  res.json = (body) => {
+    if (res.statusCode >= 400 && res.statusCode <= 599) {
+      const errorBody = body && typeof body === 'object' && !Array.isArray(body)
+        ? body
+        : {};
+      return json({
+        ...errorBody,
+        success: false,
+        message: errorBody.message || errorBody.error || 'Request failed.'
+      });
+    }
+    return json(body);
+  };
+
   const forwardedPath = req.query?.__path;
   const candidates = [
     Array.isArray(forwardedPath) ? forwardedPath[0] : forwardedPath,
@@ -59,13 +74,25 @@ export default function handler(req, res) {
   ));
   const route = path?.slice('/api/'.length).replace(/\/+$/, '') || '';
 
-  if (route === 'auth' || route.startsWith('auth/')) {
-    const authRoute = route.slice('auth/'.length);
-    if (authRoute) req.query = { ...req.query, route: authRoute };
-    return auth(req, res);
-  }
+  try {
+    if (route === 'auth' || route.startsWith('auth/')) {
+      const authRoute = route.slice('auth/'.length);
+      if (authRoute) req.query = { ...req.query, route: authRoute };
+      return await auth(req, res);
+    }
 
-  const selectedHandler = Object.hasOwn(handlers, route) ? handlers[route] : null;
-  if (!selectedHandler) return res.status(404).json({ error: 'Not Found' });
-  return selectedHandler(req, res);
+    const selectedHandler = Object.hasOwn(handlers, route) ? handlers[route] : null;
+    if (!selectedHandler) return res.status(404).json({ error: 'Not Found' });
+    return await selectedHandler(req, res);
+  } catch (error) {
+    console.error(`Unhandled API failure for ${route}:`, error);
+    if (res.headersSent || res.writableEnded) return;
+    const statusCode = [400, 403, 404, 409].includes(error?.statusCode)
+      ? error.statusCode
+      : 500;
+    return res.status(statusCode).json({
+      success: false,
+      message: error?.message || 'A server error occurred.'
+    });
+  }
 }

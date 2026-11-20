@@ -16,6 +16,7 @@ import { normalizeOfficerCode } from '../../../shared/codes';
 import { parseReportMonth, parseSessionDateRange } from '../../../shared/reportDateFilters';
 import { getInvoiceSessionForDate, INVOICE_SESSIONS, getBangladeshBusinessDate } from '../../../shared/sessions';
 import { isAdminRole } from '../../../shared/roles';
+import { readJsonResponse } from '../../utils/api';
 
 const today = getBangladeshBusinessDate();
 const currentSession = getInvoiceSessionForDate(today);
@@ -24,10 +25,7 @@ const currentYear = today.slice(0, 4);
 const money = (value) => `৳${Math.round(Number(value) || 0).toLocaleString('bn-BD')}`;
 
 async function requestJson(url, options = {}) {
-  const response = await fetch(url, { cache: 'no-store', ...options });
-  const result = await response.json();
-  if (!response.ok) throw new Error(result.error || 'অনুরোধ সম্পন্ন করা যায়নি।');
-  return result;
+  return readJsonResponse(await fetch(url, { cache: 'no-store', ...options }));
 }
 
 function periodRange(filter) {
@@ -392,7 +390,10 @@ export default function MonthlyTargetReports() {
     selectedOfficer && officerMatches(entry, selectedOfficer)
   )) || {};
   const officerTargetLocked = Boolean(selectedOfficer && hasOfficerSessionSalesTarget(
-    { ...selectedOfficer, ...selectedOfficerTarget },
+    {
+      salesTargets: selectedOfficer.salesTargets,
+      ...selectedOfficerTarget
+    },
     officerDraft.session
   ));
   const dealerTargetLocked = Boolean(dealerDraft.dealerId && dealerTargets.some((target) => (
