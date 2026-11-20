@@ -27,20 +27,50 @@ export const LEDGER_PAYMENT_TYPES = PAYMENT_TYPES.filter((entry) => (
   entry.value !== 'dealer_collection' && entry.value !== 'office_pay'
 ));
 
-export function normalizePaymentType(type) {
+const PAYMENT_TYPE_ALIASES = new Map([
+  ['office pay', 'office_pay'],
+  ['office payment', 'office_pay'],
+  ['office expense', 'office_pay'],
+  ['office/depot', 'office_pay'],
+  ['office depot', 'office_pay'],
+  ['depot', 'office_pay'],
+  ['depot pay', 'office_pay'],
+  ['depot payment', 'office_pay'],
+  ['অফিস খরচ', 'office_pay'],
+  ['অফিস/ডিপো', 'office_pay'],
+  ['অফিস ডিপো', 'office_pay'],
+  ['ডিপো', 'office_pay'],
+  ['ডিপো খরচ', 'office_pay'],
+  ['company transfer', 'company_transfer'],
+  ['company payment', 'company_transfer'],
+  ['কোম্পানিতে টাকা পাঠানো', 'company_transfer']
+]);
+
+export function resolvePaymentType(type) {
   const value = String(type || '').trim().toLowerCase();
-  return PAYMENT_TYPES.some((entry) => entry.value === value)
-    ? value
-    : 'dealer_collection';
+  if (PAYMENT_TYPES.some((entry) => entry.value === value)) return value;
+
+  const alias = value
+    .replace(/[._-]+/g, ' ')
+    .replace(/\s*\/\s*/g, '/')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return PAYMENT_TYPE_ALIASES.get(alias) || '';
+}
+
+export function normalizePaymentType(type) {
+  return resolvePaymentType(type) || 'dealer_collection';
 }
 
 export function isDealerCollection(payment) {
-  const type = String(payment?.paymentType || 'dealer_collection');
+  const resolvedType = resolvePaymentType(payment?.paymentType);
+  const type = resolvedType || (!String(payment?.paymentType || '').trim() ? 'dealer_collection' : '');
   return type === 'dealer_collection' || type === 'company_transfer';
 }
 
 export function isDealerBalanceCredit(payment) {
-  const type = String(payment?.paymentType || 'dealer_collection');
+  const resolvedType = resolvePaymentType(payment?.paymentType);
+  const type = resolvedType || (!String(payment?.paymentType || '').trim() ? 'dealer_collection' : '');
   return DEALER_BALANCE_CREDIT_TYPES.has(type);
 }
 

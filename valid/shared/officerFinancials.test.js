@@ -34,6 +34,41 @@ test('officer summary deducts return invoices and classifies payment categories'
   assert.equal(summary.paymentPercentage, 40);
 });
 
+test('officer summary recognizes saved office and depot category labels', () => {
+  const summary = calculateOfficerFinancials({
+    payments: [
+      { paymentType: 'Office Pay', amount: 100 },
+      { paymentType: 'Depot', amount: 40 },
+      { paymentType: 'অফিস / ডিপো', amount: 60 },
+      { paymentType: 'কোম্পানিতে টাকা পাঠানো', amount: 80 }
+    ]
+  });
+
+  assert.equal(summary.paymentAndExpense.officePay, 200);
+  assert.equal(summary.totalReceivedAmount, 280);
+});
+
+test('payment percentage remains zero for zero or negative receivables', () => {
+  const zeroReceivable = calculateOfficerFinancials({
+    payments: [{ paymentType: 'dealer_collection', amount: 100 }]
+  });
+  const negativeReceivable = calculateOfficerFinancials({
+    lastSessionDue: -100,
+    payments: [{ paymentType: 'dealer_collection', amount: 100 }]
+  });
+
+  assert.equal(zeroReceivable.paymentPercentage, 0);
+  assert.equal(negativeReceivable.paymentPercentage, 0);
+});
+
+test('unknown payment categories are not silently counted as dealer collections', () => {
+  const summary = calculateOfficerFinancials({
+    payments: [{ paymentType: 'unrecognized category', amount: 500 }]
+  });
+
+  assert.equal(summary.totalReceivedAmount, 0);
+});
+
 test('period filtering does not mix months or sessions', () => {
   const records = [
     { date: '2026-10-12', session: 'জুলাই - ডিসেম্বর 2026' },

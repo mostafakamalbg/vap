@@ -1,6 +1,7 @@
 import { getInvoiceSalesAmount, roundCurrency } from './invoiceTotals.js';
 import { getInvoiceSessionForDate } from './sessions.js';
 import { parseSessionDateRange } from './reportDateFilters.js';
+import { resolvePaymentType } from './paymentMethods.js';
 
 const SALES_EXCLUDED = new Set(['dealer_return', 'factory_damage', 'depot_factory_return']);
 const RECEIPTS = new Set(['dealer_collection', 'company_transfer']);
@@ -52,18 +53,24 @@ export function calculateOfficerFinancials({
   const standalone = payments.filter((payment) => !isInvoicePayment(payment));
   const paymentAndExpense = { officePay: 0, fare: 0, salary: 0, lc: 0 };
   standalone.forEach((payment) => {
-    const field = EXPENSE_FIELDS[String(payment.paymentType || '')];
+    const field = EXPENSE_FIELDS[resolvePaymentType(payment.paymentType)];
     if (field) paymentAndExpense[field] += roundCurrency(payment.amount);
   });
   Object.keys(paymentAndExpense).forEach((key) => {
     paymentAndExpense[key] = roundCurrency(paymentAndExpense[key]);
   });
   const totalReceivedAmount = roundCurrency(invoiceReceipts + standalone
-    .filter((payment) => RECEIPTS.has(String(payment.paymentType || 'dealer_collection')))
+    .filter((payment) => {
+      const type = resolvePaymentType(payment.paymentType);
+      return RECEIPTS.has(type || (!String(payment.paymentType || '').trim()
+        ? 'dealer_collection'
+        : ''));
+    })
     .reduce((sum, payment) => sum + (Number(payment.amount) || 0), 0)
     + Object.values(paymentAndExpense).reduce((sum, value) => sum + value, 0));
   const totalExpenses = Object.values(paymentAndExpense).reduce((sum, value) => sum + value, 0);
   const previousPlusNetSales = roundCurrency(lastSessionDue) + totalNetSales;
+  const paymentDenominator = Math.max(0, previousPlusNetSales);
   return {
     salesAmount,
     returnAmount,
@@ -76,8 +83,8 @@ export function calculateOfficerFinancials({
     totalExpenses,
     expensePercentage: totalNetSales ? roundCurrency(totalExpenses / totalNetSales * 100) : 0,
     salesPercentage: salesTarget ? roundCurrency(previousPlusNetSales / salesTarget * 100) : 0,
-    paymentPercentage: previousPlusNetSales
-      ? roundCurrency(totalReceivedAmount / previousPlusNetSales * 100)
+    paymentPercentage: paymentDenominator > 0 && Number.isFinite(totalReceivedAmount)
+      ? roundCurrency(totalReceivedAmount / paymentDenominator * 100)
       : 0
   };
 }

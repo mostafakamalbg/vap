@@ -22,6 +22,23 @@ export function normalizeOfficerCode(code, designation = '') {
   return `${getOfficerCodePrefix(designation)}-${value.padStart(2, '0')}`;
 }
 
+export function getOfficerCodeAliases(code, designation = '') {
+  const rawCode = String(code || '').trim().toUpperCase();
+  const normalizedCode = normalizeOfficerCode(rawCode, designation);
+  if (!normalizedCode) return rawCode ? [rawCode] : [];
+
+  const aliases = new Set([rawCode, normalizedCode]);
+  const match = normalizedCode.match(/^(SO|TSO|ASM|RSM)-(\d+)$/);
+  if (match) {
+    aliases.add(`${match[1]}${match[2]}`);
+    if (match[1] === 'SO') {
+      aliases.add(`FSO-${match[2]}`);
+      aliases.add(`FSO${match[2]}`);
+    }
+  }
+  return [...aliases].filter(Boolean);
+}
+
 export function normalizeDealerOfficerCode(dealer, officers = []) {
   const assignedId = String(dealer?.assignedOfficerId || dealer?.officerId || '');
   const rawDealerCode = dealer?.officerCode || dealer?.assignedOfficerCode || '';

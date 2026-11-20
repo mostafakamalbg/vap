@@ -2,6 +2,7 @@ import dbConnect from '../lib/mongodb.js';
 import { BusinessRecord, Dealer, Invoice, Payment, Product } from '../lib/models.js';
 import { authorize } from '../lib/auth.js';
 import {
+  getOfficerCodeAliases,
   isDealerAssignedToOfficer,
   normalizeDealerAssignment,
   normalizeOfficerCode
@@ -9,6 +10,7 @@ import {
 import { getDealersWithOfficerCodes } from '../lib/dealerAssignments.js';
 import { dateRangeCondition, parseReportMonth, parseSessionDateRange } from '../shared/reportDateFilters.js';
 import { normalizePaymentMethod, normalizePaymentType, PAYMENT_TYPES } from '../shared/paymentMethods.js';
+import { dealerHasOfficerPreviousDue } from '../shared/officerLedger.js';
 import { roundCurrency } from '../shared/invoiceTotals.js';
 import { getInvoiceSessionForDate } from '../shared/sessions.js';
 import { transactionOptions, withTransactionFallback } from '../lib/transactions.js';
@@ -65,14 +67,26 @@ export default async function handler(req, res) {
         const designation = officer?.designation || '';
         return res.status(200).json(dealers.filter((dealer) => (
           isDealerAssignedToOfficer(dealer, officerCode, designation)
+          || dealerHasOfficerPreviousDue(dealer, {
+            officerIds: [user.officerId, officer?.id, officer?.officerId],
+            officerCode,
+            designation
+          })
         )));
       }
       if (type === 'payments') {
         const conditions = [];
+        const officerCodeAliases = new Set(getOfficerCodeAliases(user.officerCode));
         if (!isAdminRole(user.role)) {
           const ownerConditions = [
             ...(user.officerId ? [{ officerId: user.officerId }] : []),
-            ...(user.officerCode ? [{ officerCode: user.officerCode }] : [])
+            ...(officerCodeAliases.size ? [{
+              officerCode: {
+                $regex: new RegExp(`^(?:${[...officerCodeAliases]
+                  .map((code) => code.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+                  .join('|')})$`, 'i')
+              }
+            }] : [])
           ];
           conditions.push(ownerConditions.length ? { $or: ownerConditions } : { id: '__no_records__' });
         }
@@ -100,12 +114,16 @@ export default async function handler(req, res) {
         const sources = new Set(typed.map((payment) => String(payment.sourceInvoiceId || '')).filter(Boolean));
         const monthRange = req.query?.month != null ? parseReportMonth(req.query.month) : null;
         const sessionRange = req.query?.session != null ? parseSessionDateRange(req.query.session) : null;
+        const normalizedUserCode = normalizeOfficerCode(user.officerCode);
         const legacy = legacyRecords.map((record) => record.data).filter((payment) => {
           if (!payment || (payment.id && ids.has(String(payment.id)))) return false;
           if (payment.sourceInvoiceId && sources.has(String(payment.sourceInvoiceId))) return false;
-          if (!isAdminRole(user.role)
-            && payment.officerId !== user.officerId
-            && payment.officerCode !== user.officerCode) return false;
+          const matchesOfficer = Boolean(user.officerId
+            && String(payment.officerId || '') === String(user.officerId))
+            || officerCodeAliases.has(String(payment.officerCode || '').trim().toUpperCase())
+            || Boolean(normalizedUserCode
+              && normalizeOfficerCode(payment.officerCode) === normalizedUserCode);
+          if (!isAdminRole(user.role) && !matchesOfficer) return false;
           if (req.query?.date != null && payment.date !== String(req.query.date)) return false;
           if (monthRange && !(String(payment.date || '') >= monthRange.start
             && String(payment.date || '') < monthRange.end)) return false;

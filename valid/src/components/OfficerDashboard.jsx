@@ -17,6 +17,7 @@ import {
 } from '../../shared/sessions';
 import { getOfficerSalesTarget, OFFICER_TARGET_SESSIONS } from '../../shared/officerSalesTargets';
 import { calculateOfficerFinancials, filterOfficerRecordsByPeriod } from '../../shared/officerFinancials';
+import { getOfficerPreviousDueByDealer } from '../../shared/officerLedger';
 import { getInvoiceSalesAmount } from '../../shared/invoiceTotals';
 import { isDealerBalanceCredit } from '../../shared/paymentMethods';
 
@@ -57,6 +58,7 @@ export default function OfficerDashboard() {
   const [monthlyReports, setMonthlyReports] = useState([]);
   const [periodInvoices, setPeriodInvoices] = useState([]);
   const [periodPayments, setPeriodPayments] = useState([]);
+  const [officerLedgerDealers, setOfficerLedgerDealers] = useState(null);
   const [items, setItems] = useState([{ productId: '', sku: '', cartons: 1 }]);
   const [dealerId, setDealerId] = useState(dealers[0]?.id || '');
   const [sessionFilter, setSessionFilter] = useState(
@@ -107,11 +109,13 @@ export default function OfficerDashboard() {
     setPeriodPayments([]);
     const loadPeriodRecords = () => Promise.all([
       requestJson(`/api/invoices?${query}`),
-      requestJson(`/api/records?type=payments&${query}`)
-    ]).then(([invoiceRecords, paymentRecords]) => {
+      requestJson(`/api/records?type=payments&${query}`),
+      requestJson('/api/records?type=dealers')
+    ]).then(([invoiceRecords, paymentRecords, dealerRecords]) => {
       if (cancelled) return;
       setPeriodInvoices(Array.isArray(invoiceRecords) ? invoiceRecords : []);
       setPeriodPayments(Array.isArray(paymentRecords) ? paymentRecords : []);
+      setOfficerLedgerDealers(Array.isArray(dealerRecords) ? dealerRecords : []);
       setError('');
     }).catch((requestError) => {
       if (cancelled) return;
@@ -227,6 +231,12 @@ export default function OfficerDashboard() {
       ? latestReportOpeningDue
       : monthFilter === 'ALL' ? currentOfficer?.lastSessionDue : 0
   });
+  const ledgerDealers = officerLedgerDealers ?? availableDealers;
+  const officerLedgerIdentity = {
+    officerIds: [currentUser?.officerId, currentOfficer?.id],
+    officerCode,
+    designation: currentOfficer?.designation
+  };
   const officerProductSales = useMemo(() => {
     const sales = new Map();
     filteredSalesInvoices.forEach((invoice) => {
@@ -266,22 +276,45 @@ export default function OfficerDashboard() {
       if (key && (!current || String(report.reportingDate || '') > current.reportingDate)) {
         reportDueByName.set(key, {
           reportingDate: String(report.reportingDate || ''),
+          session: String(report.session || ''),
           amount: Number(party.lastMonthDues) || 0
         });
       }
     }));
-    const ledgers = new Map(availableDealers.map((dealer) => [dealer.id, {
-      dealerId: dealer.id,
-      dealerName: dealer.shopName || dealer.id,
-      lastSessionDue: reportDueByName.get(String(dealer.shopName || '').trim().toLowerCase())?.amount
-        ?? (monthFilter === 'ALL' ? Number(dealer.lastSessionDue ?? dealer.openingDue) || 0 : 0),
-      sales: 0,
-      returns: 0,
-      invoiceReceived: 0,
-      collection: 0
-    }]));
+    const previousDues = getOfficerPreviousDueByDealer(ledgerDealers, officerLedgerIdentity, {
+      session: sessionFilter,
+      month: monthFilter
+    });
+    const ledgers = new Map(ledgerDealers.map((dealer) => {
+      const dealerId = String(dealer.id);
+      const previousDue = previousDues.get(dealerId);
+      const reportDue = reportDueByName.get(String(dealer.shopName || '').trim().toLowerCase());
+      const openingDue = previousDue || (reportDue
+        ? { amount: reportDue.amount, date: reportDue.reportingDate, session: reportDue.session }
+        : null);
+      return [dealerId, {
+        dealerId: dealer.id,
+        dealerName: dealer.shopName || dealer.id,
+        lastSessionDue: openingDue?.amount ?? 0,
+        lastSessionDueDate: openingDue?.date || '',
+        lastSessionDueSession: openingDue?.session || '',
+        sales: 0,
+        returns: 0,
+        invoiceReceived: 0,
+        collection: 0
+      }];
+    }));
+    const dealerAliases = new Map();
+    ledgerDealers.forEach((dealer) => {
+      [dealer.id, dealer.code, dealer.shopName].forEach((value) => {
+        const key = String(value || '').trim().toLowerCase();
+        if (key && !dealerAliases.has(key)) dealerAliases.set(key, String(dealer.id));
+      });
+    });
     const getLedger = (record) => {
-      const key = record.dealerId || record.dealerName || '';
+      const key = [record.dealerId, record.dealerCode, record.dealerName]
+        .map((value) => dealerAliases.get(String(value || '').trim().toLowerCase()))
+        .find(Boolean) || record.dealerId || record.dealerCode || record.dealerName || '';
       if (!key) return null;
       if (!ledgers.has(key)) {
         ledgers.set(key, {
@@ -294,7 +327,7 @@ export default function OfficerDashboard() {
           collection: 0
         });
       }
-      return ledgers.get(key);
+      return ledgers.get(String(key));
     };
 
     periodInvoices.forEach((invoice) => {
@@ -321,7 +354,18 @@ export default function OfficerDashboard() {
       due: ledger.lastSessionDue + ledger.sales - ledger.returns
         - ledger.invoiceReceived - ledger.collection
     })).sort((left, right) => left.dealerName.localeCompare(right.dealerName));
-  }, [availableDealers, monthFilter, monthlyReports, periodInvoices, periodPayments]);
+  }, [
+    ledgerDealers,
+    monthFilter,
+    monthlyReports,
+    periodInvoices,
+    periodPayments,
+    sessionFilter,
+    currentOfficer?.id,
+    currentOfficer?.designation,
+    currentUser?.officerId,
+    officerCode
+  ]);
   const dealerLedgerTotals = officerDealerLedgers.reduce((totals, ledger) => ({
     lastSessionDue: totals.lastSessionDue + ledger.lastSessionDue,
     sales: totals.sales + ledger.sales,
@@ -403,8 +447,8 @@ export default function OfficerDashboard() {
     { label: 'L/C খরচ', value: formatMoney(financeSummary.paymentAndExpense.lc), Icon: TrendingUp }
   ];
   const paymentSummaryCards = [
-    { label: 'মোট পেমেন্ট', value: formatMoney(financeSummary.totalReceivedAmount), Icon: TrendingUp },
-    { label: 'মোট পেমেন্ট অর্জন', value: `${financeSummary.paymentPercentage}%`, Icon: Target }
+    { label: 'মোট পেমেন্ট অর্জন', value: formatMoney(financeSummary.totalReceivedAmount), Icon: TrendingUp },
+    { label: 'মোট পেমেন্ট পার্সেন্টেজ', value: `${financeSummary.paymentPercentage}%`, Icon: Target }
   ];
   const renderSummaryCards = (cards) => cards.map(({ label, value, detail, Icon }) => (
     <div key={label} className="flex items-center gap-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -508,7 +552,7 @@ export default function OfficerDashboard() {
               <table className="w-full min-w-[760px] text-left text-xs">
                 <thead className="bg-emerald-900 text-white"><tr>
                   <th className="px-3 py-2">ডিলারের নাম</th>
-                  <th className="px-3 py-2 text-right">Last Session Due</th>
+                  <th className="px-3 py-2 text-right">পূর্বের বাকি / Last Session Due</th>
                   <th className="px-3 py-2 text-right">পণ্য বিক্রি</th>
                   <th className="px-3 py-2 text-right">পণ্য ফেরত</th>
                   <th className="px-3 py-2 text-right">মোট আদায়</th>
@@ -518,7 +562,9 @@ export default function OfficerDashboard() {
                   {officerDealerLedgers.map((ledger) => (
                     <tr key={ledger.dealerId}>
                       <td className="px-3 py-2 font-semibold">{ledger.dealerName}</td>
-                      <td className="px-3 py-2 text-right">৳{Math.round(ledger.lastSessionDue).toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}</td>
+                      <td className="px-3 py-2 text-right">৳{Math.round(ledger.lastSessionDue).toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}
+                        {(ledger.lastSessionDueDate || ledger.lastSessionDueSession) && <span className="block text-[10px] font-normal text-slate-500">{ledger.lastSessionDueDate || ledger.lastSessionDueSession}{ledger.lastSessionDueDate && ledger.lastSessionDueSession ? ` • ${ledger.lastSessionDueSession}` : ''}</span>}
+                      </td>
                       <td className="px-3 py-2 text-right">৳{Math.round(ledger.sales).toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}</td>
                       <td className="px-3 py-2 text-right text-rose-700">৳{Math.round(ledger.returns).toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}</td>
                       <td className="px-3 py-2 text-right text-emerald-800">৳{Math.round(ledger.received).toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}</td>
@@ -558,12 +604,12 @@ export default function OfficerDashboard() {
                 ['বেতন', financeSummary.paymentAndExpense.salary],
                 ['ভাড়া / Fare', financeSummary.paymentAndExpense.fare],
                 ['L/C খরচ', financeSummary.paymentAndExpense.lc],
-                ['মোট পেমেন্ট', financeSummary.totalReceivedAmount],
-                ['পেমেন্ট হার', `${financeSummary.paymentPercentage}%`]
+                ['মোট পেমেন্ট অর্জন', financeSummary.totalReceivedAmount],
+                ['মোট পেমেন্ট পার্সেন্টেজ', `${financeSummary.paymentPercentage}%`]
               ].map(([label, value]) => (
                 <div key={label} className="rounded-lg bg-slate-50 p-3">
                   <p className="text-xs font-semibold text-slate-500">{label}</p>
-                  <p className="mt-1 font-black text-slate-900">{label === 'ইনভয়েস' || label === 'পেমেন্ট হার' ? value : `৳${Math.round(Number(value) || 0).toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}`}</p>
+                  <p className="mt-1 font-black text-slate-900">{label === 'ইনভয়েস' || label === 'মোট পেমেন্ট পার্সেন্টেজ' ? value : `৳${Math.round(Number(value) || 0).toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}`}</p>
                 </div>
               ))}
             </div>
