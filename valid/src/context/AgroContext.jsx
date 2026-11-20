@@ -161,7 +161,7 @@ async function readJsonResponse(response) {
   } catch {
     throw new Error('সার্ভার থেকে সঠিক প্রতিক্রিয়া পাওয়া যায়নি।');
   }
-  if (!response.ok) throw new Error(result.error || 'অনুরোধ সম্পন্ন করা যায়নি।');
+  if (!response.ok) throw new Error(result.message || result.error || 'অনুরোধ সম্পন্ন করা যায়নি।');
   return result;
 }
 

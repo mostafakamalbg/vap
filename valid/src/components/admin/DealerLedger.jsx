@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import {
   Users,
   PlusCircle,
@@ -51,6 +51,13 @@ const createPaymentForm = (dealerId = '', officerId = '') => ({
 });
 
 function findDealerOfficer(dealer, officers) {
+  const assignedId = String(dealer?.assignedOfficerId || dealer?.officerId || '');
+  const officerById = officers.find((officer) => (
+    assignedId
+    && String(officer.id || officer.officerId || '') === assignedId
+  ));
+  if (officerById) return officerById;
+
   return officers.find((officer) => (
     Boolean(dealer?.officerCode)
     && normalizeOfficerCode(officer.code, officer.designation)
@@ -103,7 +110,6 @@ export default function DealerLedger() {
   const [showAddDealerModal, setShowAddDealerModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showPreviousDueModal, setShowPreviousDueModal] = useState(false);
-  const [additionalOfficers, setAdditionalOfficers] = useState([]);
   const [previousDueForm, setPreviousDueForm] = useState({
     dealerId: '',
     officerId: '',
@@ -112,30 +118,7 @@ export default function DealerLedger() {
     amount: 0
   });
 
-  useEffect(() => {
-    let cancelled = false;
-    fetch('/api/records?type=officers')
-      .then((response) => response.json())
-      .then((records) => {
-        if (!cancelled && Array.isArray(records)) {
-          setAdditionalOfficers(records.map((officer) => ({
-            ...officer,
-            id: String(officer.id || officer.officerId || ''),
-            code: officer.code || officer.officerCode || '',
-            name: officer.name || officer.officerName || ''
-          })).filter((officer) => officer.id));
-        }
-      })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, []);
-
-  const availableOfficers = [...officers];
-  additionalOfficers.forEach((officer) => {
-    if (!availableOfficers.some((item) => item.id === officer.id)) {
-      availableOfficers.push(officer);
-    }
-  });
+  const availableOfficers = officers;
   const [selectedDealerForLedger, setSelectedDealerForLedger] = useState(null);
   const [successMsg, setSuccessMsg] = useState('');
 
@@ -189,7 +172,7 @@ export default function DealerLedger() {
     const d = dealers.find((dl) => dl.id === dealerId);
     const form = createPaymentForm(
       dealerId,
-      findDealerOfficer(d, officers)?.id || officers[0]?.id || ''
+      findDealerOfficer(d, availableOfficers)?.id || ''
     );
     form.reference = `MR-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`;
     setPaymentForm(form);
@@ -217,7 +200,15 @@ export default function DealerLedger() {
     }
 
     const d = dealers.find((dl) => dl.id === paymentForm.dealerId);
+    if (!d) {
+      alert('ডিলার নির্বাচন করুন।');
+      return;
+    }
     const o = availableOfficers.find((of) => of.id === paymentForm.officerId);
+    if (!o) {
+      alert('দায়িত্বপ্রাপ্ত অফিসার নির্বাচন করুন।');
+      return;
+    }
 
     const newPayments = entriesToSave.map((entry) => {
       const paymentType = normalizePaymentType(entry.paymentType);
@@ -240,7 +231,7 @@ export default function DealerLedger() {
     try {
       await addDealerPayment(newPayments);
     } catch (error) {
-      window.alert(error.message || 'পেমেন্ট সংরক্ষণ করা যায়নি।');
+      window.alert(error.message);
       return;
     }
 
@@ -248,7 +239,7 @@ export default function DealerLedger() {
     window.alert(`${d?.shopName || 'ডিলার'}-এর ${entriesToSave.length}টি পেমেন্ট পোস্টিং, মোট ৳${total.toLocaleString()} সংরক্ষণ হয়েছে।`);
     const resetForm = createPaymentForm(
       paymentForm.dealerId,
-      findDealerOfficer(d, officers)?.id || officers[0]?.id || ''
+      findDealerOfficer(d, availableOfficers)?.id || ''
     );
     resetForm.reference = `MR-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`;
     setPaymentForm(resetForm);
@@ -576,13 +567,44 @@ export default function DealerLedger() {
                 <div>
                   <label className="block font-semibold text-slate-600 mb-1">ডিলার নির্বাচন</label>
                   <select
+                    required
                     value={paymentForm.dealerId}
-                    onChange={(e) => setPaymentForm({ ...paymentForm, dealerId: e.target.value })}
+                    onChange={(e) => {
+                      const dealerId = e.target.value;
+                      const dealer = dealers.find((item) => item.id === dealerId);
+                      const assignedOfficer = findDealerOfficer(dealer, availableOfficers);
+                      setPaymentForm((previous) => ({
+                        ...previous,
+                        dealerId,
+                        officerId: assignedOfficer?.id || (
+                          availableOfficers.some((officer) => officer.id === previous.officerId)
+                            ? previous.officerId
+                            : ''
+                        )
+                      }));
+                    }}
                     className="w-full bg-slate-50 border border-slate-300 rounded p-2 text-xs font-semibold"
                   >
+                    <option value="">ডিলার নির্বাচন করুন</option>
                     {dealers.map((d) => (
                       <option key={d.id} value={d.id}>
                         {d.shopName}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-600 mb-1">দায়িত্বপ্রাপ্ত অফিসার</label>
+                  <select
+                    required
+                    value={paymentForm.officerId}
+                    onChange={(e) => setPaymentForm({ ...paymentForm, officerId: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-300 rounded p-2 text-xs"
+                  >
+                    <option value="">অফিসার নির্বাচন করুন</option>
+                    {availableOfficers.map((o) => (
+                      <option key={o.id} value={o.id}>
+                        {formatOfficerCode(o.code, o.designation)} • {o.name} • {o.designation}
                       </option>
                     ))}
                   </select>
@@ -656,22 +678,6 @@ export default function DealerLedger() {
               </div>
 
               <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-semibold text-slate-600 mb-1">দায়িত্বপ্রাপ্ত অফিসার</label>
-                  <select
-                    value={paymentForm.officerId}
-                    onChange={(e) => setPaymentForm({ ...paymentForm, officerId: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-300 rounded p-2 text-xs"
-                  >
-                    <option value="">অফিসার নির্বাচন করুন</option>
-                    {availableOfficers.map((o) => (
-                      <option key={o.id} value={o.id}>
-                        {formatOfficerCode(o.code, o.designation)} • {o.name} • {o.designation}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
                 <div>
                   <label className="block font-semibold text-slate-600 mb-1">রিসিভ করেছেন</label>
                   <input

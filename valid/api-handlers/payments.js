@@ -37,7 +37,13 @@ function paymentValues(payment) {
 
 export default async function handler(req, res) {
   if (!['POST', 'PATCH', 'DELETE'].includes(req.method)) return res.status(405).json({ error: 'Method Not Allowed' });
-  if (!await dbConnect()) return res.status(503).json({ error: 'MongoDB is not configured.' });
+  try {
+    if (!await dbConnect()) return res.status(503).json({ error: 'MongoDB is not configured.' });
+  } catch (error) {
+    console.error('Payment database connection failed:', error);
+    const message = error?.message || 'Payment database connection failed.';
+    return res.status(503).json({ error: message, message });
+  }
   const user = await authorize(req, res, ADMIN_ROLES);
   if (!user) return;
   if (req.method !== 'POST') {
@@ -56,7 +62,8 @@ export default async function handler(req, res) {
       return res.status(200).json({ deleted: id });
     } catch (error) {
       console.error('Payment delete failed:', error);
-      return res.status(500).json({ error: 'পেমেন্ট মুছে ফেলা যায়নি।' });
+      const message = error?.message || 'পেমেন্ট মুছে ফেলা যায়নি।';
+      return res.status(500).json({ error: message, message });
     }
   }
   if (req.method === 'PATCH') {
@@ -77,7 +84,8 @@ export default async function handler(req, res) {
       return res.status(200).json(saved);
     } catch (error) {
       console.error('Payment update failed:', error);
-      return res.status(500).json({ error: 'পেমেন্ট সম্পাদনা করা যায়নি।' });
+      const message = error?.message || 'পেমেন্ট সম্পাদনা করা যায়নি।';
+      return res.status(500).json({ error: message, message });
     }
   }
 
@@ -143,6 +151,7 @@ export default async function handler(req, res) {
       return res.status(409).json({ error: 'পেমেন্টটি ইতোমধ্যে সংরক্ষিত হয়েছে।' });
     }
     console.error('Payment posting failed:', error);
-    return res.status(500).json({ error: 'পেমেন্ট সংরক্ষণ করা যায়নি।' });
+    const message = error?.message || 'পেমেন্ট সংরক্ষণ করা যায়নি।';
+    return res.status(500).json({ error: message, message });
   }
 }
