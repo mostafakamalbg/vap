@@ -14,7 +14,12 @@ import {
 import { getOfficerPreviousDueByDealer, dealerHasOfficerPreviousDue } from '../../../shared/officerLedger';
 import { normalizeOfficerCode } from '../../../shared/codes';
 import { parseReportMonth, parseSessionDateRange } from '../../../shared/reportDateFilters';
-import { getInvoiceSessionForDate, INVOICE_SESSIONS, getBangladeshBusinessDate } from '../../../shared/sessions';
+import {
+  getInvoiceSessionForDate,
+  INVOICE_SESSIONS,
+  getBangladeshBusinessDate,
+  normalizeSessionText
+} from '../../../shared/sessions';
 import { isAdminRole } from '../../../shared/roles';
 import { readJsonResponse } from '../../utils/api';
 
@@ -44,6 +49,13 @@ function getSessionStartDate(session) {
 function isInPeriod(date, range) {
   const value = String(date || '');
   return Boolean(value && range && value >= range.start && value < range.end);
+}
+
+function isPaymentInPeriod(payment, filter, range) {
+  return isInPeriod(payment.date, range)
+    || (filter.type === 'session'
+      && !payment.date
+      && normalizeSessionText(payment.session) === normalizeSessionText(filter.value));
 }
 
 function createFilter() {
@@ -130,7 +142,8 @@ function officerMatches(record, officer) {
     (officer.id && String(record.officerId || '') === String(officer.id))
     || (normalizeOfficerCode(record.officerCode) && normalizeOfficerCode(record.officerCode)
       === normalizeOfficerCode(officer.code, officer.designation))
-    || (record.officerName && record.officerName === officer.name)
+    || (!record.officerId && !record.officerCode
+      && record.officerName && record.officerName === officer.name)
   );
 }
 
@@ -256,7 +269,7 @@ export default function MonthlyTargetReports() {
         }, officer)
       ));
       const officerPayments = payments.filter((payment) => (
-        isInPeriod(payment.date, range) && officerMatches({
+        isPaymentInPeriod(payment, officerFilter, range) && officerMatches({
           officerId: payment.officerId,
           officerCode: payment.officerCode,
           officerName: payment.officerName
@@ -320,7 +333,7 @@ export default function MonthlyTargetReports() {
           && isDealerInvoice(invoice)
         ));
         const dealerPayments = payments.filter((payment) => (
-          isInPeriod(payment.date, range)
+          isPaymentInPeriod(payment, dealerFilter, range)
           && (payment.dealerId === target.dealerId
             || payment.dealerCode === target.dealerCode
             || payment.dealerName === target.dealerName)

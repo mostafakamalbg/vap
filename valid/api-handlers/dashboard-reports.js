@@ -3,9 +3,12 @@ import { BusinessRecord, Dealer, Invoice, Payment, SalesOfficer } from '../lib/m
 import { authorize } from '../lib/auth.js';
 import { normalizeOfficerCode } from '../shared/codes.js';
 import { getOfficerSalesTarget } from '../shared/officerSalesTargets.js';
-import { resolvePaymentRecordType } from '../shared/paymentMethods.js';
+import {
+  getPaymentRecordTypeValue,
+  resolvePaymentRecordType
+} from '../shared/paymentMethods.js';
 import { dateRangeCondition, parseReportMonth, parseSessionDateRange } from '../shared/reportDateFilters.js';
-import { getInvoiceSessionForDate } from '../shared/sessions.js';
+import { getInvoiceSessionForDate, normalizeSessionText } from '../shared/sessions.js';
 import { ADMIN_ROLES, OFFICER_ROLE, isAdminRole } from '../shared/roles.js';
 
 const DAMAGE_TYPES = ['factory_damage', 'depot_factory_return'];
@@ -38,9 +41,10 @@ const OFFICE_PAY_ALIASES = [
 const OFFICE_PAY_PATTERNS = [
   '^office\\s*(?:pay(?:ment)?|expense)$',
   '^office\\s*/\\s*depot$',
-  '^office\\s+depot$',
+  '^office(?:[_\\s-]+and)?[_\\s-]+depot$',
   '^depot(?:\\s+(?:pay|payment))?$',
-  '^অফিস\\s*(?:/\\s*ডিপো|খরচ)$',
+  '^অফিস\\s*(?:/\\s*ডিপো|ও\\s*ডিপো|এবং\\s*ডিপো|খরচ)$',
+  '^ডিপো\\s*/\\s*অফিস$',
   '^ডিপো(?:\\s+খরচ)?$'
 ];
 const RECEIPT_PATTERNS = ['^company\\s+(?:transfer|payment)$'];
@@ -72,7 +76,11 @@ function getOfficerAliases(user) {
       { officerCode: digits },
       { officerCode: `FSO-${digits}` }
     ] : []),
-    ...(user.name ? [{ officerName: String(user.name) }] : [])
+    ...(user.name ? [{
+      officerId: { $in: ['', null] },
+      officerCode: { $in: ['', null] },
+      officerName: String(user.name)
+    }] : [])
   ];
   return aliases.length ? { $or: aliases } : { _id: null };
 }
@@ -145,26 +153,27 @@ function invoicePipeline(match) {
   ];
 }
 
-function paymentPipeline(match) {
-  const paymentType = {
-    $toLower: {
-      $trim: {
-        input: {
-          $cond: [
-            { $ne: [{ $trim: { input: { $ifNull: ['$paymentType', ''] } } }, ''] },
-            '$paymentType',
-            { $ifNull: ['$purpose', ''] }
-          ]
-        }
-      }
-    }
-  };
+export function paymentPipeline(match) {
+  const paymentTypes = [
+    'paymentType',
+    'purpose',
+    'category',
+    'expenseType',
+    'expenseCategory',
+    'paymentPurpose',
+    'transactionType',
+    'type'
+  ].map((field) => ({
+    $toLower: { $trim: { input: { $ifNull: [`$${field}`, ''] } } }
+  }));
   const matchesPaymentType = (aliases, patterns = []) => ({
     $or: [
-      { $in: [paymentType, aliases] },
-      ...patterns.map((regex) => ({
-        $regexMatch: { input: paymentType, regex }
-      }))
+      ...paymentTypes.flatMap((paymentType) => [
+        { $in: [paymentType, aliases] },
+        ...patterns.map((regex) => ({
+          $regexMatch: { input: paymentType, regex }
+        }))
+      ])
     ]
   });
   return [
@@ -236,13 +245,37 @@ function paymentPipeline(match) {
           }
         },
         salary: {
-          $sum: { $cond: [{ $in: [paymentType, ['salary', 'বেতন']] }, { $ifNull: ['$amount', 0] }, 0] }
+          $sum: {
+            $cond: [
+              matchesPaymentType(['salary', 'বেতন'], ['^salary$', '^বেতন$']),
+              { $ifNull: ['$amount', 0] },
+              0
+            ]
+          }
         },
         fare: {
-          $sum: { $cond: [{ $in: [paymentType, ['vehicle_rent', 'vehicle rent', 'গাড়ি ভাড়া']] }, { $ifNull: ['$amount', 0] }, 0] }
+          $sum: {
+            $cond: [
+              matchesPaymentType(
+                ['vehicle_rent', 'vehicle rent', 'গাড়ি ভাড়া', 'ভাড়া'],
+                ['^vehicle[_\\s-]+rent$', '^গাড়ি\\s+ভাড়া$', '^ভাড়া$']
+              ),
+              { $ifNull: ['$amount', 0] },
+              0
+            ]
+          }
         },
         lc: {
-          $sum: { $cond: [{ $in: [paymentType, ['lc_commission', 'lc commission', 'লেস কমিশন (lc)']] }, { $ifNull: ['$amount', 0] }, 0] }
+          $sum: {
+            $cond: [
+              matchesPaymentType(
+                ['lc_commission', 'lc commission', 'লেস কমিশন (lc)', 'lc'],
+                ['^lc[_\\s-]+commission$', '^লেস কমিশন\\s*\\(lc\\)$']
+              ),
+              { $ifNull: ['$amount', 0] },
+              0
+            ]
+          }
         }
       }
     }
@@ -255,18 +288,24 @@ function officerMatches(row, officer) {
   return Boolean(
     (row.officerId && String(row.officerId) === String(officer.id || officer.officerId))
     || (rowCode && officerCode && rowCode === officerCode)
-    || (row.officerName && row.officerName === (officer.name || officer.officerName))
+    || (!row.officerId && !row.officerCode
+      && row.officerName && row.officerName === (officer.name || officer.officerName))
   );
 }
 
-function addPaymentRows(groups, rows, { periodRange, beforePeriod, user }) {
+function addPaymentRows(groups, rows, { period, periodValue, periodRange, beforePeriod, user }) {
   rows.forEach((payment) => {
     const date = String(payment.date || '');
-    if (beforePeriod ? date >= periodRange.start : date < periodRange.start || date >= periodRange.end) return;
-    if (!isAdminRole(user.role)
-      && payment.officerId !== String(user.officerId || '')
-      && normalizeOfficerCode(payment.officerCode) !== normalizeOfficerCode(user.officerCode)
-      && payment.officerName !== user.name) return;
+    if (date) {
+      if (beforePeriod ? date >= periodRange.start : date < periodRange.start || date >= periodRange.end) return;
+    } else if (period !== 'session' || beforePeriod
+      || normalizeSessionText(payment.session) !== normalizeSessionText(periodValue)) return;
+    const matchesOwner = Boolean(payment.officerId && user.officerId
+      && String(payment.officerId) === String(user.officerId))
+      || Boolean(payment.officerCode && user.officerCode
+        && normalizeOfficerCode(payment.officerCode) === normalizeOfficerCode(user.officerCode))
+      || (!payment.officerId && !payment.officerCode && payment.officerName === user.name);
+    if (!isAdminRole(user.role) && !matchesOwner) return;
     if (payment.sourceInvoiceId || /(?:invoice|চালান)\s*#/i.test(String(payment.reference || ''))) return;
     const owner = {
       officerId: payment.officerId || '',
@@ -290,7 +329,7 @@ function addPaymentRows(groups, rows, { periodRange, beforePeriod, user }) {
     };
     const amount = Number(payment.amount) || 0;
     const type = resolvePaymentRecordType(payment)
-      || (!String(payment.paymentType || '').trim() ? 'dealer_collection' : '');
+      || (!getPaymentRecordTypeValue(payment) ? 'dealer_collection' : '');
     if (RECEIPT_TYPES.has(type)) group.collection += amount;
     const field = EXPENSE_FIELDS[type];
     if (field) group[field] += amount;
@@ -318,6 +357,22 @@ export default async function handler(req, res) {
   try {
     const ownerMatch = isAdminRole(user.role) ? {} : getOfficerAliases(user);
     const periodMatch = { date: dateRangeCondition('date', periodRange).date, ...ownerMatch };
+    const periodPaymentMatch = period === 'session'
+      ? {
+          $and: [
+            {
+              $or: [
+                dateRangeCondition('date', periodRange),
+                {
+                  date: { $in: ['', null] },
+                  session: normalizeSessionText(value)
+                }
+              ]
+            },
+            ownerMatch
+          ]
+        }
+      : periodMatch;
     const priorMatch = {
       date: { $lt: periodRange.start },
       ...ownerMatch
@@ -327,7 +382,7 @@ export default async function handler(req, res) {
       SalesOfficer.find({}).sort({ slNo: 1 }).lean(),
       Invoice.aggregate(invoicePipeline(periodMatch)),
       Invoice.aggregate(invoicePipeline(priorMatch)),
-      Payment.aggregate(paymentPipeline(periodMatch)),
+      Payment.aggregate(paymentPipeline(periodPaymentMatch)),
       Payment.aggregate(paymentPipeline(priorMatch)),
       Payment.find(ownerMatch).select('id sourceInvoiceId').lean(),
       BusinessRecord.find({ type: 'payments' }).select('data').lean()
@@ -385,8 +440,20 @@ export default async function handler(req, res) {
     ));
     const periodPaymentGroups = new Map();
     const priorPaymentGroups = new Map();
-    addPaymentRows(periodPaymentGroups, legacyPayments, { periodRange, beforePeriod: false, user });
-    addPaymentRows(priorPaymentGroups, legacyPayments, { periodRange, beforePeriod: true, user });
+    addPaymentRows(periodPaymentGroups, legacyPayments, {
+      period,
+      periodValue: value,
+      periodRange,
+      beforePeriod: false,
+      user
+    });
+    addPaymentRows(priorPaymentGroups, legacyPayments, {
+      period,
+      periodValue: value,
+      periodRange,
+      beforePeriod: true,
+      user
+    });
     const allPeriodPayments = [...periodPayments, ...periodPaymentGroups.values()];
     const allPriorPayments = [...priorPayments, ...priorPaymentGroups.values()];
 

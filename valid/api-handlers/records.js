@@ -13,11 +13,12 @@ import {
   normalizePaymentMethod,
   normalizePaymentType,
   PAYMENT_TYPES,
+  getPaymentRecordTypeValue,
   resolvePaymentRecordType
 } from '../shared/paymentMethods.js';
 import { dealerHasOfficerPreviousDue } from '../shared/officerLedger.js';
 import { roundCurrency } from '../shared/invoiceTotals.js';
-import { getInvoiceSessionForDate } from '../shared/sessions.js';
+import { getInvoiceSessionForDate, normalizeSessionText } from '../shared/sessions.js';
 import { transactionOptions, withTransactionFallback } from '../lib/transactions.js';
 import { ADMIN_ROLES, OFFICER_ROLE, isAdminRole } from '../shared/roles.js';
 
@@ -91,6 +92,11 @@ export default async function handler(req, res) {
                   .map((code) => code.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
                   .join('|')})$`, 'i')
               }
+            }] : []),
+            ...(user.name ? [{
+              officerId: { $in: ['', null] },
+              officerCode: { $in: ['', null] },
+              officerName: String(user.name)
             }] : [])
           ];
           conditions.push(ownerConditions.length ? { $or: ownerConditions } : { id: '__no_records__' });
@@ -98,7 +104,15 @@ export default async function handler(req, res) {
         if (req.query?.session != null) {
           const range = parseSessionDateRange(req.query.session);
           if (!range) return res.status(400).json({ error: 'সঠিক সেশন নির্বাচন করুন।' });
-          conditions.push(dateRangeCondition('date', range));
+          conditions.push({
+            $or: [
+              dateRangeCondition('date', range),
+              {
+                date: { $in: ['', null] },
+                session: normalizeSessionText(req.query.session)
+              }
+            ]
+          });
         }
         if (req.query?.month != null) {
           const range = parseReportMonth(req.query.month);
@@ -127,13 +141,20 @@ export default async function handler(req, res) {
             && String(payment.officerId || '') === String(user.officerId))
             || officerCodeAliases.has(String(payment.officerCode || '').trim().toUpperCase())
             || Boolean(normalizedUserCode
-              && normalizeOfficerCode(payment.officerCode) === normalizedUserCode);
+              && normalizeOfficerCode(payment.officerCode) === normalizedUserCode)
+            || Boolean(!payment.officerId && !payment.officerCode
+              && user.name && String(payment.officerName || '').trim() === user.name);
           if (!isAdminRole(user.role) && !matchesOfficer) return false;
           if (req.query?.date != null && payment.date !== String(req.query.date)) return false;
           if (monthRange && !(String(payment.date || '') >= monthRange.start
             && String(payment.date || '') < monthRange.end)) return false;
-          if (sessionRange && !(String(payment.date || '') >= sessionRange.start
-            && String(payment.date || '') < sessionRange.end)) return false;
+          if (sessionRange) {
+            const paymentDate = String(payment.date || '');
+            const matchesSession = paymentDate
+              ? paymentDate >= sessionRange.start && paymentDate < sessionRange.end
+              : normalizeSessionText(payment.session) === normalizeSessionText(req.query.session);
+            if (!matchesSession) return false;
+          }
           return true;
         });
         return res.status(200).json([...typed, ...legacy]);
@@ -196,8 +217,7 @@ export default async function handler(req, res) {
       const validTypes = new Set(PAYMENT_TYPES.map((entry) => entry.value));
       if (records.some((record) => {
         const paymentType = resolvePaymentRecordType(record);
-        const hasPaymentType = String(record?.paymentType || '').trim()
-          || String(record?.purpose || '').trim();
+        const hasPaymentType = getPaymentRecordTypeValue(record);
         return !record || typeof record !== 'object'
           || !Number.isFinite(Number(record.amount))
           || Number(record.amount) < 0

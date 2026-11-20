@@ -34,19 +34,33 @@ const PAYMENT_TYPE_ALIASES = new Map([
   ['office/depot', 'office_pay'],
   ['office / depot', 'office_pay'],
   ['office depot', 'office_pay'],
+  ['office and depot', 'office_pay'],
   ['depot', 'office_pay'],
   ['depot pay', 'office_pay'],
   ['depot payment', 'office_pay'],
   ['অফিস খরচ', 'office_pay'],
   ['অফিস/ডিপো', 'office_pay'],
   ['অফিস / ডিপো', 'office_pay'],
+  ['অফিস ও ডিপো', 'office_pay'],
+  ['অফিস এবং ডিপো', 'office_pay'],
   ['অফিস ডিপো', 'office_pay'],
+  ['ডিপো/অফিস', 'office_pay'],
   ['ডিপো', 'office_pay'],
   ['ডিপো খরচ', 'office_pay'],
   ['company transfer', 'company_transfer'],
   ['company payment', 'company_transfer'],
   ['কোম্পানিতে টাকা পাঠানো', 'company_transfer']
 ]);
+const PAYMENT_TYPE_FIELDS = [
+  'paymentType',
+  'purpose',
+  'category',
+  'expenseType',
+  'expenseCategory',
+  'paymentPurpose',
+  'transactionType',
+  'type'
+];
 
 export function resolvePaymentType(type) {
   const value = String(type || '').trim().toLowerCase();
@@ -61,8 +75,22 @@ export function resolvePaymentType(type) {
 }
 
 export function resolvePaymentRecordType(payment) {
-  const paymentType = String(payment?.paymentType || '').trim() || payment?.purpose;
-  return resolvePaymentType(paymentType);
+  for (const field of PAYMENT_TYPE_FIELDS) {
+    const resolved = resolvePaymentType(payment?.[field]);
+    if (resolved) return resolved;
+  }
+  return '';
+}
+
+export function getPaymentRecordTypeValue(payment) {
+  let firstValue = '';
+  for (const field of PAYMENT_TYPE_FIELDS) {
+    const value = String(payment?.[field] || '').trim();
+    if (!value) continue;
+    if (resolvePaymentType(value)) return value;
+    if (!firstValue && field !== 'type') firstValue = value;
+  }
+  return firstValue;
 }
 
 export function normalizePaymentType(type) {

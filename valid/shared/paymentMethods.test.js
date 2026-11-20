@@ -19,8 +19,15 @@ test('office and depot payment labels resolve to the canonical office_pay catego
     'Depot Payment',
     'অফিস / ডিপো',
     'অফিস   /   ডিপো',
+    'অফিস ও ডিপো',
+    'office_depot',
     'অফিস খরচ',
     'ডিপো'
   ].forEach((label) => assert.equal(resolvePaymentType(label), 'office_pay'));
   assert.equal(resolvePaymentRecordType({ purpose: 'Office Pay' }), 'office_pay');
+  assert.equal(resolvePaymentRecordType({ category: 'office_depot' }), 'office_pay');
+  assert.equal(resolvePaymentRecordType({
+    paymentType: 'unrecognized',
+    expenseType: 'Depot'
+  }), 'office_pay');
 });

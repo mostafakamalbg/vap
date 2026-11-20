@@ -42,12 +42,25 @@ test('officer summary recognizes saved office and depot category labels', () => 
       { paymentType: 'অফিস / ডিপো', amount: 60 },
       { paymentType: 'অফিস   /   ডিপো', amount: 20 },
       { purpose: 'Depot', amount: 10 },
+      { category: 'office_depot', amount: 12 },
+      { expenseType: 'অফিস ও ডিপো', amount: 13 },
+      { type: 'Depot', amount: 14 },
       { paymentType: 'কোম্পানিতে টাকা পাঠানো', amount: 80 }
     ]
   });
 
-  assert.equal(summary.paymentAndExpense.officePay, 230);
-  assert.equal(summary.totalReceivedAmount, 310);
+  assert.equal(summary.paymentAndExpense.officePay, 269);
+  assert.equal(summary.totalReceivedAmount, 349);
+});
+
+test('collected payments produce the expected ratio for a positive receivable', () => {
+  const summary = calculateOfficerFinancials({
+    invoices: [{ invoiceType: 'regular', grandTotal: 20 }],
+    payments: [{ category: 'dealer_collection', amount: 20 }]
+  });
+
+  assert.equal(summary.totalReceivedAmount, 20);
+  assert.equal(summary.paymentPercentage, 100);
 });
 
 test('payment percentage remains zero for zero or negative receivables', () => {
@@ -74,12 +87,16 @@ test('unknown payment categories are not silently counted as dealer collections'
 test('period filtering does not mix months or sessions', () => {
   const records = [
     { date: '2026-10-12', session: 'জুলাই - ডিসেম্বর 2026' },
-    { date: '2027-01-03', session: 'জানুয়ারি - জুন 2027' }
+    { date: '2027-01-03', session: 'জানুয়ারি - জুন 2027' },
+    { date: '', session: 'জুলাই - ডিসেম্বর 2026' }
   ];
   assert.deepEqual(filterOfficerRecordsByPeriod(records, {
     session: 'জুলাই - ডিসেম্বর 2026',
     month: '2026-10'
   }), [records[0]]);
+  assert.deepEqual(filterOfficerRecordsByPeriod(records, {
+    session: 'জুলাই - ডিসেম্বর 2026'
+  }), [records[0], records[2]]);
   assert.deepEqual(filterOfficerRecordsByPeriod(records, {
     session: 'জানুয়ারি - জুন 2027',
     month: '2026-10'

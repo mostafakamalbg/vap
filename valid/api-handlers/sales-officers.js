@@ -175,7 +175,8 @@ export default async function handler(req, res) {
         const matchesOfficer = (entry) => (
           (record.officerId && entry.officerId === record.officerId)
           || (officerCode && normalizeOfficerCode(entry.officerCode) === officerCode)
-          || (record.officerName && entry.officerName === record.officerName)
+          || (!entry.officerId && !entry.officerCode
+            && record.officerName && entry.officerName === record.officerName)
         );
         const officerInvoices = filterOfficerRecordsByPeriod(invoices.filter(matchesOfficer), { session, month, date });
         const officerPayments = filterOfficerRecordsByPeriod(payments.filter(matchesOfficer), { session, month, date });

@@ -1,5 +1,5 @@
 import { getInvoiceSalesAmount, roundCurrency } from './invoiceTotals.js';
-import { getInvoiceSessionForDate } from './sessions.js';
+import { getInvoiceSessionForDate, normalizeSessionText } from './sessions.js';
 import { parseSessionDateRange } from './reportDateFilters.js';
 import { resolvePaymentRecordType } from './paymentMethods.js';
 
@@ -19,9 +19,12 @@ function isInvoicePayment(payment) {
 
 function inPeriod(record, { session = 'ALL', month = 'ALL', date = 'ALL' } = {}) {
   const sessionRange = session === 'ALL' ? null : parseSessionDateRange(session);
+  const recordDate = String(record.date || '');
   const matchesSession = session === 'ALL'
     || (sessionRange
-      ? String(record.date || '') >= sessionRange.start && String(record.date || '') < sessionRange.end
+      ? recordDate
+        ? recordDate >= sessionRange.start && recordDate < sessionRange.end
+        : normalizeSessionText(record.session) === normalizeSessionText(session)
       : (record.session || getInvoiceSessionForDate(record.date)) === session);
   return matchesSession
     && (month === 'ALL' || String(record.date || '').startsWith(month))

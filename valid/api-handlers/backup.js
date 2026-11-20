@@ -4,7 +4,11 @@ import { ADMIN_ROLES } from '../shared/roles.js';
 import { User } from '../lib/models.js';
 import { BusinessRecord, Dealer, Invoice, Order, Payment, Product } from '../lib/models.js';
 import { normalizeDealerAssignment } from '../shared/codes.js';
-import { normalizePaymentMethod, normalizePaymentType } from '../shared/paymentMethods.js';
+import {
+  normalizePaymentMethod,
+  normalizePaymentType,
+  resolvePaymentRecordType
+} from '../shared/paymentMethods.js';
 import { roundCurrency } from '../shared/invoiceTotals.js';
 import { transactionOptions, withTransactionFallback } from '../lib/transactions.js';
 import { rebuildStockBalances, STOCK_RECONCILIATION_START_DATE } from '../shared/stockReconciliation.js';
@@ -63,7 +67,7 @@ async function replaceRecords(data, session = null) {
       records = records.map((record, index) => ({
         ...record,
         id: String(record.id || `PAY-BACKUP-${index}`),
-        paymentType: normalizePaymentType(record.paymentType),
+        paymentType: normalizePaymentType(resolvePaymentRecordType(record)),
         amount: roundCurrency(record.amount),
         paymentMethod: normalizePaymentMethod(record.paymentMethod)
       }));
