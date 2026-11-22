@@ -14,12 +14,14 @@ import AdminAccess from './components/admin/AdminAccess';
 import InvoiceGenerator from './components/admin/InvoiceGenerator';
 import InvoiceList from './components/admin/InvoiceList';
 import StockManagement from './components/admin/StockManagement';
-import DamageReturns from './components/admin/DamageReturns';
 import DealerLedger from './components/admin/DealerLedger';
 import OfficerPerformance from './components/admin/OfficerPerformance';
-import MonthlyReport from './components/admin/MonthlyReport';
+import DashboardReports from './components/admin/DashboardReports';
 import SalesAgreement from './components/admin/SalesAgreement';
+import MonthlyTargetReports from './components/admin/MonthlyTargetReports';
 import AdminDataManagement from './components/admin/AdminDataManagement';
+import FactoryDataReset from './components/admin/FactoryDataReset';
+import { isAdminRole } from '../shared/roles';
 
 function AppContent() {
   const {
@@ -31,6 +33,7 @@ function AppContent() {
   const [activeTab, setActiveTab] = useState('website-home');
   const [editingInvoice, setEditingInvoice] = useState(null);
   const [invoiceToPrintId, setInvoiceToPrintId] = useState('');
+  const [invoiceFormKey, setInvoiceFormKey] = useState(0);
 
   const handleNavigate = (tab) => {
     const publicTabs = ['website-home', 'website-products', 'website-about'];
@@ -40,7 +43,7 @@ function AppContent() {
       return;
     }
 
-    if (currentUser?.role === 'admin') {
+    if (isAdminRole(currentUser?.role)) {
       setActiveTab(tab);
     } else if (currentUser?.role === 'officer') {
       setActiveTab(tab === 'officer-dashboard' ? tab : 'officer-dashboard');
@@ -52,6 +55,7 @@ function AppContent() {
   const handleStartNewInvoice = () => {
     setEditingInvoice(null);
     setInvoiceToPrintId('');
+    setInvoiceFormKey((key) => key + 1);
     handleNavigate('new-invoice');
   };
 
@@ -61,7 +65,7 @@ function AppContent() {
   };
 
   const handleLoginSuccess = (user) => {
-    setActiveTab(user.role === 'admin' ? 'admin-access' : 'officer-dashboard');
+    setActiveTab(isAdminRole(user.role) ? 'admin-access' : 'officer-dashboard');
   };
 
   const renderActivePage = () => {
@@ -103,9 +107,18 @@ function AppContent() {
     if (activeTab === 'new-invoice') {
       return (
         <InvoiceGenerator
+          key={invoiceFormKey}
           onViewInvoices={() => handleNavigate('invoice-list')}
+          onInvoiceCreated={() => {
+            setEditingInvoice(null);
+            setInvoiceToPrintId('');
+            setInvoiceFormKey((key) => key + 1);
+          }}
           editInvoiceData={editingInvoice}
-          onCancelEdit={() => setEditingInvoice(null)}
+          onCancelEdit={() => {
+            setEditingInvoice(null);
+            setInvoiceFormKey((key) => key + 1);
+          }}
         />
       );
     }
@@ -119,12 +132,13 @@ function AppContent() {
       );
     }
     if (activeTab === 'inventory') return <StockManagement />;
-    if (activeTab === 'damage-returns') return <DamageReturns />;
     if (activeTab === 'dealer-ledger') return <DealerLedger />;
     if (activeTab === 'officer-tracking') return <OfficerPerformance />;
-    if (activeTab === 'monthly-reports') return <MonthlyReport />;
+    if (activeTab === 'dashboard-reports') return <DashboardReports />;
     if (activeTab === 'data-management') return <AdminDataManagement />;
+    if (activeTab === 'factory-reset') return <FactoryDataReset />;
     if (activeTab === 'sales-agreements') return <SalesAgreement />;
+    if (activeTab === 'monthly-sales-reports') return <MonthlyTargetReports />;
     return <Home onNavigate={handleNavigate} />;
   };
 

@@ -8,6 +8,8 @@ import {
   MapPin,
   Package,
   ArrowRight,
+  ChevronLeft,
+  ChevronRight,
   Sparkles,
   FileText,
   CheckCircle2,
@@ -15,25 +17,63 @@ import {
 } from 'lucide-react';
 import { useAgro } from '../../context/AgroContext';
 import { useUiPreferences } from '../../context/UiPreferencesContext';
+import { toBn } from '../../utils/bengali';
+import { HEAD_OFFICE_ADDRESS, HOTLINE_ADDRESS, HOTLINE_NUMBER } from '../../../shared/companyContact';
 
 const heroSlides = [
   {
-    image: 'https://images.unsplash.com/photo-1500382017468-9049fed747ef?auto=format&fit=crop&w=1100&q=85',
-    alt: 'সবুজ ফসলের মাঠ',
-    title: 'সবুজ ফসল, সমৃদ্ধ কৃষক',
+    image: '/hero-crops/submitted-corn.jpeg',
+    alt: 'দিগন্তজোড়া ভুট্টাক্ষেত',
+    title: 'ভুট্টার মাঠে সম্ভাবনার ফসল',
+    detail: 'সুস্থ গাছ ও ভালো ফলনে কৃষকের পাশে'
+  },
+  {
+    image: '/hero-crops/submitted-rice-harvest.jpeg',
+    alt: 'ধান কাটছেন বাংলাদেশের কৃষকেরা',
+    title: 'ধানের মাঠে কৃষকের পরিশ্রম',
+    detail: 'ফসলের প্রতিটি ধাপে কৃষকের পাশে'
+  },
+  {
+    image: '/hero-crops/submitted-potatoes.jpeg',
+    alt: 'গাছ থেকে তোলা তাজা আলু',
+    title: 'আলুর ভালো ফলনে যত্ন ও পরিচর্যা',
+    detail: 'মাটির ফসল ঘরে তুলতে সঠিক সুরক্ষা জরুরি'
+  },
+  {
+    image: '/hero-crops/submitted-eggplant.jpeg',
+    alt: 'গাছে ঝুলছে বেগুনের ফলন',
+    title: 'বেগুনের সতেজ ফলন',
+    detail: 'সবজি ক্ষেতের পরিচর্যায় কৃষকের নির্ভরযোগ্য সঙ্গী'
+  },
+  {
+    image: '/hero-crops/submitted-leafy-crops.jpeg',
+    alt: 'সারিবদ্ধ সবুজ শাকসবজির ক্ষেত',
+    title: 'সবুজ ফসলে ভরে উঠুক বাংলার মাঠ',
+    detail: 'সুস্থ ফসলের জন্য চাই যত্নশীল পরিচর্যা'
+  },
+  {
+    image: '/hero-crops/submitted-vegetable-field.jpeg',
+    alt: 'সকালের আলোয় সবজির ক্ষেত',
+    title: 'সবজির ক্ষেতে নতুন দিনের সম্ভাবনা',
     detail: 'কৃষির প্রতিটি মৌসুমে পাশে আছি'
   },
   {
-    image: 'https://images.unsplash.com/photo-1592982537447-7440770cbfc9?auto=format&fit=crop&w=1100&q=85',
-    alt: 'কৃষকের মাঠে কাজ',
-    title: 'কৃষকের সাফল্যই আমাদের লক্ষ্য',
-    detail: 'ফসল সুরক্ষায় নির্ভরযোগ্য পণ্য ও সহায়তা'
+    image: '/hero-crops/submitted-harvest-cart.jpeg',
+    alt: 'গরুর গাড়িতে ফসল নিয়ে ফিরছেন কৃষক',
+    title: 'ফসলের ঘরে ফেরা, কৃষকের মুখে হাসি',
+    detail: 'কৃষকের পরিশ্রম ও সাফল্যের পাশে আমরা'
   },
   {
-    image: 'https://images.unsplash.com/photo-1416879595882-3373a0480b5b?auto=format&fit=crop&w=1100&q=85',
-    alt: 'সতেজ সবুজ গাছের চারা',
-    title: 'ফসল সুরক্ষায় মানসম্মত সমাধান',
-    detail: 'সঠিক পণ্য বাছাইয়ে ডিলার ও কৃষকের পাশে'
+    image: '/hero-crops/submitted-farmer-field.jpeg',
+    alt: 'ফুলে ভরা ক্ষেতে কাজ করছেন একজন কৃষক',
+    title: 'কৃষকের শ্রমেই মাঠ ভরে ওঠে সবুজে',
+    detail: 'কৃষকের সমৃদ্ধি ও নিরাপদ ফসল সুরক্ষায় নির্ভরযোগ্য নাম'
+  },
+  {
+    image: '/hero-crops/submitted-tomatoes.jpeg',
+    alt: 'গাছে পাকা লাল টমেটো',
+    title: 'সতেজ ফসল, সমৃদ্ধ কৃষক',
+    detail: 'ফসলের প্রতিটি ধাপে যত্নশীল পরিচর্যা'
   }
 ];
 
@@ -48,7 +88,7 @@ export default function Home({ onNavigate }) {
       setActiveSlide((current) => (current + 1) % heroSlides.length);
     }, 5000);
     return () => window.clearInterval(timer);
-  }, []);
+  }, [activeSlide]);
 
   return (
     <div className="space-y-16 pb-16">
@@ -58,14 +98,14 @@ export default function Home({ onNavigate }) {
         
         <div className="max-w-7xl mx-auto relative z-10 grid grid-cols-1 lg:grid-cols-12 gap-7 sm:gap-12 items-center">
           <div className="lg:col-span-7 space-y-4 sm:space-y-6">
-            <div className="relative h-40 w-full max-w-md overflow-hidden rounded-2xl border border-white/30 bg-emerald-950 shadow-2xl sm:h-52">
+            <div className="relative left-1/2 h-64 w-screen max-w-none -translate-x-1/2 overflow-hidden border-y border-white/30 bg-emerald-950 shadow-2xl sm:left-auto sm:h-96 sm:w-full sm:translate-x-0 sm:rounded-2xl sm:border">
               {heroSlides.map((slide, index) => (
                 <div
                   key={slide.image}
                   className={`absolute inset-0 transition-opacity duration-700 ${activeSlide === index ? 'opacity-100' : 'pointer-events-none opacity-0'}`}
                   aria-hidden={activeSlide !== index}
                 >
-                  <img src={slide.image} alt={slide.alt} className="h-full w-full object-cover" />
+                  <img src={slide.image} alt={slide.alt} loading={index === activeSlide ? 'eager' : 'lazy'} decoding="async" className="h-full w-full object-cover object-center" />
                   <div className="absolute inset-0 bg-gradient-to-r from-emerald-950/85 via-emerald-950/35 to-transparent" />
                   <div className="absolute bottom-8 left-4 right-3 text-white sm:bottom-9 sm:left-6">
                     <p className="text-sm font-black sm:text-lg">{slide.title}</p>
@@ -73,6 +113,22 @@ export default function Home({ onNavigate }) {
                   </div>
                 </div>
               ))}
+              <button
+                type="button"
+                aria-label="আগের স্লাইড"
+                onClick={() => setActiveSlide((current) => (current - 1 + heroSlides.length) % heroSlides.length)}
+                className="absolute left-3 top-1/2 z-10 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-white/60 bg-emerald-950/60 text-white shadow-lg transition hover:bg-emerald-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white sm:left-4 sm:h-11 sm:w-11"
+              >
+                <ChevronLeft className="h-5 w-5 sm:h-6 sm:w-6" aria-hidden="true" />
+              </button>
+              <button
+                type="button"
+                aria-label="পরের স্লাইড"
+                onClick={() => setActiveSlide((current) => (current + 1) % heroSlides.length)}
+                className="absolute right-3 top-1/2 z-10 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-white/60 bg-emerald-950/60 text-white shadow-lg transition hover:bg-emerald-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white sm:right-4 sm:h-11 sm:w-11"
+              >
+                <ChevronRight className="h-5 w-5 sm:h-6 sm:w-6" aria-hidden="true" />
+              </button>
               <div className="absolute bottom-3 left-4 flex gap-1.5 sm:left-6">
                 {heroSlides.map((slide, index) => (
                   <button
@@ -127,11 +183,11 @@ export default function Home({ onNavigate }) {
               </button>
 
               <a
-                href="tel:01867912167"
+                href={`tel:${HOTLINE_NUMBER}`}
                 className="flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-slate-900 px-5 py-3 rounded-xl font-extrabold text-sm shadow transition"
               >
                 <Phone className="w-4 h-4" />
-                <span>01867912167</span>
+                <span>{toBn(HOTLINE_NUMBER)}</span>
               </a>
             </div>
 
@@ -161,7 +217,7 @@ export default function Home({ onNavigate }) {
                 </div>
                 <div>
                   <h3 className="font-bold text-lg leading-tight">ডিস্ট্রিবিউশন ও প্রধান কার্যালয়</h3>
-                  <p className="text-xs text-emerald-200">নিশিন্দারা, বগুড়া।</p>
+                  <p className="text-xs text-emerald-200">{HEAD_OFFICE_ADDRESS}</p>
                 </div>
               </div>
 
@@ -344,11 +400,11 @@ export default function Home({ onNavigate }) {
             <div className="space-y-2 text-xs text-slate-300 pt-2">
               <div className="flex items-center gap-2">
                 <MapPin className="w-4 h-4 text-emerald-400" />
-                <span>নিশিন্দারা, বগুড়া (বগুড়া-রংপুর মহাসড়ক সংলগ্ন)</span>
+                <span>হেড অফিস: {HEAD_OFFICE_ADDRESS}</span>
               </div>
               <div className="flex items-center gap-2">
                 <Phone className="w-4 h-4 text-emerald-400" />
-                <span>হটলাইন ও ডিলার যোগাযোগ: 01867912167</span>
+                <span>হটলাইন: {toBn(HOTLINE_NUMBER)} • {HOTLINE_ADDRESS}</span>
               </div>
             </div>
           </div>
@@ -376,10 +432,10 @@ export default function Home({ onNavigate }) {
 
             <div className="pt-2">
               <a
-                href="tel:01867912167"
+                href={`tel:${HOTLINE_NUMBER}`}
                 className="inline-flex items-center justify-center w-full bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-bold py-2.5 rounded-lg text-xs transition"
               >
-                ডিলার হতে কল করুন: 01867912167
+                ডিলার হতে কল করুন: {toBn(HOTLINE_NUMBER)}
               </a>
             </div>
           </div>
@@ -397,7 +453,7 @@ export default function Home({ onNavigate }) {
                 আপনাদের মতামত ভবিষ্যতে সেবার মান উন্নত করতে সাহায্য করবে।
               </p>
             </div>
-            <a href="tel:01867912167" className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-700 px-5 py-3 text-sm font-bold text-white shadow transition hover:bg-emerald-800">
+            <a href={`tel:${HOTLINE_NUMBER}`} className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-700 px-5 py-3 text-sm font-bold text-white shadow transition hover:bg-emerald-800">
               <Phone className="h-4 w-4" /> মতামত জানাতে কল করুন
             </a>
           </div>

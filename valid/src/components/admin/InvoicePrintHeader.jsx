@@ -3,31 +3,37 @@ import { toBn, toBnDate } from '../../utils/bengali';
 import { formatDealerCode, formatInvoiceNumber, formatOfficerCode } from '../../../shared/codes';
 import { normalizePaymentMethod, PAYMENT_METHODS } from '../../../shared/paymentMethods';
 import { LEGACY_INVOICE_SESSION } from '../../../shared/sessions';
-import { getPackageQuantityUnit } from '../../../shared/quantityUnits';
-import { getInvoiceSalesAmount } from '../../../shared/invoiceTotals';
+import { getInvoiceQuantityParts, getPackageQuantityUnit } from '../../../shared/quantityUnits';
+import { getItemCartons } from '../../../shared/invoiceCartons';
+import { getInvoiceItemAmounts, getInvoiceSalesAmount, roundCurrency } from '../../../shared/invoiceTotals';
+import { sortInvoiceItems } from '../../../shared/invoiceSorting';
+import { normalizeHotlineNumber } from '../../../shared/companyContact';
 import { useAgro } from '../../context/AgroContext';
 import CompanyLetterhead from './CompanyLetterhead';
 
 const money = (value) => {
-  const amount = Number(value) || 0;
-  return `৳${amount.toLocaleString('bn-BD', {
-    minimumFractionDigits: Number.isInteger(amount) ? 0 : 1,
-    maximumFractionDigits: 2
-  })}`;
+  return `৳${roundCurrency(value).toLocaleString('bn-BD')}`;
 };
 
 function getItemValues(item) {
-  const cartons = Number(item.cartons ?? item.quantity) || 0;
-  const tradePrice = Number(item.total) || cartons * (Number(item.cartonPrice) || 0);
-  const commission = tradePrice * (Number(item.commission) || 0) / 100;
+  const cartonCount = Number(item.cartons ?? item.quantity) || 0;
+  const retailPieces = Number(item.retailPieces) || 0;
+  const amounts = getInvoiceItemAmounts(item);
+  const quantityUnit = getPackageQuantityUnit(item);
+  const quantityLabel = getInvoiceQuantityParts(item)
+    .map(({ quantity, unit }) => `${toBn(quantity)}${unit ? ` ${unit}` : ''}`)
+    .join(' + ');
   return {
-    cartons,
-    quantityUnit: getPackageQuantityUnit(item),
-    unitTradePrice: Number(item.cartonPrice) || Number(item.unitPrice) * (Number(item.packPerBox) || 1),
-    tradePrice,
+    cartons: getItemCartons(item),
+    quantityLabel: quantityLabel || `০ ${quantityUnit}`,
+    unitTradePrice: retailPieces > 0 && cartonCount === 0
+      ? roundCurrency(item.piecePrice ?? item.unitPrice)
+      : Number(item.cartonPrice) || Number(item.unitPrice) * (Number(item.packPerBox) || 1),
+    priceUnit: retailPieces > 0 && cartonCount === 0 ? `/${item.unit || 'পিস'}` : '',
+    tradePrice: amounts.total,
     commissionPercent: Number(item.commission) || 0,
-    commission,
-    net: tradePrice - commission
+    commission: amounts.commissionAmount,
+    net: amounts.netTotal
   };
 }
 
@@ -40,7 +46,7 @@ function getReturnValues(item) {
     cartons: Math.floor(quantity / packPerBox),
     loosePieces: quantity % packPerBox,
     price,
-    total: Number(item.total) || quantity * price
+    total: roundCurrency(Number(item.total) || quantity * price)
   };
 }
 
@@ -62,8 +68,8 @@ export default function InvoicePrintHeader({ invoice }) {
     entry.id === invoice.dealerId
     || formatDealerCode(entry.code || entry.id) === invoiceDealerCode
   ));
-  const items = invoice.items || [];
-  const returns = invoice.returnAdjustments || [];
+  const items = sortInvoiceItems(invoice.items);
+  const returns = sortInvoiceItems(invoice.returnAdjustments);
   const itemTotals = items.reduce((totals, item) => {
     const values = getItemValues(item);
     totals.cartons += values.cartons;
@@ -72,29 +78,48 @@ export default function InvoicePrintHeader({ invoice }) {
     totals.net += values.net;
     return totals;
   }, { cartons: 0, tradePrice: 0, commission: 0, net: 0 });
-  const returnTotal = returns.reduce((sum, item) => sum + getReturnValues(item).total, 0)
-    || Number(invoice.returnAdjustmentTotal) || 0;
-  const transportCost = Number(invoice.transportCost) || 0;
+  const returnTotal = roundCurrency(
+    returns.reduce((sum, item) => sum + getReturnValues(item).total, 0)
+      || Number(invoice.returnAdjustmentTotal) || 0
+  );
+  const transportCost = roundCurrency(invoice.transportCost);
   const invoiceNet = getInvoiceSalesAmount(invoice)
     || itemTotals.net + transportCost - returnTotal;
-  const previousDue = Number(invoice.previousDue) || 0;
-  const paidAmount = Number(invoice.paidAmount) || 0;
+  const previousDue = roundCurrency(invoice.previousDue);
+  const paidAmount = roundCurrency(invoice.paidAmount);
   const storedDue = invoice.currentDue ?? invoice.dueAmount;
   const currentDue = storedDue == null
     ? Math.max(0, invoiceNet + previousDue - paidAmount)
-    : Number(storedDue) || 0;
+    : roundCurrency(storedDue);
   const paymentMethod = PAYMENT_METHODS.find(
     (method) => method.value === normalizePaymentMethod(invoice.paymentMethod)
   )?.label || PAYMENT_METHODS[0].label;
-  const defaultComment = 'চালানের মালামাল সঠিক কার্টুন সংখ্যায় বুঝে দেওয়া হলো।';
-  const defaultNote = 'বিক্রিত পণ্য ডিলার কর্তৃক সঠিকভাবে বুঝে নেওয়া হলো।';
+  const isDealerReturn = invoice.invoiceType === 'dealer_return';
+  const isFactoryReturn = ['depot_factory_return', 'factory_damage'].includes(invoice.invoiceType);
+  const isReturnInvoice = isDealerReturn || isFactoryReturn;
+  const defaultComment = isDealerReturn
+    ? 'ডিলারের ফেরত পণ্য সঠিকভাবে বুঝে গ্রহণ করা হলো।'
+    : isFactoryReturn
+      ? 'ডিপো থেকে ফেরত পণ্য সঠিকভাবে বুঝে গ্রহণ করা হলো।'
+      : 'চালানের পণ্য সঠিক পরিমাণে বুঝে দেওয়া হলো।';
+  const defaultNote = isDealerReturn
+    ? 'ফেরত পণ্যের মূল্য ডিলারের হিসাবে সমন্বয় করা হলো।'
+    : isFactoryReturn
+      ? 'ফেরত পণ্য ফ্যাক্টরি/ওয়্যারহাউসে প্রেরণ করা হলো।'
+      : 'বিক্রিত পণ্য ডিলার কর্তৃক সঠিকভাবে বুঝে নেওয়া হলো।';
 
   return (
     <article className="invoice-print-sheet mx-auto w-full max-w-4xl bg-white p-4 text-slate-900 sm:p-8">
       <header className="invoice-company-header">
         <CompanyLetterhead className="invoice-print-letterhead" />
-        <div className="invoice-session-badge">সেশন: {invoice.session || LEGACY_INVOICE_SESSION}</div>
-        <h2 className="invoice-title-bar">{invoice.invoiceType === 'factory_damage' ? 'ডেমেজ / ক্ষতিগ্রস্ত পণ্য ফেরত বিবরণী' : 'ডিলার বিক্রয় ইনভয়েস ও মেমো কপি'}</h2>
+        <div className="invoice-session-badge">সেশন: {toBn(invoice.session || LEGACY_INVOICE_SESSION)}</div>
+        <h2 className="invoice-title-bar">
+          {invoice.invoiceType === 'depot_factory_return' || invoice.invoiceType === 'factory_damage'
+            ? 'ডিপো থেকে ফ্যাক্টরি/ওয়্যারহাউসে ফেরত'
+            : invoice.invoiceType === 'dealer_return'
+              ? 'ডিলার কর্তৃক পণ্য ফেরত'
+              : 'ডিলার ইনভয়েস কপি'}
+        </h2>
       </header>
 
       <section className="invoice-parties-grid">
@@ -104,7 +129,7 @@ export default function InvoicePrintHeader({ invoice }) {
           <p><strong>প্রতিষ্ঠান:</strong> {invoice.dealerName || dealer?.shopName || '—'}</p>
           <p><strong>প্রোপাইটর:</strong> {invoice.dealerProprietor || dealer?.proprietor || '—'}</p>
           <p><strong>ঠিকানা:</strong> {invoice.dealerAddress || dealer?.address || dealer?.businessAddress || '—'}</p>
-          <p><strong>মোবাইল:</strong> {toBn(invoice.dealerPhone || dealer?.phone || dealer?.mobile || dealer?.phoneNumber || '—')}</p>
+          <p><strong>মোবাইল:</strong> {toBn(normalizeHotlineNumber(invoice.dealerPhone || dealer?.phone || dealer?.mobile || dealer?.phoneNumber || '—'))}</p>
         </div>
         <div className="invoice-party invoice-party-invoice">
           <h2>চালান তথ্য</h2>
@@ -117,7 +142,7 @@ export default function InvoicePrintHeader({ invoice }) {
       </section>
 
       <section className="invoice-table-section">
-        <h2 className="invoice-section-heading">সরবরাহকৃত পণ্য ও কার্টুন তালিকা</h2>
+        <h2 className="invoice-section-heading">সরবরাহকৃত পণ্য ও পরিমাণের তালিকা</h2>
         <div className="invoice-table-scroll">
           <table className="invoice-items-table">
             <colgroup>
@@ -135,7 +160,7 @@ export default function InvoicePrintHeader({ invoice }) {
                 <th>নং</th>
                 <th>পণ্যের নাম ও প্যাক সাইজ</th>
                 <th>পরিমাণ</th>
-                <th>একক মূল্য</th>
+                <th>ট্রেড প্রাইজ</th>
                 <th>মোট ট্রেড প্রাইজ</th>
                 <th>কমিশন (%)</th>
                 <th>কমিশন এ্যামাউন্ট</th>
@@ -151,8 +176,8 @@ export default function InvoicePrintHeader({ invoice }) {
                     <td className="invoice-product-name">
                       {getProductDescription(item)}
                     </td>
-                    <td>{toBn(values.cartons)} {values.quantityUnit}</td>
-                    <td>{money(values.unitTradePrice)}</td>
+                    <td>{values.quantityLabel}</td>
+                    <td>{money(values.unitTradePrice)}{values.priceUnit}</td>
                     <td>{money(values.tradePrice)}</td>
                     <td>{toBn(values.commissionPercent)}%</td>
                     <td>{money(values.commission)}</td>
@@ -164,7 +189,7 @@ export default function InvoicePrintHeader({ invoice }) {
                 <tr><td colSpan="8" className="invoice-empty-row">কোনো পণ্য নেই</td></tr>
               )}
               <tr className="invoice-table-total">
-                <th colSpan="2">মোট প্যাক / কার্টুন</th>
+                <th colSpan="2">মোট প্যাকেজ (সমতুল্য)</th>
                 <th>{toBn(itemTotals.cartons)}</th>
                 <th>—</th>
                 <th>{money(itemTotals.tradePrice)}</th>
@@ -199,10 +224,13 @@ export default function InvoicePrintHeader({ invoice }) {
               <tbody>
                 {returns.map((item, index) => {
                   const values = getReturnValues(item);
+                  const quantityUnit = getPackageQuantityUnit(item);
                   return (
                     <tr key={`${item.sku || item.productId}-return-${index}`}>
                       <td className="invoice-product-name">{getProductDescription({ ...item, productName: item.productName || 'ফেরত পণ্য' })}</td>
-                      <td>{toBn(values.cartons)} {getPackageQuantityUnit(item)} {toBn(values.loosePieces)} {item.unit || 'পিস/বোতল'}</td>
+                      <td>{quantityUnit === 'কার্টুন'
+                        ? <>{toBn(values.cartons)} কার্টুন{values.loosePieces > 0 && ` ${toBn(values.loosePieces)} ${item.unit || 'পিস/বোতল'}`}</>
+                        : <>{toBn(values.quantity)} {quantityUnit}</>}</td>
                       <td>{money(values.price)}</td>
                       <td className="invoice-return-deduction">− {money(values.total)}</td>
                     </tr>
@@ -220,13 +248,13 @@ export default function InvoicePrintHeader({ invoice }) {
 
       <section className="invoice-summary-grid">
         <div className="invoice-notes">
-          <h2 className="invoice-section-heading">মন্তব্য ও পরিশোধ</h2>
+          <h2 className="invoice-section-heading">বিতরণ ও পরিশোধের বিবরণ</h2>
           <p><strong>চালান মন্তব্য:</strong> {invoice.deliveryComment || defaultComment}</p>
           <p><strong>পেমেন্ট মেথড:</strong> {paymentMethod}</p>
           <p><strong>নোট:</strong> {invoice.note || defaultNote}</p>
         </div>
         <div className="invoice-totals">
-          <div><span>মোট প্যাক / কার্টুন</span><strong>{toBn(itemTotals.cartons)}</strong></div>
+          <div><span>মোট প্যাকেজ</span><strong>{toBn(itemTotals.cartons)}</strong></div>
           <div><span>মোট ট্রেড প্রাইজ</span><strong>{money(itemTotals.tradePrice)}</strong></div>
           <div><span>ট্রেড কমিশন</span><strong>− {money(itemTotals.commission)}</strong></div>
           {transportCost > 0 && <div><span>পরিবহন খরচ</span><strong>+ {money(transportCost)}</strong></div>}
@@ -239,9 +267,9 @@ export default function InvoicePrintHeader({ invoice }) {
       </section>
 
       <footer className="invoice-signatures">
-        <div>ডিলারের স্বাক্ষর ও সীল</div>
+        <div>{isReturnInvoice ? 'ফেরত প্রদানকারী ডিলারের স্বাক্ষর ও সিল' : 'ডিলারের স্বাক্ষর ও সীল'}</div>
         <div>সেলস অফিসারের স্বাক্ষর ও তারিখ</div>
-        <div>কোম্পানির পক্ষে / হিসাব বিভাগ ও অনুমোদিত স্বাক্ষর</div>
+        <div>কোম্পানির পক্ষে লজিস্টিক অফিসারের স্বাক্ষর ও তারিখ</div>
       </footer>
     </article>
   );

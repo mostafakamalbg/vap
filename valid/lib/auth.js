@@ -7,6 +7,14 @@ import {
 import { promisify } from 'node:util';
 import { AdminSeat, User } from './models.js';
 import { normalizeOfficerCode } from '../shared/codes.js';
+import {
+  ADMIN_ROLE_VALUES,
+  SUPER_ADMIN_ROLE,
+  isActiveUserStatus,
+  isAdminRole,
+  normalizeAdminRole,
+  normalizeUserStatus
+} from '../shared/roles.js';
 
 const scrypt = promisify(nodeScrypt);
 const SESSION_COOKIE = 'vap_session';
@@ -92,20 +100,44 @@ export async function getSessionUser(req) {
   const session = readSession(req);
   if (!session?.sub) return null;
   const user = await User.findById(session.sub).lean();
-  if (!user || user.status !== 'active') return null;
-  return user;
+  if (!user || !isActiveUserStatus(user.status)) return null;
+  return normalizeUser(user);
 }
 
 export async function hasSuperAdminAccess(user) {
+  if (!isAdminRole(user?.role)) return false;
   const email = String(user?.email || '').trim().toLowerCase();
   if (!email) return false;
+  const primarySeat = await AdminSeat.findById(1).select('email').lean();
+  if (primarySeat) return String(primarySeat.email || '').trim().toLowerCase() === email;
+  const primaryRoleUser = await User.findOne({ role: SUPER_ADMIN_ROLE })
+    .sort({ createdAt: 1, _id: 1 })
+    .select('email')
+    .lean();
+  if (primaryRoleUser) {
+    return String(primaryRoleUser.email || '').trim().toLowerCase() === email;
+  }
+
   const authorizedEmails = String(process.env.SUPER_ADMIN_EMAILS || '')
     .split(',')
     .map((entry) => entry.trim().toLowerCase())
     .filter(Boolean);
-  if (authorizedEmails.includes(email)) return true;
-  const primarySeat = await AdminSeat.findById(1).select('email').lean();
-  return primarySeat?.email === email;
+  if (authorizedEmails.length) return authorizedEmails[0] === email;
+
+  if (user.status !== 'সুপার এডমিন') return false;
+  const legacyPrimary = await User.findOne({
+    role: { $in: ADMIN_ROLE_VALUES },
+    status: 'সুপার এডমিন'
+  }).sort({ createdAt: 1, _id: 1 }).select('email').lean();
+  return String(legacyPrimary?.email || '').trim().toLowerCase() === email;
+}
+
+export async function normalizeUser(user) {
+  if (isAdminRole(user.role)) {
+    user.role = normalizeAdminRole(user.role, await hasSuperAdminAccess(user));
+  }
+  user.status = normalizeUserStatus(user.status);
+  return user;
 }
 
 export async function authorize(req, res, allowedRoles) {
@@ -115,7 +147,9 @@ export async function authorize(req, res, allowedRoles) {
       res.status(401).json({ error: 'লগইন করুন।' });
       return null;
     }
-    if (allowedRoles && !allowedRoles.includes(user.role)) {
+    if (allowedRoles && !allowedRoles.some((role) => (
+      role === user.role || (isAdminRole(role) && isAdminRole(user.role))
+    ))) {
       res.status(403).json({ error: 'এই কাজের অনুমতি নেই।' });
       return null;
     }
@@ -133,11 +167,11 @@ export function publicUser(user, isSuperAdmin = false) {
     name: user.name,
     email: user.email,
     role: user.role,
-    status: user.status,
+    status: normalizeUserStatus(user.status),
     officerId: user.officerId || '',
     officerCode: normalizeOfficerCode(user.officerCode),
     phone: user.phone || '',
-    isSuperAdmin
+    isSuperAdmin: isSuperAdmin || user.role === SUPER_ADMIN_ROLE
   };
 }
 

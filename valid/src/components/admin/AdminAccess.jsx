@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Check, ClipboardCheck, KeyRound, Pencil, Plus, RefreshCw, ShieldX, Trash2, Users } from 'lucide-react';
 import { useAgro } from '../../context/AgroContext';
 import { formatOfficerCode } from '../../../shared/codes';
+import { SUPER_ADMIN_ROLE } from '../../../shared/roles';
 
 async function requestJson(url, options) {
   const response = await fetch(url, options);
@@ -11,7 +12,8 @@ async function requestJson(url, options) {
 }
 
 export default function AdminAccess({ onInvoiceCreated }) {
-  const { products, refreshSharedRecords } = useAgro();
+  const { products, refreshSharedRecords, currentUser } = useAgro();
+  const canApproveOrders = currentUser?.role === SUPER_ADMIN_ROLE || currentUser?.isSuperAdmin;
   const [pendingUsers, setPendingUsers] = useState([]);
   const [activeUsers, setActiveUsers] = useState([]);
   const [orders, setOrders] = useState([]);
@@ -144,7 +146,9 @@ export default function AdminAccess({ onInvoiceCreated }) {
     <div className="mx-auto max-w-6xl space-y-6 px-4 py-8">
       <header className="flex flex-col justify-between gap-3 rounded-2xl bg-slate-900 p-6 text-white sm:flex-row sm:items-center">
         <div>
-          <p className="text-xs font-bold uppercase tracking-wider text-emerald-300">অ্যাডমিন নিয়ন্ত্রণ</p>
+          <p className="text-xs font-bold uppercase tracking-wider text-emerald-300">
+            {canApproveOrders ? 'SuperAdmin' : 'Admin'} • অ্যাডমিন নিয়ন্ত্রণ
+          </p>
           <h1 className="mt-1 text-2xl font-black">অফিসার অ্যাকাউন্ট ও অর্ডার</h1>
           <p className="mt-1 text-xs text-slate-300">অফিসার অ্যাকাউন্ট অনুমোদন করুন এবং পণ্যের অর্ডার দেখুন।</p>
         </div>
@@ -166,6 +170,11 @@ export default function AdminAccess({ onInvoiceCreated }) {
               <div>
                 <p className="font-bold text-slate-900">{user.name}</p>
                 <p className="text-xs text-slate-500">{user.email} • অফিসার কোড {formatOfficerCode(user.officerCode)} • {user.phone}</p>
+                {user.officerPhoneMismatch && (
+                  <p className="mt-1 text-xs font-semibold text-amber-700">
+                    ফোন নম্বর মেলেনি — নিবন্ধিত নম্বর: {user.registeredOfficerPhone || 'পাওয়া যায়নি'}
+                  </p>
+                )}
               </div>
               <div className="flex gap-2">
                 <button disabled={busyId === user.id} onClick={() => updateOfficer(user.id, 'active')} className="inline-flex items-center gap-1 rounded-lg bg-emerald-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50"><Check className="h-4 w-4" /> অনুমোদন</button>
@@ -222,6 +231,11 @@ export default function AdminAccess({ onInvoiceCreated }) {
           <ClipboardCheck className="h-5 w-5 text-emerald-700" />
           <div><h2 className="font-black text-slate-900">পণ্যের অর্ডার অনুমোদন</h2><p className="text-xs text-slate-500">{pendingOrders.length}টি অর্ডার অপেক্ষায়</p></div>
         </div>
+        {!canApproveOrders && pendingOrders.length > 0 && (
+          <p className="border-b border-slate-100 bg-amber-50 px-5 py-3 text-xs font-semibold text-amber-800">
+            অর্ডার সম্পাদনা, অনুমোদন বা প্রত্যাখ্যান শুধু SuperAdmin করতে পারবেন।
+          </p>
+        )}
         <div className="divide-y divide-slate-100">
           {pendingOrders.map((order) => (
             <article key={order.id} className="space-y-3 px-5 py-4">
@@ -233,7 +247,7 @@ export default function AdminAccess({ onInvoiceCreated }) {
                 </div>
                 <span className="h-fit rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-bold text-amber-800">অনুমোদনের অপেক্ষায়</span>
               </div>
-              {editingOrderId === order.id ? (
+              {canApproveOrders && editingOrderId === order.id ? (
                 <div className="space-y-3 rounded-lg border border-emerald-200 bg-emerald-50/50 p-3">
                   {editedItems.map((item, index) => {
                     const selectedVariant = products.find((product) => product.id === item.productId)
@@ -307,12 +321,14 @@ export default function AdminAccess({ onInvoiceCreated }) {
                 </div>
               )}
               {order.note && <p className="text-xs text-slate-600">নোট: {order.note}</p>}
-              <div className="flex gap-2">
-                {editingOrderId !== order.id && <button type="button" onClick={() => editOrder(order)} className="inline-flex items-center gap-1 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800"><Pencil className="h-4 w-4" /> এডিট</button>}
-                <button disabled={busyId === order.id || (editingOrderId === order.id && !editedItems.length)} onClick={() => updateOrder(order.id, 'approved')} className="inline-flex items-center gap-1 rounded-lg bg-emerald-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50"><Check className="h-4 w-4" /> {editingOrderId === order.id ? 'এডিট করে অনুমোদন' : 'অর্ডার অনুমোদন'}</button>
-                <button disabled={busyId === order.id} onClick={() => updateOrder(order.id, 'rejected')} className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700 disabled:opacity-50"><ShieldX className="h-4 w-4" /> প্রত্যাখ্যান</button>
-                {editingOrderId === order.id && <button type="button" onClick={() => { setEditingOrderId(''); setEditedItems([]); }} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600">বাতিল</button>}
-              </div>
+              {canApproveOrders && (
+                <div className="flex gap-2">
+                  {editingOrderId !== order.id && <button type="button" onClick={() => editOrder(order)} className="inline-flex items-center gap-1 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800"><Pencil className="h-4 w-4" /> এডিট</button>}
+                  <button disabled={busyId === order.id || (editingOrderId === order.id && !editedItems.length)} onClick={() => updateOrder(order.id, 'approved')} className="inline-flex items-center gap-1 rounded-lg bg-emerald-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50"><Check className="h-4 w-4" /> {editingOrderId === order.id ? 'এডিট করে অনুমোদন' : 'অর্ডার অনুমোদন'}</button>
+                  <button disabled={busyId === order.id} onClick={() => updateOrder(order.id, 'rejected')} className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700 disabled:opacity-50"><ShieldX className="h-4 w-4" /> প্রত্যাখ্যান</button>
+                  {editingOrderId === order.id && <button type="button" onClick={() => { setEditingOrderId(''); setEditedItems([]); }} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600">বাতিল</button>}
+                </div>
+              )}
             </article>
           ))}
           {!loading && pendingOrders.length === 0 && <p className="px-5 py-8 text-center text-sm text-slate-500">নতুন কোনো অর্ডার অনুমোদনের অপেক্ষায় নেই।</p>}

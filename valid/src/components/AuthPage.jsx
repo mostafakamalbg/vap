@@ -2,22 +2,27 @@ import React, { useState } from 'react';
 import { ArrowLeft, Eye, EyeOff, KeyRound, ShieldCheck, UserRound, UserRoundPlus } from 'lucide-react';
 import { useAgro } from '../context/AgroContext';
 import { useUiPreferences } from '../context/UiPreferencesContext';
+import { ADMIN_ROLE, OFFICER_ROLE } from '../../shared/roles';
 
 export default function AuthPage({ initialRole = 'admin', onNavigate, onLoginSuccess }) {
   const { login, registerOfficer } = useAgro();
   const { t } = useUiPreferences();
-  const [role, setRole] = useState(initialRole.startsWith('officer') ? 'officer' : 'admin');
+  const [deviceOwnerEmail, setDeviceOwnerEmail] = useState(() => localStorage.getItem('vap_device_owner_email_v1') || '');
+  const [role, setRole] = useState(initialRole.startsWith('officer') ? OFFICER_ROLE : ADMIN_ROLE);
   const [isRegistering, setIsRegistering] = useState(initialRole === 'officer-register');
   const [showAdminHelp, setShowAdminHelp] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [passwordFieldActive, setPasswordFieldActive] = useState(false);
+  const [showEmailSuggestion, setShowEmailSuggestion] = useState(false);
   const [form, setForm] = useState({
     name: '',
-    email: '',
+    email: isRegistering ? '' : deviceOwnerEmail,
     password: '',
     officerCode: '',
     phone: ''
   });
   const [message, setMessage] = useState('');
+  const [warning, setWarning] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -29,15 +34,23 @@ export default function AuthPage({ initialRole = 'admin', onNavigate, onLoginSuc
     event.preventDefault();
     setError('');
     setMessage('');
+    setWarning('');
     setBusy(true);
     try {
       if (isRegistering) {
         const result = await registerOfficer(form);
         setMessage(result.message);
+        setWarning(result.warning || '');
         setIsRegistering(false);
-        setRole('officer');
+        setRole(OFFICER_ROLE);
+        setForm((previous) => ({ ...previous, password: '' }));
+        setPasswordFieldActive(false);
+        setShowPassword(false);
       } else {
         const user = await login({ email: form.email, password: form.password, expectedRole: role });
+        const email = form.email.trim().toLowerCase();
+        localStorage.setItem('vap_device_owner_email_v1', email);
+        setDeviceOwnerEmail(email);
         onLoginSuccess(user);
       }
     } catch (requestError) {
@@ -50,9 +63,13 @@ export default function AuthPage({ initialRole = 'admin', onNavigate, onLoginSuc
   const selectRole = (nextRole) => {
     setRole(nextRole);
     setIsRegistering(false);
+    setForm((previous) => ({ ...previous, password: '' }));
+    setPasswordFieldActive(false);
+    setShowPassword(false);
     setShowAdminHelp(false);
     setError('');
     setMessage('');
+    setWarning('');
   };
 
   return (
@@ -81,23 +98,26 @@ export default function AuthPage({ initialRole = 'admin', onNavigate, onLoginSuc
           <div className="mb-5 grid grid-cols-2 gap-2 rounded-xl bg-slate-100 p-1">
             <button
               type="button"
-              onClick={() => selectRole('admin')}
+              onClick={() => selectRole(ADMIN_ROLE)}
               className={`flex items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-sm font-bold transition ${
-                role === 'admin' ? 'bg-white text-emerald-800 shadow-sm' : 'text-slate-500'
+                role === ADMIN_ROLE ? 'bg-white text-emerald-800 shadow-sm' : 'text-slate-500'
               }`}
             >
               <ShieldCheck className="h-4 w-4" /> {t('auth.adminLogin')}
             </button>
             <button
               type="button"
-              onClick={() => selectRole('officer')}
+              onClick={() => selectRole(OFFICER_ROLE)}
               className={`flex items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-sm font-bold transition ${
-                role === 'officer' ? 'bg-white text-emerald-800 shadow-sm' : 'text-slate-500'
+                role === OFFICER_ROLE ? 'bg-white text-emerald-800 shadow-sm' : 'text-slate-500'
               }`}
             >
               <UserRound className="h-4 w-4" /> {t('auth.officerLogin')}
             </button>
           </div>
+        )}
+        {!isRegistering && role === ADMIN_ROLE && (
+          <p className="mb-4 text-xs text-slate-500">{t('auth.adminRoleHint')}</p>
         )}
 
         {showAdminHelp ? (
@@ -111,7 +131,7 @@ export default function AuthPage({ initialRole = 'admin', onNavigate, onLoginSuc
             </button>
           </div>
         ) : (
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} autoComplete="off" className="space-y-4">
           {isRegistering && (
             <>
               <label className="block space-y-1">
@@ -133,12 +153,43 @@ export default function AuthPage({ initialRole = 'admin', onNavigate, onLoginSuc
 
           <label className="block space-y-1">
             <span className="text-xs font-bold text-slate-700">{t('auth.email')}</span>
-            <input required type="email" name="email" value={form.email} onChange={changeForm} autoComplete="email" className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100" />
+            <span className="relative block">
+              <input
+                required
+                type="email"
+                name="email"
+                value={form.email}
+                onChange={changeForm}
+                onFocus={() => setShowEmailSuggestion(Boolean(deviceOwnerEmail) && !isRegistering)}
+                onBlur={() => window.setTimeout(() => setShowEmailSuggestion(false), 150)}
+                autoComplete="off"
+                aria-autocomplete="list"
+                aria-expanded={showEmailSuggestion && !isRegistering && Boolean(deviceOwnerEmail)}
+                aria-controls="device-owner-email-suggestions"
+                className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
+              />
+              {showEmailSuggestion && !isRegistering && deviceOwnerEmail && (
+                <ul id="device-owner-email-suggestions" role="listbox" className="absolute inset-x-0 top-full z-30 mt-1 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+                  <li role="option" aria-selected={form.email === deviceOwnerEmail}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setForm((previous) => ({ ...previous, email: deviceOwnerEmail }));
+                        setShowEmailSuggestion(false);
+                      }}
+                      className="w-full px-3 py-2 text-left text-sm text-slate-800 hover:bg-emerald-50 focus:bg-emerald-50"
+                    >
+                      {deviceOwnerEmail}
+                    </button>
+                  </li>
+                </ul>
+              )}
+            </span>
           </label>
           <label className="block space-y-1">
             <span className="text-xs font-bold text-slate-700">{t('auth.password')} {isRegistering && `(${t('auth.minimumPassword')})`}</span>
             <span className="relative block">
-              <input required minLength={isRegistering ? 10 : undefined} type={showPassword ? 'text' : 'password'} name="password" value={form.password} onChange={changeForm} autoComplete={isRegistering ? 'new-password' : 'current-password'} className="w-full rounded-lg border border-slate-300 px-3 py-2.5 pr-11 text-sm outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100" />
+              <input required minLength={isRegistering ? 10 : undefined} type={showPassword ? 'text' : 'password'} name="password" value={form.password} onChange={changeForm} onFocus={() => setPasswordFieldActive(true)} readOnly={!passwordFieldActive} autoComplete="new-password" className="w-full rounded-lg border border-slate-300 px-3 py-2.5 pr-11 text-sm outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100" />
               <button
                 type="button"
                 onClick={() => setShowPassword((visible) => !visible)}
@@ -152,6 +203,7 @@ export default function AuthPage({ initialRole = 'admin', onNavigate, onLoginSuc
           </label>
 
           {error && <p role="alert" className="rounded-lg bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">{error}</p>}
+          {warning && <p role="status" className="rounded-lg bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800">{warning}</p>}
           {message && <p role="status" className="rounded-lg bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-800">{message}</p>}
 
           <button disabled={busy} className="w-full rounded-lg bg-emerald-700 px-4 py-3 text-sm font-black text-white shadow transition hover:bg-emerald-800 disabled:cursor-wait disabled:opacity-60">
@@ -162,13 +214,13 @@ export default function AuthPage({ initialRole = 'admin', onNavigate, onLoginSuc
 
         <div className="mt-5 border-t border-slate-100 pt-4 text-center">
           {showAdminHelp ? null : isRegistering ? (
-            <button type="button" onClick={() => { setIsRegistering(false); setMessage(''); setError(''); }} className="text-sm font-bold text-emerald-700 hover:underline">
+            <button type="button" onClick={() => { setForm((previous) => ({ ...previous, email: deviceOwnerEmail, password: '' })); setPasswordFieldActive(false); setShowPassword(false); setIsRegistering(false); setMessage(''); setWarning(''); setError(''); }} className="text-sm font-bold text-emerald-700 hover:underline">
               {t('auth.existingOfficer')}
             </button>
           ) : (
             <div className="flex flex-wrap justify-center gap-4">
-              {role === 'officer' && (
-                <button type="button" onClick={() => { setIsRegistering(true); setMessage(''); setError(''); }} className="text-sm font-bold text-emerald-700 hover:underline">
+              {role === OFFICER_ROLE && (
+                <button type="button" onClick={() => { setForm((previous) => ({ ...previous, email: '', password: '' })); setPasswordFieldActive(false); setShowPassword(false); setIsRegistering(true); setMessage(''); setWarning(''); setError(''); }} className="text-sm font-bold text-emerald-700 hover:underline">
                   {t('auth.newOfficer')}
                 </button>
               )}

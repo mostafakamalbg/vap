@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Users,
   PlusCircle,
@@ -26,21 +26,85 @@ import {
   PAYMENT_TYPES,
   LEDGER_PAYMENT_TYPES,
   normalizePaymentMethod,
-  normalizePaymentType
+  normalizePaymentType,
+  resolvePaymentRecordType
 } from '../../../shared/paymentMethods';
+import { getDealerLedgerTransactions } from '../../../shared/dealerLedger';
 import CompanyLetterhead from './CompanyLetterhead';
+import { getBangladeshBusinessDate, getInvoiceSessionForDate, INVOICE_SESSIONS } from '../../../shared/sessions';
+import { SUPER_ADMIN_ROLE } from '../../../shared/roles';
+import { readJsonResponse } from '../../utils/api';
 
 const createPaymentEntries = () => LEDGER_PAYMENT_TYPES.map(({ value }) => ({
   paymentType: value,
   amount: '0'
 }));
 
+const createPaymentForm = (dealerId = '', officerId = '') => ({
+  date: getBangladeshBusinessDate(),
+  session: getInvoiceSessionForDate(getBangladeshBusinessDate()),
+  dealerId,
+  officerId,
+  paymentMethod: 'cash',
+  reference: '',
+  receivedBy: 'ক্যাশিয়ার, নিশিন্দারা বগুড়া',
+  note: '',
+  entries: createPaymentEntries()
+});
+
+const createPreviousDueForm = () => {
+  const date = getBangladeshBusinessDate();
+  return {
+    dealerId: '',
+    officerId: '',
+    session: getInvoiceSessionForDate(date),
+    date,
+    amount: 0
+  };
+};
+
 function findDealerOfficer(dealer, officers) {
+  const assignedId = String(dealer?.assignedOfficerId || dealer?.officerId || '');
+  const officerById = officers.find((officer) => (
+    assignedId
+    && String(officer.id || officer.officerId || '') === assignedId
+  ));
+  if (officerById) return officerById;
+
   return officers.find((officer) => (
     Boolean(dealer?.officerCode)
     && normalizeOfficerCode(officer.code, officer.designation)
       === normalizeOfficerCode(dealer.officerCode, officer.designation)
   ));
+}
+
+function formatBalanceAmount(amount) {
+  const balance = Math.round(Number(amount) || 0);
+  return `${balance < 0 ? '− ' : ''}৳${Math.abs(balance).toLocaleString()}`;
+}
+
+function getBalanceLabel(amount) {
+  if (amount < 0) return 'ডিলারের পাওনা / অগ্রিম';
+  if (amount > 0) return 'ডিলারের বকেয়া';
+  return 'ব্যালেন্স শূন্য';
+}
+
+function getTransactionDetails(transaction) {
+  if (transaction.sourceType !== 'payment') return transaction.description;
+  const payment = transaction.source;
+  const paymentType = PAYMENT_TYPES.find(
+    (type) => type.value === normalizePaymentType(
+      resolvePaymentRecordType(payment) || payment.paymentType
+    )
+  )?.label;
+  const paymentMethod = PAYMENT_METHODS.find(
+    (method) => method.value === normalizePaymentMethod(payment.paymentMethod)
+  )?.label;
+  return [
+    paymentType,
+    paymentMethod,
+    payment.receivedBy && `রিসিভার: ${payment.receivedBy}`
+  ].filter(Boolean).join(' • ');
 }
 
 export default function DealerLedger() {
@@ -51,26 +115,48 @@ export default function DealerLedger() {
     addDealerPayment,
     getDealerSummary,
     invoices,
-    payments
+    payments,
+    refreshSharedRecords,
+    currentUser
   } = useAgro();
+  const canSetPreviousDue = currentUser?.role === SUPER_ADMIN_ROLE || currentUser?.isSuperAdmin;
 
   const [searchTerm, setSearchTerm] = useState('');
   const [showAddDealerModal, setShowAddDealerModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [showPreviousDueModal, setShowPreviousDueModal] = useState(false);
+  const [previousDueForm, setPreviousDueForm] = useState(createPreviousDueForm);
+  const [previousDueError, setPreviousDueError] = useState('');
+  const [previousDueSaving, setPreviousDueSaving] = useState(false);
+  const [previousDueConfirmation, setPreviousDueConfirmation] = useState(null);
+
+  const availableOfficers = officers;
   const [selectedDealerForLedger, setSelectedDealerForLedger] = useState(null);
+  const ledgerTriggerRef = useRef(null);
+  const wasLedgerOpenRef = useRef(false);
   const [successMsg, setSuccessMsg] = useState('');
+  const closeDealerLedger = () => setSelectedDealerForLedger(null);
+
+  useEffect(() => {
+    if (!selectedDealerForLedger) return undefined;
+    wasLedgerOpenRef.current = true;
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') setSelectedDealerForLedger(null);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedDealerForLedger]);
+
+  useEffect(() => {
+    if (selectedDealerForLedger || !wasLedgerOpenRef.current) return;
+    wasLedgerOpenRef.current = false;
+    ledgerTriggerRef.current?.focus();
+  }, [selectedDealerForLedger]);
 
   // Payment Form State
-  const [paymentForm, setPaymentForm] = useState({
-    date: new Date().toISOString().slice(0, 10),
-    dealerId: dealers[0]?.id || '',
-    officerId: officers[0]?.id || '',
-    paymentMethod: 'cash',
-    reference: '',
-    receivedBy: 'ক্যাশিয়ার, নিশিন্দারা বগুড়া',
-    note: '',
-    entries: createPaymentEntries()
-  });
+  const [paymentForm, setPaymentForm] = useState(() => (
+    createPaymentForm(dealers[0]?.id || '', officers[0]?.id || '')
+  ));
 
   // New Dealer Form State
   const [newDealerForm, setNewDealerForm] = useState({
@@ -82,16 +168,33 @@ export default function DealerLedger() {
     phone: '',
     officerCode: normalizeOfficerCode(officers[0]?.code, officers[0]?.designation),
     creditLimit: 500000,
-    openingDue: 0
+    lastSessionDue: 0
   });
 
   // Calculate summaries for all dealers
   const dealerSummaries = dealers.map((d) => getDealerSummary(d.id));
+  const ledgerTransactions = selectedDealerForLedger
+    ? getDealerLedgerTransactions(selectedDealerForLedger)
+    : [];
+  const previousDueHistory = selectedDealerForLedger
+    ? selectedDealerForLedger.previousDueHistory?.length
+      ? [...selectedDealerForLedger.previousDueHistory].reverse()
+      : selectedDealerForLedger.previousDueDate
+        ? [{
+            date: selectedDealerForLedger.previousDueDate,
+            session: selectedDealerForLedger.previousDueSession,
+            amount: selectedDealerForLedger.previousDue ?? selectedDealerForLedger.lastSessionDue,
+            officerId: selectedDealerForLedger.previousDueOfficerId
+          }]
+        : []
+    : [];
 
   // Totals
   const totalSalesToDealers = dealerSummaries.reduce((acc, curr) => acc + (curr?.totalPurchases || 0), 0);
+  const totalReturnCredits = dealerSummaries.reduce((acc, curr) => acc + (curr?.totalReturnCredits || 0), 0);
   const totalPaidByDealers = dealerSummaries.reduce((acc, curr) => acc + (curr?.totalPaid || 0), 0);
   const totalOutstandingDue = dealerSummaries.reduce((acc, curr) => acc + (curr?.currentDue || 0), 0);
+  const totalLastSessionDue = dealerSummaries.reduce((acc, curr) => acc + (curr?.lastSessionDue || 0), 0);
 
   // Filter dealers
   const filteredSummaries = dealerSummaries.filter((d) => {
@@ -110,56 +213,125 @@ export default function DealerLedger() {
   const handleOpenPayment = (dealerId) => {
     if (!dealerId) return;
     const d = dealers.find((dl) => dl.id === dealerId);
-    setPaymentForm({
-      date: new Date().toISOString().slice(0, 10),
+    const form = createPaymentForm(
       dealerId,
-      officerId: findDealerOfficer(d, officers)?.id || officers[0]?.id || '',
-      paymentMethod: 'cash',
-      reference: `MR-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`,
-      receivedBy: 'ক্যাশিয়ার, নিশিন্দারা বগুড়া',
-      note: '',
-      entries: createPaymentEntries()
-    });
+      findDealerOfficer(d, availableOfficers)?.id || ''
+    );
+    form.reference = `MR-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`;
+    setPaymentForm(form);
     setShowPaymentModal(true);
   };
 
   // Submit Payment
-  const handlePaymentSubmit = (e) => {
+  const handlePaymentSubmit = async (e) => {
     e.preventDefault();
     const invalidEntry = paymentForm.entries.some((entry) => (
       !Number.isFinite(Number(entry.amount)) || Number(entry.amount) < 0
     ));
     const entriesToSave = paymentForm.entries.filter((entry) => Number(entry.amount) > 0);
+    if (!paymentForm.officerId) {
+      alert('দায়িত্বপ্রাপ্ত অফিসার নির্বাচন করুন।');
+      return;
+    }
+    if (!paymentForm.session) {
+      alert('সেশন নির্বাচন করুন।');
+      return;
+    }
     if (invalidEntry || !entriesToSave.length) {
       alert('অন্তত একটি পেমেন্টের পরিমাণ শূন্যের বেশি দিন।');
       return;
     }
 
     const d = dealers.find((dl) => dl.id === paymentForm.dealerId);
-    const o = officers.find((of) => of.id === paymentForm.officerId);
+    if (!d) {
+      alert('ডিলার নির্বাচন করুন।');
+      return;
+    }
+    const o = availableOfficers.find((of) => of.id === paymentForm.officerId);
+    if (!o) {
+      alert('দায়িত্বপ্রাপ্ত অফিসার নির্বাচন করুন।');
+      return;
+    }
 
-    entriesToSave.forEach((entry) => {
+    const newPayments = entriesToSave.map((entry) => {
       const paymentType = normalizePaymentType(entry.paymentType);
-      addDealerPayment({
-        date: paymentForm.date,
-        paymentType,
-        dealerId: paymentForm.dealerId,
-        dealerName: d?.shopName || 'ডিলার',
-        officerId: paymentForm.officerId,
-        officerCode: o?.code || '',
-        officerName: o?.name || 'অফিসার',
-        amount: Number(entry.amount),
-        paymentMethod: paymentForm.paymentMethod,
-        reference: paymentForm.reference || 'নগদ রসিদ',
-        receivedBy: paymentForm.receivedBy,
-        note: paymentForm.note || PAYMENT_TYPES.find((type) => type.value === paymentType)?.label || ''
-      });
+      return {
+          date: paymentForm.date,
+          session: paymentForm.session,
+          paymentType,
+          dealerId: paymentForm.dealerId,
+          dealerName: d?.shopName || 'ডিলার',
+          officerId: paymentForm.officerId,
+          officerCode: o?.code || '',
+          officerName: o?.name || 'অফিসার',
+          amount: Math.round(Number(entry.amount)),
+          paymentMethod: paymentForm.paymentMethod,
+          reference: paymentForm.reference || 'নগদ রসিদ',
+          receivedBy: paymentForm.receivedBy,
+          note: paymentForm.note || PAYMENT_TYPES.find((type) => type.value === paymentType)?.label || ''
+        };
     });
+    try {
+      await addDealerPayment(newPayments);
+    } catch (error) {
+      window.alert(error.message);
+      return;
+    }
 
-    const total = entriesToSave.reduce((sum, entry) => sum + Number(entry.amount), 0);
-    setSuccessMsg(`${d?.shopName || 'ডিলার'}-এর ${entriesToSave.length}টি পেমেন্ট পোস্টিং, মোট ৳${total.toLocaleString()} সংরক্ষণ হয়েছে।`);
+    const total = Math.round(entriesToSave.reduce((sum, entry) => sum + Number(entry.amount), 0));
+    window.alert(`${d?.shopName || 'ডিলার'}-এর ${entriesToSave.length}টি পেমেন্ট পোস্টিং, মোট ৳${total.toLocaleString()} সংরক্ষণ হয়েছে।`);
+    const resetForm = createPaymentForm(
+      paymentForm.dealerId,
+      findDealerOfficer(d, availableOfficers)?.id || ''
+    );
+    resetForm.reference = `MR-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`;
+    setPaymentForm(resetForm);
+    setSuccessMsg(`${d?.shopName || 'ডিলার'}-এর পেমেন্ট সংরক্ষণ হয়েছে।`);
     setTimeout(() => setSuccessMsg(''), 4500);
-    setShowPaymentModal(false);
+  };
+
+  const handlePreviousDueSubmit = async (event) => {
+    event.preventDefault();
+    if (!previousDueForm.dealerId || !previousDueForm.officerId || !previousDueForm.session
+      || !previousDueForm.date || !Number.isFinite(Number(previousDueForm.amount))
+      || Number(previousDueForm.amount) < 0) {
+      setPreviousDueError('ডিলার, অফিসার, সেশন, তারিখ ও বকেয়া সঠিকভাবে দিন।');
+      return;
+    }
+    setPreviousDueError('');
+    setPreviousDueSaving(true);
+    try {
+      const response = await fetch('/api/dealers', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(previousDueForm)
+      });
+      const result = await readJsonResponse(response);
+      const dealer = dealers.find((entry) => entry.id === previousDueForm.dealerId);
+      setShowPreviousDueModal(false);
+      setPreviousDueForm(createPreviousDueForm());
+      setPreviousDueConfirmation({
+        dealerName: dealer?.shopName || result.shopName || 'ডিলার',
+        amount: Number(previousDueForm.amount),
+        date: previousDueForm.date,
+        session: previousDueForm.session
+      });
+      try {
+        const updatedDealers = await refreshSharedRecords('dealers');
+        const updatedDealer = updatedDealers.find((entry) => entry.id === previousDueForm.dealerId);
+        if (updatedDealer && selectedDealerForLedger?.id === updatedDealer.id) {
+          setSelectedDealerForLedger(updatedDealer);
+        }
+        setSuccessMsg('পূর্বের বকেয়া সংরক্ষিত হয়েছে এবং ডিলার লেজার হালনাগাদ হয়েছে।');
+        setTimeout(() => setSuccessMsg(''), 4500);
+      } catch (refreshError) {
+        setPreviousDueError(`বকেয়া সংরক্ষিত হয়েছে, কিন্তু লেজার রিফ্রেশ করা যায়নি: ${refreshError.message}`);
+      }
+    } catch (error) {
+      setPreviousDueError(error.message);
+    } finally {
+      setPreviousDueSaving(false);
+    }
   };
 
   // Submit New Dealer
@@ -173,7 +345,8 @@ export default function DealerLedger() {
     addNewDealer({
       ...newDealerForm,
       creditLimit: Number(newDealerForm.creditLimit) || 0,
-      openingDue: Number(newDealerForm.openingDue) || 0
+      lastSessionDue: Number(newDealerForm.lastSessionDue) || 0,
+      openingDue: Number(newDealerForm.lastSessionDue) || 0
     });
 
     setSuccessMsg(`নতুন ডিলার "${newDealerForm.shopName}" সফলভাবে তালিকায় যুক্ত হয়েছে!`);
@@ -186,15 +359,15 @@ export default function DealerLedger() {
       phone: '',
       officerCode: normalizeOfficerCode(officers[0]?.code, officers[0]?.designation),
       creditLimit: 500000,
-      openingDue: 0
+      lastSessionDue: 0
     });
     setShowAddDealerModal(false);
   };
 
   return (
-    <div className="py-6 px-4 max-w-7xl mx-auto space-y-6">
+    <div className="dealer-ledger-list-print py-6 px-4 max-w-7xl mx-auto space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-5 rounded-xl border border-slate-200 shadow-sm no-print">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
         <div>
           <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
             <span className="w-9 h-9 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center">
@@ -208,9 +381,21 @@ export default function DealerLedger() {
         </div>
 
         <div className="flex items-center gap-2">
+          {canSetPreviousDue && (
+            <button
+              type="button"
+              onClick={() => {
+                setPreviousDueError('');
+                setShowPreviousDueModal(true);
+              }}
+              className="no-print rounded-lg border border-amber-300 bg-amber-50 px-3.5 py-2 text-xs font-bold text-amber-900"
+            >
+              পূর্বের বকেয়া ইনপুট
+            </button>
+          )}
           <button
             onClick={() => setShowAddDealerModal(true)}
-            className="flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 px-3.5 py-2 rounded-lg text-xs font-bold transition"
+            className="no-print flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 px-3.5 py-2 rounded-lg text-xs font-bold transition"
           >
             <PlusCircle className="w-4 h-4" />
             <span>নতুন ডিলার নিবন্ধন</span>
@@ -218,10 +403,17 @@ export default function DealerLedger() {
 
           <button
             onClick={() => handleOpenPayment(dealers[0]?.id)}
-            className="flex items-center gap-1.5 bg-emerald-700 hover:bg-emerald-800 text-white px-4 py-2 rounded-lg text-xs font-bold shadow transition"
+            className="no-print flex items-center gap-1.5 bg-emerald-700 hover:bg-emerald-800 text-white px-4 py-2 rounded-lg text-xs font-bold shadow transition"
           >
             <CreditCard className="w-4 h-4" />
             <span>টাকা জমা নিন (Payment)</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => window.print()}
+            className="no-print flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700"
+          >
+            <Printer className="w-4 h-4" /> প্রিন্ট
           </button>
         </div>
       </div>
@@ -232,9 +424,12 @@ export default function DealerLedger() {
           <span className="font-semibold text-sm">{successMsg}</span>
         </div>
       )}
+      {previousDueError && !showPreviousDueModal && (
+        <p role="alert" className="rounded-lg bg-amber-50 p-3 text-sm font-semibold text-amber-800">{previousDueError}</p>
+      )}
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 no-print">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
           <div>
             <p className="text-xs font-semibold text-slate-500 uppercase">মোট চালানের মাল বিক্রি</p>
@@ -242,6 +437,16 @@ export default function DealerLedger() {
           </div>
           <div className="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
             <TrendingUp className="w-5 h-5" />
+          </div>
+        </div>
+
+        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+          <div>
+            <p className="text-xs font-semibold text-slate-500 uppercase">মোট ইনভয়েসের পণ্য ফেরত</p>
+            <p className="text-2xl font-black text-rose-700 mt-1">৳{totalReturnCredits.toLocaleString()}</p>
+          </div>
+          <div className="w-10 h-10 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center">
+            <TrendingDown className="w-5 h-5" />
           </div>
         </div>
 
@@ -257,19 +462,25 @@ export default function DealerLedger() {
 
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
           <div>
-            <p className="text-xs font-semibold text-slate-500 uppercase">ডিলারদের নিকট মোট বকেয়া (বাকি)</p>
-            <p className="text-2xl font-black text-rose-600 mt-1">৳{totalOutstandingDue.toLocaleString()}</p>
+            <p className="text-xs font-semibold text-slate-500 uppercase">ডিলারদের মোট নিট বকেয়া / পাওনা</p>
+            <p className={`mt-1 text-2xl font-black ${totalOutstandingDue < 0 ? 'text-emerald-700' : totalOutstandingDue > 0 ? 'text-rose-600' : 'text-slate-700'}`}>
+              {formatBalanceAmount(totalOutstandingDue)}
+            </p>
+            <p className="mt-1 text-xs text-slate-500">{getBalanceLabel(totalOutstandingDue)}</p>
           </div>
           <div className="w-10 h-10 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center">
             <TrendingDown className="w-5 h-5" />
           </div>
         </div>
       </div>
+      <p className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-xs font-semibold text-slate-700 dealer-ledger-equation">
+        মোট ইনভয়েস বিক্রি ৳{totalSalesToDealers.toLocaleString()} + Last Session Due ৳{totalLastSessionDue.toLocaleString()} − ফেরত ৳{totalReturnCredits.toLocaleString()} = আদায়/ব্যয় সমন্বয় ৳{totalPaidByDealers.toLocaleString()} + নিট বকেয়া ৳{totalOutstandingDue.toLocaleString()} • ডেমেজ মূল্য লেজার থেকে বাদ নয়
+      </p>
 
       {/* Dealers Table Card */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-4 no-print">
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-4">
         {/* Search */}
-        <div className="relative max-w-md">
+        <div className="relative max-w-md no-print">
           <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             type="text"
@@ -290,16 +501,17 @@ export default function DealerLedger() {
                 <th className="py-3 px-3">ঠিকানা ও মোবাইল</th>
                 <th className="py-3 px-3">দায়িত্বপ্রাপ্ত অফিসার</th>
                 <th className="py-3 px-3 text-right">মোট ক্রয় (৳)</th>
+                <th className="py-3 px-3 text-right">মোট ফেরত (৳)</th>
                 <th className="py-3 px-3 text-right">মোট পরিশোধ (৳)</th>
-                <th className="py-3 px-3 text-right">ডেমেজ সমন্বয় (৳)</th>
-                <th className="py-3 px-3 text-right">অবশিষ্ট বকেয়া (৳)</th>
-                <th className="py-3 px-3 text-center">অ্যাকশন</th>
+                <th className="py-3 px-3 text-right">বকেয়া / পাওনা (৳)</th>
+                <th className="no-print py-3 px-3 text-center">অ্যাকশন</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
               {filteredSummaries.map((d) => {
                 const assignedOfficer = findDealerOfficer(d, officers);
                 const hasDue = d.currentDue > 0;
+                const hasAdvance = d.currentDue < 0;
 
                 return (
                   <tr key={d.id} className="hover:bg-slate-50 transition">
@@ -328,25 +540,30 @@ export default function DealerLedger() {
                       ৳{d.totalPurchases.toLocaleString()}
                     </td>
 
-                    <td className="py-3 px-3 text-right font-mono font-bold text-emerald-700">
-                      ৳{d.totalPaid.toLocaleString()}
+                    <td className="py-3 px-3 text-right font-mono font-bold text-rose-700">
+                      ৳{d.totalReturnCredits.toLocaleString()}
                     </td>
 
-                    <td className="py-3 px-3 text-right font-mono text-slate-500">
-                      {d.damageCredits > 0 ? `৳${d.damageCredits.toLocaleString()}` : '-'}
+                    <td className="py-3 px-3 text-right font-mono font-bold text-emerald-700">
+                      ৳{d.totalPaid.toLocaleString()}
                     </td>
 
                     <td className="py-3 px-3 text-right font-mono">
                       <span
                         className={`inline-block px-2.5 py-1 rounded-md font-extrabold text-sm ${
-                          hasDue ? 'bg-rose-100 text-rose-800' : 'bg-emerald-100 text-emerald-800'
+                          hasDue
+                            ? 'bg-rose-100 text-rose-800'
+                            : hasAdvance
+                              ? 'bg-sky-100 text-sky-800'
+                              : 'bg-emerald-100 text-emerald-800'
                         }`}
                       >
-                        ৳{d.currentDue.toLocaleString()}
+                        {formatBalanceAmount(d.currentDue)}
                       </span>
+                      <span className="mt-1 block text-[10px] text-slate-500">{getBalanceLabel(d.currentDue)}</span>
                     </td>
 
-                    <td className="py-3 px-3 text-center">
+                    <td className="no-print py-3 px-3 text-center">
                       <div className="flex items-center justify-center gap-1.5">
                         <button
                           onClick={() => handleOpenPayment(d.id)}
@@ -357,7 +574,10 @@ export default function DealerLedger() {
                         </button>
 
                         <button
-                          onClick={() => setSelectedDealerForLedger(d)}
+                          onClick={(event) => {
+                            ledgerTriggerRef.current = event.currentTarget;
+                            setSelectedDealerForLedger(d);
+                          }}
                           title="বিস্তারিত খতিয়ান দেখুন"
                           className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-2 py-1 rounded text-xs font-semibold transition"
                         >
@@ -394,22 +614,70 @@ export default function DealerLedger() {
                   <input
                     type="date"
                     value={paymentForm.date}
-                    onChange={(e) => setPaymentForm({ ...paymentForm, date: e.target.value })}
+                    onChange={(e) => setPaymentForm({
+                      ...paymentForm,
+                      date: e.target.value,
+                      session: getInvoiceSessionForDate(e.target.value)
+                    })}
                     className="w-full bg-slate-50 border border-slate-300 rounded p-2 text-xs"
                     required
                   />
                 </div>
 
                 <div>
+                  <label className="block font-semibold text-slate-600 mb-1">সেশন *</label>
+                  <select
+                    required
+                    value={paymentForm.session}
+                    onChange={(e) => setPaymentForm({ ...paymentForm, session: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-300 rounded p-2 text-xs"
+                  >
+                    <option value="">সেশন নির্বাচন করুন</option>
+                    {INVOICE_SESSIONS.map((session) => <option key={session} value={session}>{session}</option>)}
+                  </select>
+                </div>
+
+                <div>
                   <label className="block font-semibold text-slate-600 mb-1">ডিলার নির্বাচন</label>
                   <select
+                    required
                     value={paymentForm.dealerId}
-                    onChange={(e) => setPaymentForm({ ...paymentForm, dealerId: e.target.value })}
+                    onChange={(e) => {
+                      const dealerId = e.target.value;
+                      const dealer = dealers.find((item) => item.id === dealerId);
+                      const assignedOfficer = findDealerOfficer(dealer, availableOfficers);
+                      setPaymentForm((previous) => ({
+                        ...previous,
+                        dealerId,
+                        officerId: assignedOfficer?.id || (
+                          availableOfficers.some((officer) => officer.id === previous.officerId)
+                            ? previous.officerId
+                            : ''
+                        )
+                      }));
+                    }}
                     className="w-full bg-slate-50 border border-slate-300 rounded p-2 text-xs font-semibold"
                   >
+                    <option value="">ডিলার নির্বাচন করুন</option>
                     {dealers.map((d) => (
                       <option key={d.id} value={d.id}>
                         {d.shopName}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-600 mb-1">দায়িত্বপ্রাপ্ত অফিসার</label>
+                  <select
+                    required
+                    value={paymentForm.officerId}
+                    onChange={(e) => setPaymentForm({ ...paymentForm, officerId: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-300 rounded p-2 text-xs"
+                  >
+                    <option value="">অফিসার নির্বাচন করুন</option>
+                    {availableOfficers.map((o) => (
+                      <option key={o.id} value={o.id}>
+                        {formatOfficerCode(o.code, o.designation)} • {o.name} • {o.designation}
                       </option>
                     ))}
                   </select>
@@ -425,7 +693,7 @@ export default function DealerLedger() {
                       <input
                         type="number"
                         min="0"
-                        step="0.01"
+                        step="1"
                         value={entry.amount}
                         onChange={(event) => setPaymentForm((previous) => ({
                           ...previous,
@@ -484,22 +752,6 @@ export default function DealerLedger() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-semibold text-slate-600 mb-1">দায়িত্বপ্রাপ্ত অফিসার</label>
-                  <select
-                    value={paymentForm.officerId}
-                    onChange={(e) => setPaymentForm({ ...paymentForm, officerId: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-300 rounded p-2 text-xs"
-                  >
-                    <option value="">অফিসার নির্বাচন করুন</option>
-                    {officers.map((o) => (
-                      <option key={o.id} value={o.id}>
-                        {formatOfficerCode(o.code, o.designation)} • {o.name} • {o.designation}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
                   <label className="block font-semibold text-slate-600 mb-1">রিসিভ করেছেন</label>
                   <input
                     type="text"
@@ -538,6 +790,75 @@ export default function DealerLedger() {
               </div>
             </form>
           </div>
+        </div>
+      )}
+
+      {canSetPreviousDue && showPreviousDueModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <form onSubmit={handlePreviousDueSubmit} className="w-full max-w-lg space-y-4 rounded-xl bg-white p-6 shadow-xl">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+              <h3 className="text-base font-bold text-slate-800">ডিলারের পূর্বের বকেয়া ইনপুট</h3>
+              <button type="button" aria-label="বন্ধ করুন" onClick={() => setShowPreviousDueModal(false)} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100">✕</button>
+            </div>
+            {previousDueError && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm font-semibold text-rose-700">{previousDueError}</p>}
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="text-xs font-semibold text-slate-600">ডিলার সিলেক্ট *
+                <select required value={previousDueForm.dealerId} onChange={(e) => setPreviousDueForm({ ...previousDueForm, dealerId: e.target.value })} className="mt-1 w-full rounded border border-slate-300 p-2">
+                  <option value="">ডিলার নির্বাচন করুন</option>
+                  {dealers.map((dealer) => <option key={dealer.id} value={dealer.id}>{dealer.shopName}</option>)}
+                </select>
+              </label>
+              <label className="text-xs font-semibold text-slate-600">অফিসার সিলেক্ট *
+                <select required value={previousDueForm.officerId} onChange={(e) => setPreviousDueForm({ ...previousDueForm, officerId: e.target.value })} className="mt-1 w-full rounded border border-slate-300 p-2">
+                  <option value="">অফিসার নির্বাচন করুন</option>
+                  {availableOfficers.map((officer) => <option key={officer.id} value={officer.id}>{officer.name}</option>)}
+                </select>
+              </label>
+              <label className="text-xs font-semibold text-slate-600">সেশন *
+                <select required value={previousDueForm.session} onChange={(e) => setPreviousDueForm({ ...previousDueForm, session: e.target.value })} className="mt-1 w-full rounded border border-slate-300 p-2">
+                  {INVOICE_SESSIONS.map((session) => <option key={session} value={session}>{session}</option>)}
+                </select>
+              </label>
+              <label className="text-xs font-semibold text-slate-600">তারিখ *
+                <input required type="date" value={previousDueForm.date} onChange={(e) => setPreviousDueForm({
+                  ...previousDueForm,
+                  date: e.target.value,
+                  session: getInvoiceSessionForDate(e.target.value)
+                })} className="mt-1 w-full rounded border border-slate-300 p-2" />
+              </label>
+              <label className="text-xs font-semibold text-slate-600 sm:col-span-2">Previous Due Amount *
+                <input required type="number" min="0" step="1" value={previousDueForm.amount} onChange={(e) => setPreviousDueForm({ ...previousDueForm, amount: e.target.value })} className="mt-1 w-full rounded border border-slate-300 p-2 font-bold text-rose-700" />
+              </label>
+            </div>
+            <div className="flex justify-end gap-2 border-t border-slate-200 pt-3">
+              <button type="button" onClick={() => setShowPreviousDueModal(false)} className="rounded border border-slate-300 px-4 py-2 text-xs font-bold">বাতিল</button>
+              <button type="submit" disabled={previousDueSaving} className="rounded bg-emerald-700 px-4 py-2 text-xs font-bold text-white disabled:cursor-wait disabled:opacity-60">
+                {previousDueSaving ? 'সংরক্ষণ হচ্ছে…' : 'সংরক্ষণ করুন'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {previousDueConfirmation && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4">
+          <section role="dialog" aria-modal="true" aria-labelledby="previous-due-confirmation-title" className="w-full max-w-md space-y-4 rounded-xl bg-white p-6 shadow-2xl">
+            <div className="flex items-start gap-3">
+              <CheckCircle className="mt-0.5 h-6 w-6 shrink-0 text-emerald-600" />
+              <div>
+                <h3 id="previous-due-confirmation-title" className="text-lg font-black text-slate-900">পূর্বের বকেয়া সংরক্ষিত হয়েছে</h3>
+                <p className="mt-2 text-sm text-slate-700">{previousDueConfirmation.dealerName}</p>
+                <p className="mt-1 text-sm font-bold text-slate-900">৳{previousDueConfirmation.amount.toLocaleString()}</p>
+                <p className="mt-1 text-xs text-slate-600">তারিখ: {previousDueConfirmation.date} • {previousDueConfirmation.session}</p>
+                <p className="mt-2 text-xs text-slate-500">তারিখসহ পোস্টিংটি সংরক্ষিত হয়েছে।</p>
+              </div>
+            </div>
+            <div className="flex justify-end border-t border-slate-200 pt-3">
+              <button type="button" autoFocus onClick={() => setPreviousDueConfirmation(null)} className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-800">
+                বন্ধ করুন
+              </button>
+            </div>
+          </section>
         </div>
       )}
 
@@ -647,11 +968,11 @@ export default function DealerLedger() {
                 </div>
 
                 <div>
-                  <label className="block font-semibold text-slate-600 mb-1">পূর্বের প্রারম্ভিক বাকি (Opening Due)</label>
+                  <label className="block font-semibold text-slate-600 mb-1">Last Session Due / পূর্বের বকেয়া (৳)</label>
                   <input
                     type="number"
-                    value={newDealerForm.openingDue}
-                    onChange={(e) => setNewDealerForm({ ...newDealerForm, openingDue: e.target.value })}
+                    value={newDealerForm.lastSessionDue}
+                    onChange={(e) => setNewDealerForm({ ...newDealerForm, lastSessionDue: e.target.value })}
                     className="w-full bg-slate-50 border border-slate-300 rounded p-2 text-xs font-mono font-bold text-rose-700"
                   />
                 </div>
@@ -680,14 +1001,15 @@ export default function DealerLedger() {
       {/* MODAL 3: Detailed Ledger Statement (Printable) */}
       {selectedDealerForLedger && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 overflow-y-auto">
-          <div className="dealer-ledger-print bg-white rounded-xl shadow-2xl max-w-3xl w-full p-6 space-y-4 my-8">
-            <div className="flex justify-between items-center border-b border-slate-200 pb-3 no-print">
-              <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
+          <div role="dialog" aria-modal="true" aria-labelledby="dealer-ledger-dialog-title" className="dealer-ledger-print bg-white rounded-xl shadow-2xl max-w-3xl w-full p-6 space-y-4 my-8">
+            <div className="sticky top-0 z-10 flex flex-wrap justify-between items-center gap-3 border-b border-slate-200 bg-white pb-3 no-print">
+              <h3 id="dealer-ledger-dialog-title" className="text-base font-bold text-slate-800 flex items-center gap-2">
                 <FileText className="w-5 h-5 text-emerald-700" />
                 ডিলার খতিয়ান ও লেনদেন বিবরণী
               </h3>
               <div className="flex items-center gap-2">
                 <button
+                  type="button"
                   onClick={() => window.print()}
                   className="flex items-center gap-1.5 bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold shadow hover:bg-emerald-800"
                 >
@@ -695,10 +1017,12 @@ export default function DealerLedger() {
                   প্রিন্ট খতিয়ান
                 </button>
                 <button
-                  onClick={() => setSelectedDealerForLedger(null)}
-                  className="text-slate-400 hover:text-slate-600 p-1"
+                  type="button"
+                  onClick={closeDealerLedger}
+                  aria-label="ডিলার খতিয়ান বন্ধ করুন"
+                  className="inline-flex items-center gap-1 rounded-lg border-2 border-rose-300 bg-rose-50 px-4 py-2 text-sm font-bold text-rose-800 hover:bg-rose-100 focus:outline-none focus:ring-2 focus:ring-rose-500"
                 >
-                  <X className="w-5 h-5" />
+                  <X className="h-4 w-4" /> বন্ধ করুন / ফিরে যান
                 </button>
               </div>
             </div>
@@ -712,7 +1036,7 @@ export default function DealerLedger() {
             </div>
 
             {/* Dealer Info Bar */}
-            <div className="grid grid-cols-2 gap-4 text-xs bg-slate-50 p-3 rounded-lg border border-slate-200">
+            <div className="dealer-ledger-info-box grid grid-cols-2 gap-4 text-xs bg-slate-50 p-3 rounded-lg border border-slate-200">
               <div>
                 <p><span className="font-bold">প্রতিষ্ঠান:</span> {selectedDealerForLedger.shopName}</p>
                 <p><span className="font-bold">প্রোপাইটর:</span> {selectedDealerForLedger.proprietor}</p>
@@ -721,82 +1045,80 @@ export default function DealerLedger() {
               </div>
               <div className="text-right">
                 <p><span className="font-bold">ডিলার কোড:</span> {formatDealerCode(selectedDealerForLedger.code)}</p>
-                <p><span className="font-bold">প্রারম্ভিক বাকি:</span> ৳{selectedDealerForLedger.openingDue.toLocaleString()}</p>
+                <p><span className="font-bold">Last Session Due:</span> ৳{selectedDealerForLedger.lastSessionDue.toLocaleString()}</p>
+                {selectedDealerForLedger.previousDueDate && <p><span className="font-bold">পূর্বের বকেয়ার তারিখ:</span> {selectedDealerForLedger.previousDueDate}</p>}
                 <p><span className="font-bold text-emerald-700">মোট পরিশোধ:</span> ৳{selectedDealerForLedger.totalPaid.toLocaleString()}</p>
-                <p className="text-sm font-extrabold text-rose-700 mt-1">
-                  বর্তমান অবশিষ্ট বকেয়া: ৳{selectedDealerForLedger.currentDue.toLocaleString()}
+                <p><span className="font-bold text-sky-700">মোট রিটার্ন ক্রেডিট:</span> − ৳{selectedDealerForLedger.totalReturnCredits.toLocaleString()}</p>
+                <p className={`mt-1 text-sm font-extrabold ${selectedDealerForLedger.currentDue < 0 ? 'text-sky-700' : 'text-rose-700'}`}>
+                  {getBalanceLabel(selectedDealerForLedger.currentDue)}: {formatBalanceAmount(selectedDealerForLedger.currentDue)}
                 </p>
               </div>
             </div>
 
-            {/* Invoices List */}
             <div className="space-y-2">
-              <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-                ১. পণ্য ক্রয়ের চালান তালিকা (Invoices)
-              </h4>
-              <table className="w-full text-left text-xs border border-slate-200">
-                <thead className="bg-slate-100 font-bold text-slate-700">
-                  <tr>
-                    <th className="p-2">চালান নং</th>
-                    <th className="p-2">তারিখ</th>
-                    <th className="p-2">পণ্য বিবরণ</th>
-                    <th className="p-2 text-right">চালান মূল্য</th>
-                    <th className="p-2 text-right">তাত্ক্ষণিক জমা</th>
-                    <th className="p-2 text-right">বাকি</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-200">
-                  {selectedDealerForLedger.invoices.map((inv) => (
-                    <tr key={inv.id}>
-                      <td className="p-2 font-mono font-bold text-emerald-800">{inv.id}</td>
-                      <td className="p-2">{inv.date}</td>
-                      <td className="p-2 text-slate-600">
-                        {inv.items.map(it => `${it.productName} (${it.size})`).join(', ')}
-                      </td>
-                      <td className="p-2 text-right font-mono font-semibold">৳{inv.grandTotal.toLocaleString()}</td>
-                      <td className="p-2 text-right font-mono text-emerald-700">৳{inv.paidAmount.toLocaleString()}</td>
-                      <td className="p-2 text-right font-mono font-bold text-rose-700">৳{inv.currentDue.toLocaleString()}</td>
-                    </tr>
-                  ))}
-                  {selectedDealerForLedger.invoices.length === 0 && (
-                    <tr>
-                      <td colSpan={6} className="p-3 text-center text-slate-400 italic">কোনো চালানের রেকর্ড নেই</td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+              <h4 className="text-xs font-bold text-slate-700">পূর্বের বকেয়া পোস্টিং হিস্ট্রি</h4>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs border border-slate-200">
+                  <thead className="bg-slate-100 font-bold text-slate-700">
+                    <tr><th className="p-2">তারিখ</th><th className="p-2">সেশন</th><th className="p-2">অফিসার</th><th className="p-2 text-right">বকেয়া</th></tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200">
+                    {previousDueHistory.map((entry, index) => (
+                      <tr key={`${entry.date}-${entry.postedAt || index}-${index}`}>
+                        <td className="p-2 font-mono">{entry.date}</td>
+                        <td className="p-2">{entry.session || '—'}</td>
+                        <td className="p-2">{officers.find((officer) => officer.id === entry.officerId)?.name || entry.officerId || '—'}</td>
+                        <td className="p-2 text-right font-mono font-bold">৳{Number(entry.amount || 0).toLocaleString()}</td>
+                      </tr>
+                    ))}
+                    {previousDueHistory.length === 0 && <tr><td colSpan={4} className="p-3 text-center text-slate-400">কোনো পোস্টিং হিস্ট্রি নেই</td></tr>}
+                  </tbody>
+                </table>
+              </div>
             </div>
 
-            {/* Payments List */}
+            {/* Unified transaction ledger */}
             <div className="space-y-2">
               <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-                ২. টাকা জমার রশিদ তালিকা (Payment Collections)
+                লেনদেন বিবরণী (Ledger Transactions)
               </h4>
-              <table className="w-full text-left text-xs border border-slate-200">
+              <table className="dealer-ledger-table w-full text-left text-xs border border-slate-200">
                 <thead className="bg-slate-100 font-bold text-slate-700">
                   <tr>
                     <th className="p-2">তারিখ</th>
-                    <th className="p-2">পেমেন্টের ধরন</th>
-                    <th className="p-2">মাধ্যম / মেথড</th>
-                    <th className="p-2">রেফারেন্স / চেক নং</th>
-                    <th className="p-2">রিসিভার</th>
-                    <th className="p-2 text-right">জমার পরিমাণ (৳)</th>
+                    <th className="p-2">ইনভয়েস / রেফারেন্স</th>
+                    <th className="p-2">লেনদেনের বিবরণ</th>
+                    <th className="p-2 text-right">ডেবিট</th>
+                    <th className="p-2 text-right">ক্রেডিট</th>
+                    <th className="p-2 text-right">নিট ব্যালেন্স</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
-                  {selectedDealerForLedger.payments.map((p) => (
-                    <tr key={p.id}>
-                      <td className="p-2 font-mono">{p.date}</td>
-                      <td className="p-2">{PAYMENT_TYPES.find((type) => type.value === normalizePaymentType(p.paymentType))?.label}</td>
-                      <td className="p-2">{PAYMENT_METHODS.find((method) => method.value === normalizePaymentMethod(p.paymentMethod))?.label}</td>
-                      <td className="p-2 font-mono">{p.reference || '-'}</td>
-                      <td className="p-2">{p.receivedBy || '-'}</td>
-                      <td className="p-2 text-right font-mono font-bold text-emerald-700">৳{p.amount.toLocaleString()}</td>
-                    </tr>
-                  ))}
-                  {selectedDealerForLedger.payments.length === 0 && (
+                  {ledgerTransactions.map((transaction) => {
+                    return (
+                      <tr key={transaction.id}>
+                        <td className="p-2 font-mono">{transaction.date || '—'}</td>
+                        <td className="p-2 font-mono font-bold text-emerald-800">
+                          {transaction.reference}
+                        </td>
+                        <td className="p-2 text-slate-600">
+                          {getTransactionDetails(transaction)}
+                        </td>
+                        <td className="p-2 text-right font-mono">
+                          {transaction.debit > 0 ? formatBalanceAmount(transaction.debit) : '—'}
+                        </td>
+                        <td className="p-2 text-right font-mono font-semibold text-sky-700">
+                          {transaction.credit > 0 ? formatBalanceAmount(-transaction.credit) : '—'}
+                        </td>
+                        <td className={`p-2 text-right font-mono font-bold ${transaction.balance < 0 ? 'text-sky-700' : 'text-rose-700'}`}>
+                          {formatBalanceAmount(transaction.balance)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {ledgerTransactions.length === 0 && (
                     <tr>
-                      <td colSpan={6} className="p-3 text-center text-slate-400 italic">কোনো জমার রেকর্ড নেই</td>
+                      <td colSpan={6} className="p-3 text-center text-slate-400 italic">কোনো লেনদেনের রেকর্ড নেই</td>
                     </tr>
                   )}
                 </tbody>
@@ -810,6 +1132,11 @@ export default function DealerLedger() {
               </div>
               <div>
                 <div className="border-t border-slate-400 pt-1">হিসাবরক্ষক / ম্যানেজার, নিশিন্দারা বগুড়া</div>
+              </div>
+              <div className="no-print flex justify-end border-t border-slate-200 pt-3">
+                <button type="button" onClick={closeDealerLedger} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-100">
+                  বন্ধ করুন / ফিরে যান
+                </button>
               </div>
             </div>
           </div>

@@ -2,10 +2,8 @@ import React, { useState } from 'react';
 import {
   FileText,
   Package,
-  RotateCcw,
   Users,
   UserCheck,
-  BarChart3,
   Home,
   Phone,
   MapPin,
@@ -20,11 +18,17 @@ import {
 } from 'lucide-react';
 import { useAgro } from '../context/AgroContext';
 import { UI_THEMES, useUiPreferences } from '../context/UiPreferencesContext';
+import { HOTLINE_NUMBER } from '../../shared/companyContact';
+import {
+  ADMIN_ROLE,
+  SUPER_ADMIN_ROLE,
+  isAdminRole
+} from '../../shared/roles';
 
 export default function Navbar({ activeTab, setActiveTab }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [backupMenuOpen, setBackupMenuOpen] = useState(false);
-  const { currentUser, logout, exportBackup, resetToFactoryData } = useAgro();
+  const { currentUser, logout, exportBackup } = useAgro();
   const { theme, setTheme, language, setLanguage, t } = useUiPreferences();
 
   const publicItems = [
@@ -39,14 +43,15 @@ export default function Navbar({ activeTab, setActiveTab }) {
     { id: 'new-invoice', label: t('nav.newInvoice'), icon: FileText },
     { id: 'invoice-list', label: t('nav.invoiceHistory'), icon: FileText },
     { id: 'inventory', label: t('nav.stock'), icon: Package },
-    { id: 'damage-returns', label: t('nav.returns'), icon: RotateCcw },
     { id: 'dealer-ledger', label: t('nav.dealerLedger'), icon: Users },
     { id: 'sales-agreements', label: 'সেলস ও কালেকশন চুক্তি', icon: FileText },
+    { id: 'monthly-sales-reports', label: 'মাসিক বিক্রয় টার্গেট', icon: FileText },
     { id: 'officer-tracking', label: t('nav.officerTracking'), icon: UserCheck },
-    { id: 'monthly-reports', label: t('nav.reports'), icon: BarChart3 },
-    { id: 'data-management', label: 'ডেটা এক্সপোর্ট/ইমপোর্ট', icon: Download }
+    { id: 'dashboard-reports', label: 'লাইভ ড্যাশবোর্ড রিপোর্ট', icon: FileText },
+    { id: 'data-management', label: 'ডেটা এক্সপোর্ট/ইমপোর্ট', icon: Download },
+    { id: 'factory-reset', label: 'ফ্যাক্টরি ডেটা রিসেট', icon: RotateCw }
   ];
-  const navItems = currentUser?.role === 'admin'
+  const navItems = isAdminRole(currentUser?.role)
     ? [...publicItems, ...adminItems]
     : currentUser?.role === 'officer'
       ? [...publicItems, { id: 'officer-dashboard', label: t('nav.officerDashboard'), icon: UserCheck }]
@@ -82,7 +87,7 @@ export default function Navbar({ activeTab, setActiveTab }) {
 
           <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
             <a
-              href="tel:01867912167"
+              href={`tel:${HOTLINE_NUMBER}`}
               className="flex items-center gap-1.5 bg-emerald-700 hover:bg-emerald-600 px-2.5 py-0.5 rounded-full text-white font-medium transition"
             >
               <Phone className="w-3.5 h-3.5" />
@@ -115,7 +120,7 @@ export default function Navbar({ activeTab, setActiveTab }) {
               </select>
             </label>
 
-            {currentUser?.role === 'admin' && (
+            {isAdminRole(currentUser?.role) && (
               <div className="relative hidden lg:block">
                 <button
                   onClick={() => setBackupMenuOpen((open) => !open)}
@@ -134,15 +139,6 @@ export default function Navbar({ activeTab, setActiveTab }) {
                   </div>
                 )}
               </div>
-            )}
-            {currentUser?.role === 'admin' && currentUser.isSuperAdmin && (
-              <button
-                onClick={() => resetToFactoryData().catch((error) => window.alert(error.message))}
-                title={t('nav.resetData')}
-                className="hidden items-center gap-1 rounded px-2 py-0.5 text-emerald-300 transition hover:bg-emerald-800 hover:text-white lg:flex"
-              >
-                <RotateCw className="h-3 w-3" /><span>{t('nav.reset')}</span>
-              </button>
             )}
           </div>
         </div>
@@ -199,7 +195,7 @@ export default function Navbar({ activeTab, setActiveTab }) {
               <LogOut className="h-4 w-4" /><span className="hidden min-[380px]:inline">{t('nav.logout')}</span>
             </button>
           )}
-          {currentUser?.role === 'admin' && currentUser.isSuperAdmin && (
+          {currentUser?.role === SUPER_ADMIN_ROLE && currentUser.isSuperAdmin && (
             <button
             onClick={() => handleNavClick('new-invoice')}
             aria-label={t('nav.newInvoice')}
@@ -253,7 +249,7 @@ export default function Navbar({ activeTab, setActiveTab }) {
               <button onClick={() => handleNavClick('officer-register')} className="w-full rounded-lg px-3 py-2.5 text-left text-sm font-medium text-slate-700 hover:bg-slate-50"><Users className="mr-3 inline h-4 w-4 text-emerald-600" />{t('nav.officerRegister')}</button>
             </div>
           )}
-          {currentUser?.role === 'admin' && (
+          {isAdminRole(currentUser?.role) && (
             <div className="mt-2 border-t border-slate-100 pt-2">
               <p className="px-2 py-1 text-[10px] font-bold text-slate-400">{t('nav.backupFormat')}</p>
               <div className="grid grid-cols-1 gap-1 sm:grid-cols-3">
@@ -261,14 +257,11 @@ export default function Navbar({ activeTab, setActiveTab }) {
                 <button onClick={() => { exportBackup('google-docs'); setMobileMenuOpen(false); }} className="flex items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold text-emerald-800 hover:bg-emerald-50"><Download className="h-4 w-4" />Google Docs</button>
                 <button onClick={() => { exportBackup('word'); setMobileMenuOpen(false); }} className="flex items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold text-emerald-800 hover:bg-emerald-50"><Download className="h-4 w-4" />Microsoft Word</button>
               </div>
-              <button onClick={() => resetToFactoryData().catch((error) => window.alert(error.message))} className="mt-1 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold text-rose-600 hover:bg-rose-50">
-                <RotateCw className="h-4 w-4" />{t('nav.resetData')}
-              </button>
             </div>
           )}
           {currentUser && (
             <div className="mt-2 border-t border-slate-100 px-2 pt-3 text-xs text-slate-500">
-              {t('nav.loggedIn')} <strong className="text-slate-700">{currentUser.name}</strong> ({currentUser.role === 'admin' ? t('nav.adminLogin') : t('nav.officer')})
+              {t('nav.loggedIn')} <strong className="text-slate-700">{currentUser.name}</strong> ({currentUser.role === SUPER_ADMIN_ROLE ? t('nav.superAdmin') : currentUser.role === ADMIN_ROLE ? t('nav.admin') : t('nav.officer')})
             </div>
           )}
         </div>

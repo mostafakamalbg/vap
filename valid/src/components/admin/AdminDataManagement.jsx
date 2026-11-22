@@ -1,24 +1,20 @@
 import React, { useRef, useState } from 'react';
 import { AlertTriangle, Database, Download, FileUp, ShieldCheck } from 'lucide-react';
 import { useAgro } from '../../context/AgroContext';
+import { isAdminRole } from '../../../shared/roles';
+import StockResetButton from './StockResetButton';
 
 export default function AdminDataManagement() {
   const {
     currentUser,
     cloudReady,
     exportBackup,
-    importBackup,
-    clearSalesStockData,
-    clearStockOnly
+    importBackup
   } = useAgro();
   const fileInputRef = useRef(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
-  const [resetPassword, setResetPassword] = useState('');
-  const [resetConfirmation, setResetConfirmation] = useState('');
-  const [stockResetPassword, setStockResetPassword] = useState('');
-  const [stockResetConfirmation, setStockResetConfirmation] = useState('');
 
   const handleImport = async (event) => {
     const file = event.target.files?.[0];
@@ -42,52 +38,6 @@ export default function AdminDataManagement() {
     } finally {
       setBusy(false);
       event.target.value = '';
-    }
-  };
-
-  const handleSalesStockReset = async (event) => {
-    event.preventDefault();
-    setBusy(true);
-    setError('');
-    setMessage('');
-    try {
-      if (resetConfirmation !== 'মুছুন') {
-        throw new Error('নিশ্চিত করতে “মুছুন” লিখুন।');
-      }
-      if (!window.confirm('সতর্কতা: সব ইনভয়েস, অর্ডার, ড্যামেজ/ফেরত, স্টক-ইন ও পেমেন্ট/কালেকশন ইতিহাস স্থায়ীভাবে মুছে যাবে এবং সব পণ্যের স্টক শূন্য হবে। এই কাজ ফেরানো যাবে না। এগোবেন?')) {
-        return;
-      }
-      const result = await clearSalesStockData(resetPassword);
-      setMessage(`${result.message} (ইনভয়েস ${result.deleted.invoices}, অর্ডার ${result.deleted.orders}, ড্যামেজ ${result.deleted.damages}, স্টক-ইন ${result.deleted.stockInLogs}, পেমেন্ট ${result.deleted.payments}, চুক্তি ${result.deleted.salesAgreements})`);
-      setResetPassword('');
-      setResetConfirmation('');
-    } catch (requestError) {
-      setError(requestError.message);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const handleStockOnlyReset = async (event) => {
-    event.preventDefault();
-    setBusy(true);
-    setError('');
-    setMessage('');
-    try {
-      if (stockResetConfirmation !== 'শূন্য') {
-        throw new Error('নিশ্চিত করতে “শূন্য” লিখুন।');
-      }
-      if (!window.confirm('সব পণ্যের পিস ও কার্টুন স্টক শূন্য হবে। ইনভয়েস, ডিলারের বকেয়া, অর্ডার ও হিসাবের কোনো তথ্য মুছবে না। এগোবেন?')) {
-        return;
-      }
-      const result = await clearStockOnly(stockResetPassword);
-      setMessage(`${result.message} (${result.products}টি পণ্য)`);
-      setStockResetPassword('');
-      setStockResetConfirmation('');
-    } catch (requestError) {
-      setError(requestError.message);
-    } finally {
-      setBusy(false);
     }
   };
 
@@ -145,7 +95,7 @@ export default function AdminDataManagement() {
           />
           <button
             type="button"
-            disabled={busy || !cloudReady || currentUser?.role !== 'admin'}
+            disabled={busy || !cloudReady || !isAdminRole(currentUser?.role)}
             onClick={() => fileInputRef.current?.click()}
             className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm font-bold text-amber-900 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
           >
@@ -158,91 +108,19 @@ export default function AdminDataManagement() {
         </article>
       </section>
 
-      {currentUser?.role === 'admin' && (
-        <section className="rounded-xl border border-amber-300 bg-amber-50 p-5">
-          <div className="flex items-start gap-3">
-            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
-            <div className="w-full space-y-3">
-              <div>
-                <h2 className="font-black text-amber-950">শুধু পণ্যের স্টক শূন্য করুন</h2>
-                <p className="mt-1 text-sm text-amber-900">সব পণ্যের বর্তমান পিস ও কার্টুন স্টক শূন্য হবে। ইনভয়েস, অর্ডার, ডিলারের বকেয়া, পেমেন্ট এবং অন্যান্য হিসাব অক্ষত থাকবে।</p>
-              </div>
-              <form onSubmit={handleStockOnlyReset} className="grid gap-3 sm:grid-cols-3">
-                <label className="text-xs font-bold text-amber-950">
-                  অ্যাডমিন পাসওয়ার্ড
-                  <input
-                    type="password"
-                    autoComplete="current-password"
-                    value={stockResetPassword}
-                    onChange={(event) => setStockResetPassword(event.target.value)}
-                    className="mt-1 w-full rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm text-slate-900"
-                    required
-                  />
-                </label>
-                <label className="text-xs font-bold text-amber-950">
-                  নিশ্চিত করতে “শূন্য” লিখুন
-                  <input
-                    value={stockResetConfirmation}
-                    onChange={(event) => setStockResetConfirmation(event.target.value)}
-                    className="mt-1 w-full rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm text-slate-900"
-                    required
-                  />
-                </label>
-                <button
-                  type="submit"
-                  disabled={busy || !cloudReady}
-                  className="self-end rounded-lg bg-amber-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-amber-800 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {busy ? 'প্রক্রিয়াধীন…' : 'শুধু স্টক শূন্য করুন'}
-                </button>
-              </form>
-            </div>
-          </div>
-        </section>
-      )}
-
-      {currentUser?.role === 'admin' && (
-        <section className="rounded-xl border border-rose-300 bg-rose-50 p-5">
-          <div className="flex items-start gap-3">
-            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-rose-700" />
-            <div className="w-full space-y-3">
-              <div>
-                <h2 className="font-black text-rose-900">নতুন স্টক শুরুর জন্য পুরনো হিসাব পরিষ্কার</h2>
-                <p className="mt-1 text-sm text-rose-800">সব ইনভয়েস/অর্ডার, ড্যামেজ ও ফেরত, স্টক-ইন, পেমেন্ট/কালেকশন এবং সেলস ও কালেকশন চুক্তি স্থায়ীভাবে মুছে যাবে। ডিলারের প্রারম্ভিক বকেয়া এবং পণ্যের স্টক শূন্য হবে; পণ্য ও ডিলারের তালিকা থাকবে। এই কাজ ফেরানো যাবে না।</p>
-              </div>
-              <form onSubmit={handleSalesStockReset} className="grid gap-3 sm:grid-cols-3">
-                <label className="text-xs font-bold text-rose-900">
-                  অ্যাডমিন পাসওয়ার্ড
-                  <input
-                    type="password"
-                    autoComplete="current-password"
-                    value={resetPassword}
-                    onChange={(event) => setResetPassword(event.target.value)}
-                    className="mt-1 w-full rounded-lg border border-rose-300 bg-white px-3 py-2 text-sm text-slate-900"
-                    required
-                  />
-                </label>
-                <label className="text-xs font-bold text-rose-900">
-                  নিশ্চিত করতে “মুছুন” লিখুন
-                  <input
-                    value={resetConfirmation}
-                    onChange={(event) => setResetConfirmation(event.target.value)}
-                    className="mt-1 w-full rounded-lg border border-rose-300 bg-white px-3 py-2 text-sm text-slate-900"
-                    required
-                  />
-                </label>
-                <button
-                  type="submit"
-                  disabled={busy || !cloudReady}
-                  className="self-end rounded-lg bg-rose-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-rose-800 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {busy ? 'প্রক্রিয়াধীন…' : 'ইনভয়েস, হিসাব ও স্টক মুছুন'}
-                </button>
-              </form>
-            </div>
-          </div>
-        </section>
-      )}
+      <section className="rounded-xl border border-rose-200 bg-rose-50 p-5">
+        <div className="flex items-center gap-2 text-rose-800">
+          <AlertTriangle className="h-5 w-5" />
+          <h2 className="font-black">স্টক পুনর্গণনা</h2>
+        </div>
+        <p className="mt-2 text-sm text-rose-900">
+          ৩০-০৯-২০২৬ থেকে পূর্ণ প্যাকেজের ইনভয়েস ও স্টক-ইন হিসাব করে স্টক পুনর্গণনা করুন। ইনভয়েস, ডিলার লেজার বা স্টক-ইন রেকর্ড মুছবে না; খুচরা পিস বাদ থাকবে।
+        </p>
+        <StockResetButton
+          disabled={busy}
+          className="mt-4 rounded-lg bg-rose-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-rose-800 disabled:cursor-not-allowed disabled:opacity-50"
+        />
+      </section>
     </div>
   );
 }

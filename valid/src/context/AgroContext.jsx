@@ -14,15 +14,32 @@ import {
   normalizeDealerAssignment,
   normalizeOfficerCode
 } from '../../shared/codes';
-import { isDealerCollection, normalizePaymentMethod } from '../../shared/paymentMethods';
+import {
+  isDealerBalanceCredit,
+  isDealerCollection,
+  normalizePaymentMethod
+} from '../../shared/paymentMethods';
 import { applyInvoiceStockChanges } from '../../shared/invoiceStock';
-import { getInvoiceCartons } from '../../shared/invoiceCartons';
-import { getInvoiceSalesAmount } from '../../shared/invoiceTotals';
+import { getInvoicePackageCount, getItemCartons } from '../../shared/invoiceCartons';
+import { getInvoiceSalesAmount, roundCurrency } from '../../shared/invoiceTotals';
+import { calculateOfficerFinancials, filterOfficerRecordsByPeriod } from '../../shared/officerFinancials';
+import { getDealerNetDue } from '../../shared/dealerLedger';
+import { getOfficerSalesTarget } from '../../shared/officerSalesTargets';
+import { getStockInQuantities } from '../../shared/quantityUnits';
+import { STOCK_RECONCILIATION_START_DATE } from '../../shared/stockReconciliation';
+import { normalizeHotlineNumber } from '../../shared/companyContact';
+import { normalizeProductDisplayNames } from '../../shared/productNames';
+import { isAdminRole, SUPER_ADMIN_ROLE } from '../../shared/roles';
+import { readJsonResponse } from '../utils/api';
 
 const AgroContext = createContext();
 
 const isSalesInvoice = (invoice) =>
-  invoice.invoiceType !== 'dealer_return' && invoice.invoiceType !== 'factory_damage';
+  !['dealer_return', 'factory_damage', 'depot_factory_return'].includes(invoice.invoiceType);
+
+const getEffectiveStockInvoice = (invoice) => (
+  invoice?.date >= STOCK_RECONCILIATION_START_DATE ? invoice : null
+);
 
 const isInvoicePaymentRecord = (payment) => (
   Boolean(payment?.sourceInvoiceId)
@@ -31,10 +48,16 @@ const isInvoicePaymentRecord = (payment) => (
 
 function normalizeBusinessRecords(type, records, officers = []) {
   return records.map((record) => {
-    const normalized = { ...record };
+    const normalized = Object.fromEntries(Object.entries(record).map(([key, value]) => (
+      [key, normalizeHotlineNumber(value)]
+    )));
     if (type === 'officers') {
       normalized.id = String(record.id || record.officerId || normalizeOfficerCode(record.code, record.designation));
       normalized.code = normalizeOfficerCode(record.code, record.designation);
+      normalized.name = String(record.name || record.officerName || record.fullName || '').trim();
+      normalized.phone = String(record.phone || record.mobileNo || '').trim();
+      normalized.designation = String(record.designation || record.roleDesignation || '').trim();
+      normalized.territory = String(record.territory || record.areaName || '').trim();
     }
     if (type === 'dealers') {
       normalized.code = formatDealerCode(record.code);
@@ -126,17 +149,6 @@ function createExcelWorksheet(name, rows) {
   return `<Worksheet ss:Name="${name}"><Table>${xmlRows}</Table></Worksheet>`;
 }
 
-async function readJsonResponse(response) {
-  let result;
-  try {
-    result = await response.json();
-  } catch {
-    throw new Error('সার্ভার থেকে সঠিক প্রতিক্রিয়া পাওয়া যায়নি।');
-  }
-  if (!response.ok) throw new Error(result.error || 'অনুরোধ সম্পন্ন করা যায়নি।');
-  return result;
-}
-
 export function AgroProvider({ children }) {
   const [currentUser, setCurrentUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -147,7 +159,7 @@ export function AgroProvider({ children }) {
   // Version 5 storage keys for continuous serial 1 to 83 dealer codes and 26 products
   const [products, setProducts] = useState(() => {
     const saved = localStorage.getItem('vap_products_v5');
-    return saved ? JSON.parse(saved) : INITIAL_PRODUCTS;
+    return normalizeProductDisplayNames(saved ? JSON.parse(saved) : INITIAL_PRODUCTS);
   });
 
   const [officers, setOfficers] = useState(() => {
@@ -162,17 +174,17 @@ export function AgroProvider({ children }) {
 
   const [invoices, setInvoices] = useState(() => {
     const saved = localStorage.getItem('vap_invoices_v5');
-    return normalizeBusinessRecords('invoices', saved ? JSON.parse(saved) : INITIAL_INVOICES);
+    return normalizeProductDisplayNames(normalizeBusinessRecords('invoices', saved ? JSON.parse(saved) : INITIAL_INVOICES));
   });
 
   const [stockInLogs, setStockInLogs] = useState(() => {
     const saved = localStorage.getItem('vap_stock_in_v5');
-    return saved ? JSON.parse(saved) : INITIAL_STOCK_IN;
+    return normalizeProductDisplayNames(saved ? JSON.parse(saved) : INITIAL_STOCK_IN);
   });
 
   const [damageLogs, setDamageLogs] = useState(() => {
     const saved = localStorage.getItem('vap_damages_v5');
-    return normalizeBusinessRecords('damageLogs', saved ? JSON.parse(saved) : INITIAL_DAMAGES);
+    return normalizeProductDisplayNames(normalizeBusinessRecords('damageLogs', saved ? JSON.parse(saved) : INITIAL_DAMAGES));
   });
   const [payments, setPayments] = useState(() => {
     const saved = localStorage.getItem('vap_payments_v5');
@@ -285,7 +297,9 @@ export function AgroProvider({ children }) {
   };
 
   const refreshSharedRecords = async (type) => {
-    const response = await fetch(`/api/records?type=${encodeURIComponent(type)}`);
+    const response = await fetch(type === 'officers'
+      ? '/api/officers'
+      : `/api/records?type=${encodeURIComponent(type)}`);
     const records = await readJsonResponse(response);
     const setters = {
       products: setProducts,
@@ -300,11 +314,11 @@ export function AgroProvider({ children }) {
     if (!Array.isArray(records) || !setters[type]) {
       throw new Error('সার্ভার থেকে সঠিক ডেটা পাওয়া যায়নি।');
     }
-    const normalizedRecords = normalizeBusinessRecords(
+    const normalizedRecords = normalizeProductDisplayNames(normalizeBusinessRecords(
       type,
       records,
       type === 'dealers' ? officers : []
-    );
+    ));
     setters[type](normalizedRecords);
     return normalizedRecords;
   };
@@ -331,9 +345,11 @@ export function AgroProvider({ children }) {
     async function loadSharedRecords() {
       try {
         const recordTypes = Object.entries(setters)
-          .filter(([type]) => type !== 'salesAgreements' || currentUser.role === 'admin');
+          .filter(([type]) => type !== 'salesAgreements' || isAdminRole(currentUser.role));
         const sharedRecords = await Promise.all(recordTypes.map(async ([type]) => {
-          const response = await fetch(`/api/records?type=${encodeURIComponent(type)}`);
+          const response = await fetch(type === 'officers'
+            ? '/api/officers'
+            : `/api/records?type=${encodeURIComponent(type)}`);
           const records = await readJsonResponse(response);
           if (!Array.isArray(records)) throw new Error(`সার্ভার থেকে ${type} ডেটা সঠিকভাবে পাওয়া যায়নি।`);
           return [type, records];
@@ -349,11 +365,11 @@ export function AgroProvider({ children }) {
           const setter = setters[type];
           if (records.length > 0 || currentUser.role === 'officer' || hasSharedData) {
             if (!cancelled) {
-              setter(normalizeBusinessRecords(
+              setter(normalizeProductDisplayNames(normalizeBusinessRecords(
                 type,
                 records,
                 type === 'dealers' ? officersForAssignments : []
-              ));
+              )));
             }
           } else if (localRecords[type].length > 0 && type === 'invoices') {
             for (const invoice of localRecords[type]) {
@@ -390,7 +406,7 @@ export function AgroProvider({ children }) {
   }, [currentUser]);
 
   useEffect(() => {
-    if (currentUser?.role !== 'admin' || !cloudReady) return;
+    if (!isAdminRole(currentUser?.role) || !cloudReady) return;
     const syncRecords = (type, records) => {
       const previousSync = syncQueueRef.current[type] || Promise.resolve();
       const sync = previousSync.catch(() => {}).then(async () => {
@@ -411,7 +427,6 @@ export function AgroProvider({ children }) {
     syncRecords('dealers', dealers);
     syncRecords('stockInLogs', stockInLogs);
     syncRecords('damageLogs', damageLogs);
-    syncRecords('payments', payments);
     syncRecords('salesAgreements', salesAgreements);
   }, [
     currentUser,
@@ -421,7 +436,6 @@ export function AgroProvider({ children }) {
     dealers,
     stockInLogs,
     damageLogs,
-    payments,
     salesAgreements
   ]);
 
@@ -453,6 +467,7 @@ export function AgroProvider({ children }) {
     id: `PAY-${globalThis.crypto.randomUUID()}`,
     sourceInvoiceId: invoice.id,
     date: invoice.date,
+    session: invoice.session,
     dealerId: invoice.dealerId,
     dealerName: invoice.dealerName,
     officerId: invoice.officerId,
@@ -467,7 +482,47 @@ export function AgroProvider({ children }) {
     note: `ইনভয়েস #${invoice.id} এর বিপরীতে পরিশোধ`
   });
 
-  const createInvoiceDamageLogs = (invoice) => (invoice.returnAdjustments || []).map((ret, index) => ({
+  const createInvoiceDamageLogs = (invoice) => [
+    ...(invoice.returnAdjustments || []).map((ret) => ({
+      productId: ret.productId,
+      productName: ret.productName,
+      sku: ret.sku,
+      size: ret.size,
+      packPerBox: Number(ret.packPerBox) || 1,
+      unit: ret.unit || 'পিস/বোতল',
+      quantityPieces: Number(ret.quantity) || 1,
+      unitPrice: Number(ret.price) || 0,
+      totalDamageValue: Number(ret.total) || 0,
+      reason: ret.reason || 'মেয়াদোত্তীর্ণ বা ক্ষতিগ্রস্ত পণ্য ফেরত',
+      action: 'চালান হতে সমন্বয় কর্তন',
+      actionType: 'ledger_credit'
+    })),
+    ...(invoice.items || [])
+      .filter((item) => item.stockCondition === 'damaged')
+      .filter((item) => item.unitType !== 'piece' && (Number(item.cartons ?? item.quantity) || 0) > 0)
+      .map((item) => ({
+        productId: item.productId,
+        productName: item.productName,
+        sku: item.sku,
+        size: item.size,
+        packPerBox: Number(item.packPerBox) || 1,
+        unit: item.unit || 'পিস/বোতল',
+        quantityPieces: Number(item.totalPieces)
+          || (Number(item.cartons) || 0) * (Number(item.packPerBox) || 1),
+        unitPrice: Number(item.unitPrice) || 0,
+        totalDamageValue: Number(item.total) || 0,
+        reason: invoice.invoiceType === 'depot_factory_return'
+          ? 'ডিপো থেকে ফ্যাক্টরিতে ক্ষতিগ্রস্ত পণ্য ফেরত'
+          : 'ডিলার কর্তৃক ক্ষতিগ্রস্ত পণ্য ফেরত',
+        action: invoice.invoiceType === 'depot_factory_return'
+          ? 'ডেমেজ স্টক থেকে ফ্যাক্টরিতে ফেরত'
+          : 'ডিলার থেকে ডেমেজ স্টকে গ্রহণ',
+        actionType: invoice.invoiceType === 'depot_factory_return'
+          ? 'damage_stock_out'
+          : 'damage_stock_in'
+      })),
+  ].map((entry, index) => ({
+    ...entry,
     id: `DMG-${invoice.id}-${globalThis.crypto.randomUUID()}-${index}`,
     date: invoice.date,
     dealerId: invoice.dealerId,
@@ -475,18 +530,6 @@ export function AgroProvider({ children }) {
     officerId: invoice.officerId,
     officerCode: invoice.officerCode,
     officerName: invoice.officerName,
-    productId: ret.productId,
-    productName: ret.productName,
-    sku: ret.sku,
-    size: ret.size,
-    packPerBox: Number(ret.packPerBox) || 1,
-    unit: ret.unit || 'পিস/বোতল',
-    quantityPieces: Number(ret.quantity) || 1,
-    unitPrice: Number(ret.price) || 0,
-    totalDamageValue: Number(ret.total) || 0,
-    reason: ret.reason || 'মেয়াদোত্তীর্ণ বা ক্ষতিগ্রস্ত পণ্য ফেরত',
-    action: 'চালান হতে সমন্বয় কর্তন',
-    actionType: 'ledger_credit',
     status: 'নিষ্পন্ন',
     invoiceRef: invoice.id
   }));
@@ -494,13 +537,16 @@ export function AgroProvider({ children }) {
   // Create new Invoice with strict duplicate prevention, type tracking and stock update
   const createInvoice = async (newInvoice) => {
     let finalId = newInvoice.id;
-    if (!finalId || invoices.some((inv) => inv.id === finalId)) {
+    if (finalId && invoices.some((inv) => inv.id === finalId)) {
+      throw new Error('এই ইনভয়েস নম্বরটি আগে থেকেই আছে। নতুন ইনভয়েস নম্বর ব্যবহার করুন।');
+    }
+    if (!finalId) {
       const { candidateId } = getNextInvoiceNumber(invoices);
       finalId = candidateId;
     }
 
     const calculatedTotalCartons = (newInvoice.items || []).reduce(
-      (sum, it) => sum + (Number(it.cartons) || 0),
+      (sum, it) => sum + getItemCartons(it),
       0
     );
 
@@ -508,7 +554,7 @@ export function AgroProvider({ children }) {
       ...newInvoice,
       ...getInvoicePaymentFields(newInvoice),
       id: finalId,
-      invoiceType: newInvoice.invoiceType || 'regular', // 'regular' | 'dealer_return' | 'factory_damage'
+      invoiceType: newInvoice.invoiceType || 'regular',
       totalCartons: calculatedTotalCartons
     };
 
@@ -521,7 +567,11 @@ export function AgroProvider({ children }) {
     setInvoices((prev) => [savedInvoice, ...prev.filter((invoice) => invoice.id !== savedInvoice.id)]);
 
     // Send to MongoDB Atlas API
-    setProducts((prevProducts) => applyInvoiceStockChanges(prevProducts, null, invoiceToSave));
+    setProducts((prevProducts) => applyInvoiceStockChanges(
+      prevProducts,
+      null,
+      getEffectiveStockInvoice(invoiceToSave)
+    ));
 
     const damageEntries = createInvoiceDamageLogs(savedInvoice);
     if (damageEntries.length) {
@@ -538,8 +588,11 @@ export function AgroProvider({ children }) {
 
   // Update existing invoice (Edit capability)
   const updateInvoice = async (updatedInvoice) => {
+    if (currentUser?.role !== SUPER_ADMIN_ROLE && !currentUser?.isSuperAdmin) {
+      throw new Error('ইনভয়েস সম্পাদনার অনুমতি শুধু সুপার অ্যাডমিনের।');
+    }
     const calculatedTotalCartons = (updatedInvoice.items || []).reduce(
-      (sum, it) => sum + (Number(it.cartons) || 0),
+      (sum, it) => sum + getItemCartons(it),
       0
     );
 
@@ -558,7 +611,11 @@ export function AgroProvider({ children }) {
     const savedInvoice = await readJsonResponse(response);
     if (previousInvoice) {
       setProducts((prevProducts) =>
-        applyInvoiceStockChanges(prevProducts, previousInvoice, savedInvoice)
+        applyInvoiceStockChanges(
+          prevProducts,
+          getEffectiveStockInvoice(previousInvoice),
+          getEffectiveStockInvoice(savedInvoice)
+        )
       );
     }
 
@@ -588,6 +645,9 @@ export function AgroProvider({ children }) {
 
   // Delete invoice
   const deleteInvoice = async (invoiceId, password) => {
+    if (currentUser?.role !== SUPER_ADMIN_ROLE && !currentUser?.isSuperAdmin) {
+      throw new Error('ইনভয়েস মুছে ফেলার অনুমতি শুধু সুপার অ্যাডমিনের।');
+    }
     const response = await fetch('/api/invoices', {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
@@ -602,7 +662,11 @@ export function AgroProvider({ children }) {
       && !(entry.reference === `চালান #${invoiceId}` && entry.note === `ইনভয়েস #${invoiceId} এর বিপরীতে পরিশোধ`)
     )));
     if (invoice) {
-      setProducts((prev) => applyInvoiceStockChanges(prev, invoice, null));
+      setProducts((prev) => applyInvoiceStockChanges(
+        prev,
+        getEffectiveStockInvoice(invoice),
+        null
+      ));
     }
     return result;
   };
@@ -618,19 +682,25 @@ export function AgroProvider({ children }) {
     setStockInLogs((prev) => [...entries, ...prev]);
 
     setProducts((prevProducts) => prevProducts.map((product) => {
-      const productEntries = entries.filter((entry) => entry.productId === product.id);
+      const productEntries = entries.filter((entry) => (
+        entry.productId === product.id && entry.date >= STOCK_RECONCILIATION_START_DATE
+      ));
       if (!productEntries.length) return product;
       return {
         ...product,
         variants: (product.variants || []).map((variant) => {
           const variantEntries = productEntries.filter((entry) => entry.sku === variant.sku);
           if (!variantEntries.length) return variant;
+          const packageCount = variantEntries.reduce((sum, entry) => sum + (Number(entry.cartons) || 0), 0);
+          const quantities = getStockInQuantities({
+            ...variant,
+            productName: product.name,
+            generic: product.generic
+          }, packageCount);
           return {
             ...variant,
-            stockCartons: (Number(variant.stockCartons) || 0)
-              + variantEntries.reduce((sum, entry) => sum + (Number(entry.cartons) || 0), 0),
-            stock: (Number(variant.stock) || 0)
-              + variantEntries.reduce((sum, entry) => sum + (Number(entry.quantityPieces) || 0), 0)
+            stockCartons: quantities.stockCartons,
+            stock: quantities.stock
           };
         })
       };
@@ -638,22 +708,43 @@ export function AgroProvider({ children }) {
   };
 
   // Record Damage / Return Log
-  const recordDamageReturn = (damageEntry) => {
-    const entry = {
-      ...damageEntry,
-      id: `DMG-${globalThis.crypto.randomUUID()}`,
-      status: 'গৃহীত'
-    };
-    setDamageLogs((prev) => [entry, ...prev]);
+  const recordDamageReturn = async (damageEntry) => {
+    const response = await fetch('/api/damage-returns', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ...damageEntry,
+        id: `DMG-${globalThis.crypto.randomUUID()}`
+      })
+    });
+    const { entry, product } = await readJsonResponse(response);
+    if (!entry || !product) throw new Error('সার্ভার থেকে ডেমেজ ফেরত নিশ্চিত করা যায়নি।');
+    setProducts((previous) => previous.map((item) => (
+      item.id === product.id ? { ...item, variants: product.variants } : item
+    )));
+    setDamageLogs((previous) => [entry, ...previous.filter((item) => item.id !== entry.id)]);
+    return entry;
   };
 
   // Record Payment
-  const addDealerPayment = (paymentData) => {
-    const newPayment = {
-      ...paymentData,
-      id: `PAY-${globalThis.crypto.randomUUID()}`,
-    };
-    setPayments((prev) => [newPayment, ...prev]);
+  const addDealerPayment = async (paymentData) => {
+    const inputPayments = (Array.isArray(paymentData) ? paymentData : [paymentData]).map((payment) => ({
+      ...payment,
+      id: payment.id || `PAY-${globalThis.crypto.randomUUID()}`,
+      amount: roundCurrency(payment.amount)
+    }));
+    const response = await fetch('/api/payments', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ payments: inputPayments })
+    });
+    const savedPayments = await readJsonResponse(response);
+    if (!Array.isArray(savedPayments)) throw new Error('সার্ভার থেকে পেমেন্ট নিশ্চিত করা যায়নি।');
+    setPayments((previous) => [
+      ...savedPayments.filter((saved) => !previous.some((entry) => entry.id === saved.id)),
+      ...previous
+    ]);
+    return savedPayments;
   };
 
   const saveSalesAgreement = (agreement) => {
@@ -733,84 +824,87 @@ export function AgroProvider({ children }) {
     const dealer = dealers.find((d) => d.id === dealerId || d.code === dealerId);
     if (!dealer) return null;
 
-    const openingDue = Number(dealer.openingDue) || 0;
+    const openingDue = Number(dealer.lastSessionDue ?? dealer.openingDue) || 0;
     const dealerInvoices = invoices.filter((inv) => inv.dealerId === dealer.id || inv.dealerCode === dealer.code);
     
     // Total purchases from regular invoices
     const regularInvoices = dealerInvoices.filter(isSalesInvoice);
-    const totalPurchases = regularInvoices.reduce((acc, curr) => acc + getInvoiceSalesAmount(curr), 0);
+    const totalPurchases = roundCurrency(regularInvoices.reduce((acc, curr) => acc + getInvoiceSalesAmount(curr), 0));
 
     // Total returns (credit) from dealer_return invoices
     const returnInvoices = dealerInvoices.filter((inv) => inv.invoiceType === 'dealer_return');
-    const totalReturnCredits = returnInvoices.reduce((acc, curr) => acc + getInvoiceSalesAmount(curr), 0);
-
-    const dealerPays = payments.filter((p) => (
-      isDealerCollection(p) && (p.dealerId === dealer.id || p.dealerName === dealer.shopName)
+    const totalReturnCredits = roundCurrency(returnInvoices.reduce(
+      (acc, curr) => acc + Math.abs(getInvoiceSalesAmount(curr)),
+      0
     ));
-    const totalPaid = dealerPays
-      .reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0);
 
-    const damageCredits = damageLogs
+    const dealerPayments = payments.filter((p) => (
+      p.dealerId === dealer.id || p.dealerName === dealer.shopName
+    ));
+    const totalPaid = roundCurrency(dealerPayments
+      .filter(isDealerBalanceCredit)
+      .reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0));
+
+    const damageCredits = roundCurrency(damageLogs
       .filter((d) => (d.dealerId === dealer.id || d.dealerName === dealer.shopName) && d.actionType === 'ledger_credit' && !d.invoiceRef)
-      .reduce((acc, curr) => acc + (Number(curr.totalDamageValue) || 0), 0);
+      .reduce((acc, curr) => acc + (Number(curr.totalDamageValue) || 0), 0));
 
-    const currentDue = openingDue + totalPurchases - totalReturnCredits - totalPaid - damageCredits;
+    const currentDue = getDealerNetDue({
+      openingDue,
+      totalBillAmount: totalPurchases,
+      totalReturnAmount: totalReturnCredits,
+      totalPaidAmount: totalPaid
+    });
 
     return {
       ...dealer,
       openingDue,
+      lastSessionDue: openingDue,
       totalPurchases,
       totalReturnCredits,
       totalPaid,
       damageCredits,
-      currentDue: Math.max(0, currentDue),
+      currentDue,
       invoices: dealerInvoices,
-      payments: dealerPays,
+      payments: dealerPayments,
       damages: damageLogs.filter((d) => d.dealerId === dealer.id || d.dealerName === dealer.shopName)
     };
   };
 
   // Calculate Officer summary: Ranking by cartons sold
-  const getOfficerSummary = (officerId) => {
+  const getOfficerSummary = (officerId, filters = {}) => {
     const officer = officers.find((o) => o.id === officerId || o.code === officerId);
     if (!officer) return null;
+    const officerCode = normalizeOfficerCode(officer.code, officer.designation);
 
-    const officerInvoices = invoices.filter(
+    const allInvoices = invoices.filter(
       (inv) => inv.officerId === officer.id
-        || normalizeOfficerCode(inv.officerCode, officer.designation)
-          === normalizeOfficerCode(officer.code, officer.designation)
+        || (officerCode && normalizeOfficerCode(inv.officerCode, officer.designation) === officerCode)
     );
-
-    const totalSalesAmount = officerInvoices
-      .filter(isSalesInvoice)
-      .reduce((acc, curr) => acc + getInvoiceSalesAmount(curr), 0);
-
+    const allPayments = payments.filter(
+      (payment) => payment.officerId === officer.id
+        || (officerCode && normalizeOfficerCode(payment.officerCode, officer.designation) === officerCode)
+        || payment.officerName === officer.name
+    );
+    const officerInvoices = filterOfficerRecordsByPeriod(allInvoices, filters);
+    const officerPayments = filterOfficerRecordsByPeriod(allPayments, filters);
     const totalCartonsSold = officerInvoices
       .filter(isSalesInvoice)
-      .reduce((sum, invoice) => sum + getInvoiceCartons(invoice), 0);
-
-    const officerPayments = payments.filter(
-      (p) => p.officerId === officer.id
-        || normalizeOfficerCode(p.officerCode, officer.designation)
-          === normalizeOfficerCode(officer.code, officer.designation)
-        || p.officerName === officer.name
-    );
-    const salesInvoices = officerInvoices.filter(isSalesInvoice);
-    const invoiceCollections = salesInvoices.reduce(
-      (sum, invoice) => sum + (Number(invoice.paidAmount) || 0),
-      0
-    );
-    const standaloneCollections = officerPayments
-      .filter((payment) => isDealerCollection(payment) && !isInvoicePaymentRecord(payment))
-      .reduce((sum, payment) => sum + (Number(payment.amount) || 0), 0);
-    const totalCollected = invoiceCollections + standaloneCollections;
+      .reduce((sum, invoice) => sum + getInvoicePackageCount(invoice), 0);
+    const financials = calculateOfficerFinancials({
+      invoices: officerInvoices,
+      payments: officerPayments,
+      salesTarget: getOfficerSalesTarget(officer, filters.session || 'ALL'),
+      lastSessionDue: filters.month && filters.month !== 'ALL' ? 0 : officer.lastSessionDue
+    });
 
     return {
       ...officer,
-      invoiceCount: officerInvoices.length,
-      totalSalesAmount,
+      invoiceCount: officerInvoices.filter(isSalesInvoice).length,
+      totalSalesAmount: financials.totalNetSales,
       totalCartonsSold,
-      totalCollected,
+      totalCollected: financials.totalReceivedAmount,
+      ...financials,
       invoices: officerInvoices,
       payments: officerPayments
     };
@@ -818,7 +912,7 @@ export function AgroProvider({ children }) {
 
   // Reset to factory data
   const resetToFactoryData = async () => {
-    if (currentUser?.role !== 'admin') {
+    if (!isAdminRole(currentUser?.role)) {
       throw new Error('এই রিসেট ব্যবহারের অনুমতি নেই।');
     }
     const confirmed = window.confirm(
@@ -834,7 +928,7 @@ export function AgroProvider({ children }) {
     const response = await fetch('/api/backup', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'factory-reset', password })
+      body: JSON.stringify({ action: 'factory-reset', password, confirmationText })
     });
     await readJsonResponse(response);
 
@@ -858,78 +952,38 @@ export function AgroProvider({ children }) {
     return true;
   };
 
-  const clearSalesStockData = async (password) => {
-    if (currentUser?.role !== 'admin') {
-      throw new Error('এই রিসেট ব্যবহারের অনুমতি নেই।');
+  const recalculateStock = async (password, confirmationText) => {
+    if (!isAdminRole(currentUser?.role)) {
+      throw new Error('স্টক পুনর্গণনা ব্যবহারের অনুমতি নেই।');
     }
     if (typeof password !== 'string' || !password) {
-      throw new Error('রিসেট করতে অ্যাডমিন পাসওয়ার্ড দিন।');
+      throw new Error('স্টক পুনর্গণনা করতে অ্যাডমিন পাসওয়ার্ড দিন।');
+    }
+    if (confirmationText !== 'RECALCULATE') {
+      throw new Error('স্টক পুনর্গণনা নিশ্চিত করতে RECALCULATE লিখুন।');
+    }
+    await Promise.all(['products', 'stockInLogs'].map((type) => (
+      syncQueueRef.current[type] || Promise.resolve()
+    )));
+    if (['products', 'stockInLogs'].some((type) => syncErrorsRef.current.has(type))) {
+      throw new Error('সার্ভারে পণ্য বা স্টক-ইন রেকর্ড সিঙ্ক হয়নি; সিঙ্ক সফল হওয়ার পর পুনর্গণনা করুন।');
     }
     const response = await fetch('/api/backup', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'clear-sales-stock', password })
+      body: JSON.stringify({
+        action: 'recalculate-stock',
+        startDate: STOCK_RECONCILIATION_START_DATE,
+        password,
+        confirmationText
+      })
     });
     const result = await readJsonResponse(response);
-    const clearedProducts = products.map((product) => ({
-      ...product,
-      variants: (product.variants || []).map((variant) => ({
-        ...variant,
-        stock: 0,
-        stockCartons: 0
-      }))
-    }));
-    const clearedDealers = dealers.map((dealer) => ({ ...dealer, openingDue: 0 }));
-    localStorage.removeItem('vap_invoices_v5');
-    localStorage.removeItem('vap_stock_in_v5');
-    localStorage.removeItem('vap_damages_v5');
-    localStorage.removeItem('vap_payments_v5');
-    localStorage.removeItem('vap_sales_agreements_v1');
+    const updatedProducts = await refreshSharedRecords('products');
     localRecordsRef.current = {
       ...localRecordsRef.current,
-      products: clearedProducts,
-      dealers: clearedDealers,
-      invoices: [],
-      stockInLogs: [],
-      damageLogs: [],
-      payments: [],
-      salesAgreements: []
+      products: updatedProducts
     };
-    setInvoices([]);
-    setStockInLogs([]);
-    setDamageLogs([]);
-    setPayments([]);
-    setSalesAgreements([]);
-    setProducts(clearedProducts);
-    setDealers(clearedDealers);
-    syncErrorsRef.current.clear();
-    setCloudError('');
-    return result;
-  };
-
-  const clearStockOnly = async (password) => {
-    if (currentUser?.role !== 'admin') {
-      throw new Error('এই রিসেট ব্যবহারের অনুমতি নেই।');
-    }
-    if (typeof password !== 'string' || !password) {
-      throw new Error('স্টক শূন্য করতে অ্যাডমিন পাসওয়ার্ড দিন।');
-    }
-    const response = await fetch('/api/backup', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'clear-stock-only', password })
-    });
-    const result = await readJsonResponse(response);
-    const clearedProducts = products.map((product) => ({
-      ...product,
-      variants: (product.variants || []).map((variant) => ({
-        ...variant,
-        stock: 0,
-        stockCartons: 0
-      }))
-    }));
-    localRecordsRef.current = { ...localRecordsRef.current, products: clearedProducts };
-    setProducts(clearedProducts);
     return result;
   };
 
@@ -1040,7 +1094,7 @@ export function AgroProvider({ children }) {
       'payments',
       'salesAgreements'
     ];
-    if (currentUser?.role !== 'admin') {
+    if (!isAdminRole(currentUser?.role)) {
       throw new Error('ব্যাকআপ ইমপোর্ট করার অনুমতি নেই।');
     }
     if (!cloudReady) {
@@ -1066,12 +1120,12 @@ export function AgroProvider({ children }) {
       body: JSON.stringify({ ...backup, password })
     });
     await readJsonResponse(response);
-    setProducts(backup.data.products);
+    setProducts(normalizeProductDisplayNames(backup.data.products));
     setOfficers(normalizeBusinessRecords('officers', backup.data.officers));
     setDealers(normalizeBusinessRecords('dealers', backup.data.dealers, backup.data.officers));
-    setInvoices(normalizeBusinessRecords('invoices', backup.data.invoices));
-    setStockInLogs(backup.data.stockInLogs);
-    setDamageLogs(normalizeBusinessRecords('damageLogs', backup.data.damageLogs));
+    setInvoices(normalizeProductDisplayNames(normalizeBusinessRecords('invoices', backup.data.invoices)));
+    setStockInLogs(normalizeProductDisplayNames(backup.data.stockInLogs));
+    setDamageLogs(normalizeProductDisplayNames(normalizeBusinessRecords('damageLogs', backup.data.damageLogs)));
     setPayments(normalizeBusinessRecords('payments', backup.data.payments));
     setSalesAgreements(normalizeBusinessRecords('salesAgreements', backup.data.salesAgreements));
   };
@@ -1105,8 +1159,7 @@ export function AgroProvider({ children }) {
         getDealerSummary,
         getOfficerSummary,
         resetToFactoryData,
-        clearSalesStockData,
-        clearStockOnly,
+        recalculateStock,
         exportBackupExcel,
         exportBackup,
         importBackup,

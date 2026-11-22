@@ -4,6 +4,7 @@ import SearchableRecordSelect from './SearchableRecordSelect';
 import { formatDealerCode } from '../../../shared/codes';
 import { toBn, toBnDate } from '../../utils/bengali';
 import CompanyLetterhead from './CompanyLetterhead';
+import { HEAD_OFFICE_ADDRESS, HOTLINE_ADDRESS, HOTLINE_NUMBER } from '../../../shared/companyContact';
 
 const today = () => new Date().toISOString().slice(0, 10);
 const socialOptions = ['প্রকৃত ব্যবসায়ী', 'ইউপি সদস্য', 'পৌর কাউন্সিলর', 'রাজনীতির সঙ্গে সংশ্লিষ্ট', 'অন্যান্য পেশা'];
@@ -113,8 +114,8 @@ function CompanyHeader({ reference, date }) {
     <>
       <CompanyLetterhead className="agreement-header" />
       <div className="agreement-ref-row">
-        <span><strong>Ref:</strong> {reference || '________________'}</span>
-        <span><strong>Date:</strong> {toBnDate(date) || '________________'}</span>
+        <span><strong>রেফারেন্স:</strong> {toBn(reference) || '________________'}</span>
+        <span><strong>তারিখ:</strong> {toBnDate(date) || '________________'}</span>
       </div>
     </>
   );
@@ -123,8 +124,8 @@ function CompanyHeader({ reference, date }) {
 function CompanyFooter() {
   return (
     <footer className="corporate-document-footer">
-      <p>Office/Factory: Matidali, Bogra Sadar, Bogra.</p>
-      <p>Mob: 01713-736920, 01773-523723 • E-mail: mohananda.agro@gmail.com</p>
+      <p>হেড অফিস: {HEAD_OFFICE_ADDRESS}।</p>
+      <p>হটলাইন: {toBn(HOTLINE_NUMBER)} • ঠিকানা: {HOTLINE_ADDRESS}।</p>
     </footer>
   );
 }

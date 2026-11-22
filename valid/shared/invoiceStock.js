@@ -1,44 +1,44 @@
-import { getItemCartons } from './invoiceCartons.js';
+import { getPackageQuantityUnit } from './quantityUnits.js';
 
 function getInvoiceStockMovements(invoice) {
-  const direction = invoice.invoiceType === 'dealer_return' ? 1 : -1;
   const movements = new Map();
+  const isDealerReturn = invoice.invoiceType === 'dealer_return';
+  const isDepotFactoryReturn = ['depot_factory_return', 'factory_damage'].includes(invoice.invoiceType);
 
   (invoice.items || []).forEach((item) => {
     if (!item.productId || !item.sku) return;
 
+    if (item.unitType === 'piece') return;
+
+    const cartons = Math.trunc(Number(item.cartons ?? item.quantity) || 0);
+    if (cartons <= 0) return;
+
     const key = `${item.productId}\u0000${item.sku}`;
-    const cartons = getItemCartons(item);
-    const pieces = item.totalPieces != null
-      ? Number(item.totalPieces) || 0
-      : cartons * (Number(item.packPerBox) || 0);
+    const packPerBox = Number(item.packPerBox);
+    const totalPieces = Number(item.totalPieces);
+    const quantityUnit = getPackageQuantityUnit(item);
+    const pieces = quantityUnit !== 'কার্টুন'
+      ? cartons
+      : Number.isSafeInteger(packPerBox) && packPerBox > 0
+        ? cartons * packPerBox
+      : Number.isFinite(totalPieces)
+        ? Math.max(0, totalPieces - (Number(item.retailPieces) || 0))
+        : cartons;
     const movement = movements.get(key) || {
       productId: item.productId,
       sku: item.sku,
       cartons: 0,
-      pieces: 0
+      pieces: 0,
+      damagePieces: 0
     };
 
-    movement.cartons += cartons * direction;
-    movement.pieces += pieces * direction;
-    movements.set(key, movement);
-  });
-
-  (invoice.returnAdjustments || []).forEach((item) => {
-    if (!item.productId || !item.sku) return;
-
-    const key = `${item.productId}\u0000${item.sku}`;
-    const quantity = Number(item.quantity ?? item.quantityPieces) || 0;
-    const packPerBox = Number(item.packPerBox) || 1;
-    const movement = movements.get(key) || {
-      productId: item.productId,
-      sku: item.sku,
-      cartons: 0,
-      pieces: 0
-    };
-
-    movement.cartons -= Math.floor(quantity / packPerBox);
-    movement.pieces -= quantity;
+    const direction = isDealerReturn ? 1 : -1;
+    if (item.stockCondition === 'damaged' && (isDealerReturn || isDepotFactoryReturn)) {
+      movement.damagePieces += pieces * direction;
+    } else {
+      movement.cartons += cartons * direction;
+      movement.pieces += pieces * direction;
+    }
     movements.set(key, movement);
   });
 
@@ -56,10 +56,12 @@ export function getInvoiceStockChanges(previousInvoice, nextInvoice) {
         productId: movement.productId,
         sku: movement.sku,
         cartons: 0,
-        pieces: 0
+        pieces: 0,
+        damagePieces: 0
       };
       change.cartons += movement.cartons * multiplier;
       change.pieces += movement.pieces * multiplier;
+      change.damagePieces += movement.damagePieces * multiplier;
       changes.set(key, change);
     });
   });
@@ -83,7 +85,8 @@ export function applyInvoiceStockChanges(products, previousInvoice, nextInvoice)
         return {
           ...variant,
           stockCartons: (Number(variant.stockCartons) || 0) + change.cartons,
-          stock: (Number(variant.stock) || 0) + change.pieces
+          stock: (Number(variant.stock) || 0) + change.pieces,
+          damageStock: (Number(variant.damageStock) || 0) + change.damagePieces
         };
       })
     };

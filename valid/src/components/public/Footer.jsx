@@ -9,6 +9,8 @@ import {
   Heart
 } from 'lucide-react';
 import { useUiPreferences } from '../../context/UiPreferencesContext';
+import { toBn } from '../../utils/bengali';
+import { HEAD_OFFICE_ADDRESS, HOTLINE_NUMBER } from '../../../shared/companyContact';
 
 export default function Footer({ onNavigate }) {
   const { t } = useUiPreferences();
@@ -72,11 +74,6 @@ export default function Footer({ onNavigate }) {
               </button>
             </li>
             <li>
-              <button onClick={() => onNavigate('damage-returns')} className="hover:text-emerald-400 transition">
-                {t('footer.returns')}
-              </button>
-            </li>
-            <li>
               <button onClick={() => onNavigate('dealer-ledger')} className="hover:text-emerald-400 transition">
                 {t('footer.dealerLedger')}
               </button>
@@ -84,11 +81,6 @@ export default function Footer({ onNavigate }) {
             <li>
               <button onClick={() => onNavigate('officer-tracking')} className="hover:text-emerald-400 transition">
                 {t('footer.officerTracking')}
-              </button>
-            </li>
-            <li>
-              <button onClick={() => onNavigate('monthly-reports')} className="hover:text-emerald-400 transition">
-                {t('footer.monthlyStatement')}
               </button>
             </li>
           </ul>
@@ -100,12 +92,12 @@ export default function Footer({ onNavigate }) {
           <div className="space-y-2.5 text-xs text-slate-400">
             <p className="flex items-start gap-2">
               <MapPin className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
-              <span>নিশিন্দারা, বগুড়া। (বগুড়া সদর)</span>
+              <span>হেড অফিস: {HEAD_OFFICE_ADDRESS}</span>
             </p>
             <p className="flex items-center gap-2">
               <Phone className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-              <a href="tel:01867912167" className="hover:text-white font-mono text-emerald-300 font-bold">
-                01867912167
+              <a href={`tel:${HOTLINE_NUMBER}`} className="hover:text-white font-mono text-emerald-300 font-bold">
+                {toBn(HOTLINE_NUMBER)} • নাদুরপুকুর, শাজাহানপুর, বগুড়া
               </a>
             </p>
             <p className="text-[11px] text-slate-500 pt-2">
