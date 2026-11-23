@@ -34,3 +34,15 @@ test('payment aggregation applies shared category precedence and blank-category 
   assert.match(serializedTypeExpression, /paymentType/);
   assert.match(serializedTypeExpression, /purpose/);
 });
+
+test('payment aggregation keeps both session filters and hierarchy owner scope', () => {
+  const match = {
+    $and: [
+      { date: { $gte: '2026-07-01', $lt: '2027-01-01' } },
+      { $or: [{ officerId: { $in: ['SO-01'] } }] }
+    ]
+  };
+  const pipelineMatch = paymentPipeline(match)[0].$match;
+  assert.ok(pipelineMatch.$and.includes(match.$and[0]));
+  assert.ok(pipelineMatch.$and.includes(match.$and[1]));
+});

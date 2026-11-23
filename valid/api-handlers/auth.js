@@ -1,8 +1,9 @@
 import login from './auth/login.js';
 import me from './auth/me.js';
 import register from './auth/register.js';
+import supervisors from './auth/supervisors.js';
 
-const handlers = { login, me, register };
+const handlers = { login, me, register, supervisors };
 
 export default function handler(req, res) {
   const route = String(req.query?.route || '');

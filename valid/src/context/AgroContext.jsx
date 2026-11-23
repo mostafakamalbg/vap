@@ -341,6 +341,9 @@ export function AgroProvider({ children }) {
       payments: setPayments,
       salesAgreements: setSalesAgreements
     };
+    if (!isAdminRole(currentUser.role)) {
+      Object.values(setters).forEach((setter) => setter([]));
+    }
 
     async function loadSharedRecords() {
       try {
@@ -363,7 +366,7 @@ export function AgroProvider({ children }) {
 
         for (const [type, records] of sharedRecords) {
           const setter = setters[type];
-          if (records.length > 0 || currentUser.role === 'officer' || hasSharedData) {
+          if (records.length > 0 || !isAdminRole(currentUser.role) || hasSharedData) {
             if (!cancelled) {
               setter(normalizeProductDisplayNames(normalizeBusinessRecords(
                 type,
@@ -371,7 +374,7 @@ export function AgroProvider({ children }) {
                 type === 'dealers' ? officersForAssignments : []
               )));
             }
-          } else if (localRecords[type].length > 0 && type === 'invoices') {
+          } else if (isAdminRole(currentUser.role) && localRecords[type].length > 0 && type === 'invoices') {
             for (const invoice of localRecords[type]) {
               const saveResponse = await fetch('/api/invoices', {
                 method: 'POST',
@@ -380,7 +383,7 @@ export function AgroProvider({ children }) {
               });
               await readJsonResponse(saveResponse);
             }
-          } else if (localRecords[type].length > 0) {
+          } else if (isAdminRole(currentUser.role) && localRecords[type].length > 0) {
             const recordsToSave = type === 'dealers'
               ? normalizeBusinessRecords(type, localRecords[type], officersForAssignments)
               : localRecords[type];

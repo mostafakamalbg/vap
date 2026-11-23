@@ -2,7 +2,6 @@ import dbConnect from '../lib/mongodb.js';
 import { BusinessRecord, Dealer, Invoice, Payment, Product } from '../lib/models.js';
 import { authorize } from '../lib/auth.js';
 import {
-  getOfficerCodeAliases,
   isDealerAssignedToOfficer,
   normalizeDealerAssignment,
   normalizeOfficerCode
@@ -20,7 +19,12 @@ import { dealerHasOfficerPreviousDue } from '../shared/officerLedger.js';
 import { roundCurrency } from '../shared/invoiceTotals.js';
 import { getInvoiceSessionForDate, normalizeSessionText } from '../shared/sessions.js';
 import { transactionOptions, withTransactionFallback } from '../lib/transactions.js';
-import { ADMIN_ROLES, OFFICER_ROLE, isAdminRole } from '../shared/roles.js';
+import { ADMIN_ROLES, isAdminRole, HIERARCHY_ROLE_VALUES, LOGISTIC_OFFICER_ROLE } from '../shared/roles.js';
+import { resolveHierarchyScope } from '../lib/hierarchy.js';
+import {
+  buildOfficerOwnerFilter,
+  matchesOfficerScope
+} from '../shared/hierarchy.js';
 
 const recordTypes = new Set([
   'products',
@@ -56,7 +60,9 @@ export default async function handler(req, res) {
   const user = await authorize(
     req,
     res,
-    req.method === 'PUT' ? ADMIN_ROLES : [...ADMIN_ROLES, OFFICER_ROLE]
+    req.method === 'PUT'
+      ? ADMIN_ROLES
+      : [...ADMIN_ROLES, ...HIERARCHY_ROLE_VALUES, LOGISTIC_OFFICER_ROLE]
   );
   if (!user) return;
 
@@ -65,50 +71,44 @@ export default async function handler(req, res) {
   if (req.method === 'PUT' && type === 'invoices') {
     return res.status(405).json({ error: 'ইনভয়েস সংরক্ষণ, সম্পাদনা ও মুছতে নির্দিষ্ট ইনভয়েস অপশন ব্যবহার করুন।' });
   }
+  if (user.role === LOGISTIC_OFFICER_ROLE
+    && !['products', 'officers', 'dealers', 'stockInLogs', 'damageLogs'].includes(type)) {
+    return res.status(403).json({ error: 'এই রেকর্ড দেখার অনুমতি নেই।' });
+  }
 
   try {
     const Model = databaseModels[type];
     if (req.method === 'GET') {
+      const scope = await resolveHierarchyScope(user);
       if (type === 'dealers') {
         const { officers, dealers } = await getDealersWithOfficerCodes();
         if (isAdminRole(user.role)) return res.status(200).json(dealers);
-        const normalizedUserCode = normalizeOfficerCode(user.officerCode);
-        const officer = (user.officerId && officers.find((entry) => (
-          String(entry.id || entry.officerId || '') === String(user.officerId || '')
-        ))) || (normalizedUserCode && officers.find((entry) => (
-          normalizeOfficerCode(entry.code, entry.designation) === normalizedUserCode
-        )));
-        const officerCode = user.officerCode || officer?.code;
-        const designation = officer?.designation || '';
-        return res.status(200).json(dealers.filter((dealer) => (
-          isDealerAssignedToOfficer(dealer, officerCode, designation)
-          || dealerHasOfficerPreviousDue(dealer, {
-            officerIds: [user.officerId, officer?.id, officer?.officerId],
-            officerCode,
-            designation
-          })
-        )));
+        if (user.role === LOGISTIC_OFFICER_ROLE) return res.status(200).json(dealers);
+        const codes = new Set([...scope.officerCodes].map((code) => normalizeOfficerCode(code)).filter(Boolean));
+        const ids = scope.officerIds;
+        const visible = dealers.filter((dealer) => (
+          codes.has(normalizeOfficerCode(dealer.officerCode))
+          || ids.has(String(dealer.previousDueOfficerId || ''))
+          || scope.users.some((entry) => (
+            isDealerAssignedToOfficer(
+              dealer,
+              entry.officerCode,
+              officers.find((officer) => String(officer.id || officer.officerId) === String(entry.officerId))
+                ?.designation
+            )
+            || dealerHasOfficerPreviousDue(dealer, {
+              officerIds: [entry.officerId],
+              officerCode: entry.officerCode,
+              designation: entry.role
+            })
+          ))
+        ));
+        return res.status(200).json(visible);
       }
       if (type === 'payments') {
         const conditions = [];
-        const officerCodeAliases = new Set(getOfficerCodeAliases(user.officerCode));
         if (!isAdminRole(user.role)) {
-          const ownerConditions = [
-            ...(user.officerId ? [{ officerId: user.officerId }] : []),
-            ...(officerCodeAliases.size ? [{
-              officerCode: {
-                $regex: new RegExp(`^(?:${[...officerCodeAliases]
-                  .map((code) => code.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
-                  .join('|')})$`, 'i')
-              }
-            }] : []),
-            ...(user.name ? [{
-              officerId: { $in: ['', null] },
-              officerCode: { $in: ['', null] },
-              officerName: String(user.name)
-            }] : [])
-          ];
-          conditions.push(ownerConditions.length ? { $or: ownerConditions } : { id: '__no_records__' });
+          conditions.push(buildOfficerOwnerFilter(scope));
         }
         if (req.query?.session != null) {
           const range = parseSessionDateRange(req.query.session);
@@ -142,18 +142,10 @@ export default async function handler(req, res) {
         const sources = new Set(typed.map((payment) => String(payment.sourceInvoiceId || '')).filter(Boolean));
         const monthRange = req.query?.month != null ? parseReportMonth(req.query.month) : null;
         const sessionRange = req.query?.session != null ? parseSessionDateRange(req.query.session) : null;
-        const normalizedUserCode = normalizeOfficerCode(user.officerCode);
         const legacy = legacyRecords.map((record) => record.data).filter((payment) => {
           if (!payment || (payment.id && ids.has(String(payment.id)))) return false;
           if (payment.sourceInvoiceId && sources.has(String(payment.sourceInvoiceId))) return false;
-          const matchesOfficer = Boolean(user.officerId
-            && String(payment.officerId || '') === String(user.officerId))
-            || officerCodeAliases.has(String(payment.officerCode || '').trim().toUpperCase())
-            || Boolean(normalizedUserCode
-              && normalizeOfficerCode(payment.officerCode) === normalizedUserCode)
-            || Boolean(!payment.officerId && !payment.officerCode
-              && user.name && String(payment.officerName || '').trim() === user.name);
-          if (!isAdminRole(user.role) && !matchesOfficer) return false;
+          if (!matchesOfficerScope(payment, scope)) return false;
           if (req.query?.date != null && payment.date !== String(req.query.date)) return false;
           if (monthRange && !(String(payment.date || '') >= monthRange.start
             && String(payment.date || '') < monthRange.end)) return false;
@@ -169,23 +161,9 @@ export default async function handler(req, res) {
         return res.status(200).json([...typed, ...legacy].map(normalizePaymentRecord));
       }
       if (Model) {
-        let filter = {};
-        if (!isAdminRole(user.role) && type === 'invoices') {
-          const officerCodeMatch = String(user.officerCode || '').match(/\d+/);
-          const officerCodeDigits = officerCodeMatch ? String(Number(officerCodeMatch[0])) : '';
-          const conditions = [
-            ...(user.officerId ? [{ officerId: user.officerId }] : []),
-            ...(officerCodeDigits ? [
-              { officerId: `OFF-${officerCodeDigits.padStart(2, '0')}` },
-              { officerCode: `SO-${officerCodeDigits.padStart(2, '0')}` }
-            ] : []),
-            ...(user.officerCode ? [
-              { officerCode: user.officerCode },
-              ...(officerCodeDigits ? [{ officerCode: officerCodeDigits }] : [])
-            ] : [])
-          ];
-          filter = conditions.length ? { $or: conditions } : { id: '__no_records__' };
-        }
+        const filter = !isAdminRole(user.role) && type === 'invoices'
+          ? buildOfficerOwnerFilter(scope)
+          : {};
         const query = Model.find(filter);
         if (type === 'invoices') query.sort({ createdAt: -1 });
         if (type === 'products') query.sort({ id: 1 });
@@ -197,18 +175,31 @@ export default async function handler(req, res) {
           return res.status(403).json({ error: 'এই রেকর্ড দেখার অনুমতি নেই।' });
         }
         if (type === 'officers') {
-          filter = { type, recordId: user.officerId };
+          filter = {
+            type,
+            $or: [
+              { recordId: { $in: [...scope.officerIds] } },
+              buildOfficerOwnerFilter(scope, {
+                idField: 'data.id',
+                codeField: 'data.code',
+                nameField: 'data.name'
+              })
+            ]
+          };
+        } else if (
+          user.role === LOGISTIC_OFFICER_ROLE
+          && ['stockInLogs', 'damageLogs'].includes(type)
+        ) {
+          filter = { type };
         } else if (['stockInLogs', 'damageLogs', 'payments'].includes(type)) {
-          const officerCodeMatch = String(user.officerCode || '').match(/\d+/);
-          const officerCodeDigits = officerCodeMatch ? String(Number(officerCodeMatch[0])) : '';
-          const ownerConditions = [
-            ...(user.officerId ? [{ 'data.officerId': user.officerId }] : []),
-            ...(user.officerCode ? [
-              { 'data.officerCode': user.officerCode },
-              ...(officerCodeDigits ? [{ 'data.officerCode': officerCodeDigits }] : [])
-            ] : [])
-          ];
-          filter = { type, ...(ownerConditions.length ? { $or: ownerConditions } : { recordId: '__no_records__' }) };
+          filter = {
+            type,
+            ...buildOfficerOwnerFilter(scope, {
+              idField: 'data.officerId',
+              codeField: 'data.officerCode',
+              nameField: 'data.officerName'
+            })
+          };
         }
       }
       const recordsQuery = BusinessRecord.find(filter);
@@ -244,9 +235,13 @@ export default async function handler(req, res) {
       }));
       await withTransactionFallback(async (session) => {
         const options = transactionOptions(session);
-        await Payment.deleteMany({}, options);
-        await BusinessRecord.deleteMany({ type: 'payments' }, options);
-        if (normalized.length) await Payment.insertMany(normalized, options);
+        for (const payment of normalized) {
+          await Payment.updateOne(
+            { id: payment.id },
+            { $setOnInsert: payment },
+            { ...options, upsert: true }
+          );
+        }
       });
       return res.status(200).json({ saved: records.length });
     }
@@ -258,16 +253,26 @@ export default async function handler(req, res) {
         const officers = officerRecords.map((record) => record.data).filter(Boolean);
         normalizedRecords = records.map((record) => normalizeDealerAssignment(record, officers));
       }
-      await Model.deleteMany({});
-      if (normalizedRecords.length) await Model.insertMany(normalizedRecords);
+      for (const [index, record] of normalizedRecords.entries()) {
+        const recordId = getRecordId(record, index);
+        const { _id, ...recordValues } = record;
+        await Model.updateOne(
+          { id: recordId },
+          { $set: { ...recordValues, id: recordId } },
+          { upsert: true, runValidators: true }
+        );
+      }
     } else {
-      await BusinessRecord.deleteMany({ type });
-      if (records.length) {
-        await BusinessRecord.insertMany(records.map((record, index) => ({
-          type,
-          recordId: getRecordId(record, index),
-          data: record
-        })));
+      for (const [index, record] of records.entries()) {
+        const recordId = getRecordId(record, index);
+        const values = Object.fromEntries(Object.entries(record)
+          .filter(([key]) => key !== '_id')
+          .map(([key, value]) => [`data.${key}`, value]));
+        await BusinessRecord.updateOne(
+          { type, recordId },
+          { $set: values },
+          { upsert: true }
+        );
       }
     }
     return res.status(200).json({ saved: records.length });

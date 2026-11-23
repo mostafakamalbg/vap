@@ -32,7 +32,7 @@ import {
 import { getDealerLedgerTransactions } from '../../../shared/dealerLedger';
 import CompanyLetterhead from './CompanyLetterhead';
 import { getBangladeshBusinessDate, getInvoiceSessionForDate, INVOICE_SESSIONS } from '../../../shared/sessions';
-import { SUPER_ADMIN_ROLE } from '../../../shared/roles';
+import { SUPER_ADMIN_ROLE, isAdminRole } from '../../../shared/roles';
 import { readJsonResponse } from '../../utils/api';
 
 const createPaymentEntries = () => LEDGER_PAYMENT_TYPES.map(({ value }) => ({
@@ -120,6 +120,7 @@ export default function DealerLedger() {
     currentUser
   } = useAgro();
   const canSetPreviousDue = currentUser?.role === SUPER_ADMIN_ROLE || currentUser?.isSuperAdmin;
+  const canManageLedger = isAdminRole(currentUser?.role);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [showAddDealerModal, setShowAddDealerModal] = useState(false);
@@ -393,21 +394,25 @@ export default function DealerLedger() {
               পূর্বের বকেয়া ইনপুট
             </button>
           )}
-          <button
-            onClick={() => setShowAddDealerModal(true)}
-            className="no-print flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 px-3.5 py-2 rounded-lg text-xs font-bold transition"
-          >
-            <PlusCircle className="w-4 h-4" />
-            <span>নতুন ডিলার নিবন্ধন</span>
-          </button>
+          {canManageLedger && (
+            <>
+              <button
+                onClick={() => setShowAddDealerModal(true)}
+                className="no-print flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 px-3.5 py-2 rounded-lg text-xs font-bold transition"
+              >
+                <PlusCircle className="w-4 h-4" />
+                <span>নতুন ডিলার নিবন্ধন</span>
+              </button>
 
-          <button
-            onClick={() => handleOpenPayment(dealers[0]?.id)}
-            className="no-print flex items-center gap-1.5 bg-emerald-700 hover:bg-emerald-800 text-white px-4 py-2 rounded-lg text-xs font-bold shadow transition"
-          >
-            <CreditCard className="w-4 h-4" />
-            <span>টাকা জমা নিন (Payment)</span>
-          </button>
+              <button
+                onClick={() => handleOpenPayment(dealers[0]?.id)}
+                className="no-print flex items-center gap-1.5 bg-emerald-700 hover:bg-emerald-800 text-white px-4 py-2 rounded-lg text-xs font-bold shadow transition"
+              >
+                <CreditCard className="w-4 h-4" />
+                <span>টাকা জমা নিন (Payment)</span>
+              </button>
+            </>
+          )}
           <button
             type="button"
             onClick={() => window.print()}
@@ -565,13 +570,15 @@ export default function DealerLedger() {
 
                     <td className="no-print py-3 px-3 text-center">
                       <div className="flex items-center justify-center gap-1.5">
-                        <button
-                          onClick={() => handleOpenPayment(d.id)}
-                          title="টাকা জমা নিন"
-                          className="bg-emerald-50 hover:bg-emerald-100 text-emerald-800 px-2 py-1 rounded text-xs font-bold border border-emerald-200 transition"
-                        >
-                          পেমেন্ট
-                        </button>
+                        {canManageLedger && (
+                          <button
+                            onClick={() => handleOpenPayment(d.id)}
+                            title="টাকা জমা নিন"
+                            className="bg-emerald-50 hover:bg-emerald-100 text-emerald-800 px-2 py-1 rounded text-xs font-bold border border-emerald-200 transition"
+                          >
+                            পেমেন্ট
+                          </button>
+                        )}
 
                         <button
                           onClick={(event) => {

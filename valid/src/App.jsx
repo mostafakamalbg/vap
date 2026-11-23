@@ -7,6 +7,7 @@ import AboutCompany from './components/public/AboutCompany';
 import Footer from './components/public/Footer';
 import AuthPage from './components/AuthPage';
 import OfficerDashboard from './components/OfficerDashboard';
+import DamageReturns from './components/admin/DamageReturns';
 import { UiPreferencesProvider } from './context/UiPreferencesContext';
 
 // Admin / ERP Modules
@@ -21,7 +22,14 @@ import SalesAgreement from './components/admin/SalesAgreement';
 import MonthlyTargetReports from './components/admin/MonthlyTargetReports';
 import AdminDataManagement from './components/admin/AdminDataManagement';
 import FactoryDataReset from './components/admin/FactoryDataReset';
-import { isAdminRole } from '../shared/roles';
+import {
+  ASM_ROLE,
+  LOGISTIC_OFFICER_ROLE,
+  OFFICER_ROLE,
+  RSM_ROLE,
+  SO_ROLE,
+  isAdminRole
+} from '../shared/roles';
 
 function AppContent() {
   const {
@@ -45,7 +53,18 @@ function AppContent() {
 
     if (isAdminRole(currentUser?.role)) {
       setActiveTab(tab);
-    } else if (currentUser?.role === 'officer') {
+    } else if (currentUser?.role === RSM_ROLE || currentUser?.role === ASM_ROLE) {
+      const reportTabs = [
+        'inventory',
+        'invoice-list',
+        'dealer-ledger',
+        'dashboard-reports',
+        'monthly-sales-reports'
+      ];
+      setActiveTab(reportTabs.includes(tab) ? tab : 'dashboard-reports');
+    } else if (currentUser?.role === LOGISTIC_OFFICER_ROLE) {
+      setActiveTab(['inventory', 'damage-returns'].includes(tab) ? tab : 'inventory');
+    } else if ([OFFICER_ROLE, SO_ROLE].includes(currentUser?.role)) {
       setActiveTab(tab === 'officer-dashboard' ? tab : 'officer-dashboard');
     } else {
       setActiveTab(tab === 'officer-dashboard' ? 'officer-login' : 'admin-login');
@@ -65,7 +84,13 @@ function AppContent() {
   };
 
   const handleLoginSuccess = (user) => {
-    setActiveTab(isAdminRole(user.role) ? 'admin-access' : 'officer-dashboard');
+    setActiveTab(isAdminRole(user.role)
+      ? 'admin-access'
+      : user.role === RSM_ROLE || user.role === ASM_ROLE
+        ? 'dashboard-reports'
+        : user.role === LOGISTIC_OFFICER_ROLE
+          ? 'inventory'
+          : 'officer-dashboard');
   };
 
   const renderActivePage = () => {
@@ -80,7 +105,7 @@ function AppContent() {
       );
     }
     if (
-      currentUser?.role === 'officer'
+      [OFFICER_ROLE, SO_ROLE].includes(currentUser?.role)
       && !['website-home', 'website-products', 'website-about'].includes(activeTab)
     ) return <OfficerDashboard />;
     if (!currentUser && !['website-home', 'website-products', 'website-about'].includes(activeTab)) {
@@ -90,10 +115,10 @@ function AppContent() {
     if (activeTab === 'website-products') {
       return (
         <ProductCatalog
-          onSelectProductForInvoice={currentUser?.role === 'officer'
+          onSelectProductForInvoice={[OFFICER_ROLE, SO_ROLE].includes(currentUser?.role)
             ? () => handleNavigate('officer-dashboard')
             : handleStartNewInvoice}
-          actionLabel={currentUser?.role === 'officer' ? 'অর্ডার করুন' : 'ইনভয়েসে যোগ করুন'}
+          actionLabel={[OFFICER_ROLE, SO_ROLE].includes(currentUser?.role) ? 'অর্ডার করুন' : 'ইনভয়েসে যোগ করুন'}
         />
       );
     }
@@ -132,6 +157,7 @@ function AppContent() {
       );
     }
     if (activeTab === 'inventory') return <StockManagement />;
+    if (activeTab === 'damage-returns') return <DamageReturns />;
     if (activeTab === 'dealer-ledger') return <DealerLedger />;
     if (activeTab === 'officer-tracking') return <OfficerPerformance />;
     if (activeTab === 'dashboard-reports') return <DashboardReports />;

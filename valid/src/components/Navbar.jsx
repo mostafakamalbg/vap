@@ -22,6 +22,11 @@ import { HOTLINE_NUMBER } from '../../shared/companyContact';
 import {
   ADMIN_ROLE,
   SUPER_ADMIN_ROLE,
+  ASM_ROLE,
+  LOGISTIC_OFFICER_ROLE,
+  RSM_ROLE,
+  SO_ROLE,
+  OFFICER_ROLE,
   isAdminRole
 } from '../../shared/roles';
 
@@ -43,6 +48,7 @@ export default function Navbar({ activeTab, setActiveTab }) {
     { id: 'new-invoice', label: t('nav.newInvoice'), icon: FileText },
     { id: 'invoice-list', label: t('nav.invoiceHistory'), icon: FileText },
     { id: 'inventory', label: t('nav.stock'), icon: Package },
+    { id: 'damage-returns', label: 'ফ্যাক্টরি রিটার্ন / ডেমেজ গ্রহণ', icon: RotateCw },
     { id: 'dealer-ledger', label: t('nav.dealerLedger'), icon: Users },
     { id: 'sales-agreements', label: 'সেলস ও কালেকশন চুক্তি', icon: FileText },
     { id: 'monthly-sales-reports', label: 'মাসিক বিক্রয় টার্গেট', icon: FileText },
@@ -53,7 +59,22 @@ export default function Navbar({ activeTab, setActiveTab }) {
   ];
   const navItems = isAdminRole(currentUser?.role)
     ? [...publicItems, ...adminItems]
-    : currentUser?.role === 'officer'
+    : [RSM_ROLE, ASM_ROLE].includes(currentUser?.role)
+      ? [
+          ...publicItems,
+          { id: 'inventory', label: t('nav.stock'), icon: Package },
+          { id: 'invoice-list', label: t('nav.invoiceHistory'), icon: FileText },
+          { id: 'dealer-ledger', label: t('nav.dealerLedger'), icon: Users },
+          { id: 'dashboard-reports', label: 'অধীনস্থ অফিসার রিপোর্ট', icon: FileText },
+          { id: 'monthly-sales-reports', label: 'মাসিক টার্গেট রিপোর্ট', icon: FileText }
+        ]
+      : currentUser?.role === LOGISTIC_OFFICER_ROLE
+        ? [
+            ...publicItems,
+            { id: 'inventory', label: t('nav.stock'), icon: Package },
+            { id: 'damage-returns', label: 'ফ্যাক্টরি রিটার্ন / ডেমেজ গ্রহণ', icon: RotateCw }
+          ]
+        : [OFFICER_ROLE, SO_ROLE].includes(currentUser?.role)
       ? [...publicItems, { id: 'officer-dashboard', label: t('nav.officerDashboard'), icon: UserCheck }]
       : publicItems;
 
@@ -261,7 +282,7 @@ export default function Navbar({ activeTab, setActiveTab }) {
           )}
           {currentUser && (
             <div className="mt-2 border-t border-slate-100 px-2 pt-3 text-xs text-slate-500">
-              {t('nav.loggedIn')} <strong className="text-slate-700">{currentUser.name}</strong> ({currentUser.role === SUPER_ADMIN_ROLE ? t('nav.superAdmin') : currentUser.role === ADMIN_ROLE ? t('nav.admin') : t('nav.officer')})
+              {t('nav.loggedIn')} <strong className="text-slate-700">{currentUser.name}</strong> ({currentUser.role === SUPER_ADMIN_ROLE ? t('nav.superAdmin') : currentUser.role === ADMIN_ROLE ? t('nav.admin') : currentUser.role})
             </div>
           )}
         </div>

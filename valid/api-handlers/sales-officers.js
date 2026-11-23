@@ -11,7 +11,10 @@ import {
 } from '../shared/officerSalesTargets.js';
 import { parseReportMonth, parseSessionDateRange } from '../shared/reportDateFilters.js';
 import { normalizeSessionText } from '../shared/sessions.js';
-import { ADMIN_ROLES, OFFICER_ROLE, isAdminRole } from '../shared/roles.js';
+import { ADMIN_ROLES, isAdminRole } from '../shared/roles.js';
+import { HIERARCHY_ROLE_VALUES } from '../shared/roles.js';
+import { resolveHierarchyScope } from '../lib/hierarchy.js';
+import { buildOfficerOwnerFilter, matchesOfficerScope } from '../shared/hierarchy.js';
 
 const numericFields = [
   'salesTargetJulyDec2026',
@@ -134,7 +137,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
   if (!await dbConnect()) return res.status(503).json({ error: 'MongoDB is not configured.' });
-  const user = await authorize(req, res, [...ADMIN_ROLES, OFFICER_ROLE]);
+  const user = await authorize(req, res, [...ADMIN_ROLES, ...HIERARCHY_ROLE_VALUES]);
   if (!user) return;
 
   try {
@@ -157,16 +160,14 @@ export default async function handler(req, res) {
         }
       }
 
-      const code = normalizeOfficerCode(user.officerCode);
-      const conditions = isAdminRole(user.role) ? [] : [
-        ...(user.officerId ? [{ officerId: String(user.officerId) }] : []),
-        ...(code ? [{ officerCode: code }, { officerCode: String(user.officerCode) }] : [])
-      ];
-      const [storedRecords, invoices, typedPayments, legacyRecords] = await Promise.all([
-        SalesOfficer.find(conditions.length ? { $or: conditions } : isAdminRole(user.role) ? {} : { _id: null })
+      const scope = await resolveHierarchyScope(user);
+      const ownerFilter = buildOfficerOwnerFilter(scope);
+      const [storedRecords, officerRecords, invoices, typedPayments, legacyRecords] = await Promise.all([
+        SalesOfficer.find(ownerFilter)
           .sort({ slNo: 1 }).lean(),
-        Invoice.find({}).lean(),
-        Payment.find({}).lean(),
+        BusinessRecord.find({ type: 'officers' }).select('data').lean(),
+        Invoice.find(ownerFilter).lean(),
+        Payment.find(ownerFilter).lean(),
         BusinessRecord.find({ type: 'payments' }).select('data').lean()
       ]);
       const knownIds = new Set(typedPayments.map((payment) => String(payment.id)));
@@ -174,9 +175,46 @@ export default async function handler(req, res) {
       const legacyPayments = legacyRecords.map((record) => record.data).filter((payment) => (
         payment && !(payment.id && knownIds.has(String(payment.id)))
         && !(payment.sourceInvoiceId && knownInvoices.has(String(payment.sourceInvoiceId)))
+        && matchesOfficerScope(payment, scope)
       ));
       const payments = [...typedPayments, ...legacyPayments];
-      return res.status(200).json(storedRecords.map((record) => {
+      const summaries = new Map();
+      const addSummary = (record) => {
+        const officerId = String(record.officerId || record.id || '');
+        const officerCode = normalizeOfficerCode(
+          record.officerCode || record.code,
+          record.designation
+        );
+        const officerName = String(record.officerName || record.name || '').trim();
+        if (!matchesOfficerScope({ officerId, officerCode, officerName }, scope)) return;
+        const key = officerCode || officerId || officerName;
+        if (!key) return;
+        const previous = summaries.get(key);
+        summaries.set(key, previous ? {
+          ...record,
+          ...previous,
+          officerId: previous.officerId || officerId,
+          officerCode: previous.officerCode || officerCode,
+          officerName: previous.officerName || officerName,
+          mobileNo: previous.mobileNo || record.mobileNo || record.phone || ''
+        } : {
+          ...record,
+          officerId,
+          officerCode,
+          officerName,
+          mobileNo: record.mobileNo || record.phone || ''
+        });
+      };
+      storedRecords.forEach(addSummary);
+      officerRecords.forEach((entry) => addSummary(entry.data || {}));
+      scope.users.forEach((entry) => addSummary({
+        officerId: entry.officerId,
+        officerCode: entry.officerCode,
+        officerName: entry.name,
+        mobileNo: entry.phone
+      }));
+
+      return [...summaries.values()].map((record, index) => {
         const officerCode = normalizeOfficerCode(record.officerCode);
         const matchesOfficer = (entry) => (
           (record.officerId && entry.officerId === record.officerId)
@@ -194,10 +232,11 @@ export default async function handler(req, res) {
         });
         return {
           ...normalizeSalesOfficer(record),
+          slNo: record.slNo || index + 1,
           ...financials,
           paymentAndExpense: financials.paymentAndExpense
         };
-      }));
+      });
     }
 
     if (!isAdminRole(user.role)) {

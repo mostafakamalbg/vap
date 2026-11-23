@@ -2,7 +2,14 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Check, ClipboardCheck, KeyRound, Pencil, Plus, RefreshCw, ShieldX, Trash2, Users } from 'lucide-react';
 import { useAgro } from '../../context/AgroContext';
 import { formatOfficerCode } from '../../../shared/codes';
-import { SUPER_ADMIN_ROLE } from '../../../shared/roles';
+import {
+  ASM_ROLE,
+  LOGISTIC_OFFICER_ROLE,
+  OFFICER_ROLE,
+  RSM_ROLE,
+  SO_ROLE,
+  SUPER_ADMIN_ROLE
+} from '../../../shared/roles';
 
 async function requestJson(url, options) {
   const response = await fetch(url, options);
@@ -81,6 +88,31 @@ export default function AdminAccess({ onInvoiceCreated }) {
       setMessage(result.message);
       setNewPassword('');
       setResettingUserId('');
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setBusyId('');
+    }
+  };
+
+  const updateHierarchy = async (user, field, value) => {
+    setBusyId(user.id);
+    setError('');
+    setMessage('');
+    try {
+      const result = await requestJson('/api/users', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'hierarchy',
+          userId: user.id,
+          ...(field === 'role' ? { role: value } : {}),
+          rsmId: field === 'rsmId' ? value : user.rsmId,
+          asmId: field === 'asmId' ? value : user.asmId
+        })
+      });
+      setMessage(result.message);
+      await refresh();
     } catch (requestError) {
       setError(requestError.message);
     } finally {
@@ -169,7 +201,7 @@ export default function AdminAccess({ onInvoiceCreated }) {
             <div key={user.id} className="flex flex-col justify-between gap-3 px-5 py-4 sm:flex-row sm:items-center">
               <div>
                 <p className="font-bold text-slate-900">{user.name}</p>
-                <p className="text-xs text-slate-500">{user.email} • অফিসার কোড {formatOfficerCode(user.officerCode)} • {user.phone}</p>
+                <p className="text-xs text-slate-500">{user.email} • {user.role} • কোড {formatOfficerCode(user.officerCode)} • {user.phone}</p>
                 {user.officerPhoneMismatch && (
                   <p className="mt-1 text-xs font-semibold text-amber-700">
                     ফোন নম্বর মেলেনি — নিবন্ধিত নম্বর: {user.registeredOfficerPhone || 'পাওয়া যায়নি'}
@@ -196,7 +228,64 @@ export default function AdminAccess({ onInvoiceCreated }) {
             <div key={user.id} className="flex flex-col justify-between gap-3 px-5 py-4 sm:flex-row sm:items-center">
               <div>
                 <p className="font-bold text-slate-900">{user.name}</p>
-                <p className="text-xs text-slate-500">{user.email} • অফিসার কোড {formatOfficerCode(user.officerCode)} • {user.phone}</p>
+                <p className="text-xs text-slate-500">{user.email} • {user.role} • কোড {formatOfficerCode(user.officerCode)} • {user.phone}</p>
+                {user.role !== 'General Admin' && (
+                  <label className="mt-2 inline-flex items-center gap-2 text-[11px] font-semibold text-slate-600">
+                    পদবি
+                    <select
+                      value={user.role}
+                      disabled={busyId === user.id}
+                      onChange={(event) => updateHierarchy(user, 'role', event.target.value)}
+                      className="rounded border border-slate-300 bg-white px-2 py-1"
+                    >
+                      <option value={RSM_ROLE}>RSM</option>
+                      <option value={ASM_ROLE}>ASM</option>
+                      <option value={SO_ROLE}>SO</option>
+                      <option value={OFFICER_ROLE}>Legacy SO</option>
+                      <option value={LOGISTIC_OFFICER_ROLE}>Logistic Officer</option>
+                    </select>
+                  </label>
+                )}
+                {[ASM_ROLE, SO_ROLE, OFFICER_ROLE].includes(user.role) && (
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    {user.role === ASM_ROLE ? (
+                      <label className="text-[11px] font-semibold text-slate-600">
+                        RSM
+                        <select
+                          value={user.rsmId || ''}
+                          disabled={busyId === user.id}
+                          onChange={(event) => updateHierarchy(user, 'rsmId', event.target.value)}
+                          className="ml-2 rounded border border-slate-300 bg-white px-2 py-1"
+                        >
+                          <option value="">RSM নির্বাচন</option>
+                          {activeUsers.filter((entry) => entry.role === RSM_ROLE).map((entry) => (
+                            <option key={entry.id} value={entry.id}>{entry.name}</option>
+                          ))}
+                        </select>
+                      </label>
+                    ) : (
+                      <>
+                        <label className="text-[11px] font-semibold text-slate-600">
+                          ASM
+                          <select
+                            value={user.asmId || ''}
+                            disabled={busyId === user.id}
+                            onChange={(event) => updateHierarchy(user, 'asmId', event.target.value)}
+                            className="ml-2 rounded border border-slate-300 bg-white px-2 py-1"
+                          >
+                            <option value="">ASM নির্বাচন</option>
+                            {activeUsers.filter((entry) => entry.role === ASM_ROLE).map((entry) => (
+                              <option key={entry.id} value={entry.id}>{entry.name}</option>
+                            ))}
+                          </select>
+                        </label>
+                        <span className="text-[11px] text-slate-500">
+                          RSM: {activeUsers.find((entry) => entry.id === user.rsmId)?.name || 'নির্ধারিত নয়'}
+                        </span>
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
               {resettingUserId === user.id ? (
                 <form onSubmit={(event) => resetOfficerPassword(event, user.id)} className="flex flex-wrap items-center gap-2">

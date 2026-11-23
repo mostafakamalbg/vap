@@ -8,7 +8,7 @@ import {
 } from '../../../shared/sessions';
 import { useAgro } from '../../context/AgroContext';
 import { readJsonResponse } from '../../utils/api';
-import { isAdminRole } from '../../../shared/roles';
+import { isAdminRole, RSM_ROLE, ASM_ROLE } from '../../../shared/roles';
 
 const currentMonth = new Date().toISOString().slice(0, 7);
 const currentYear = String(new Date().getFullYear());
@@ -84,6 +84,8 @@ export default function DashboardReports() {
   }, [query, refreshIndex]);
 
   const officers = report.officers || [];
+  const canSelectOfficer = isAdminRole(currentUser?.role)
+    || [RSM_ROLE, ASM_ROLE].includes(currentUser?.role);
   const selected = officers.find((officer) => (
     officer.officerId === selectedOfficer || officer.officerCode === selectedOfficer
   )) || officers[0];
@@ -188,8 +190,8 @@ export default function DashboardReports() {
         </label>
         <label className="text-xs font-bold text-slate-600">
           অফিসার
-          <select value={selectedOfficer} onChange={(event) => setSelectedOfficer(event.target.value)} disabled={!isAdminRole(currentUser?.role)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm disabled:bg-slate-100">
-            {isAdminRole(currentUser?.role) && <option value="">সকল অফিসার (Top Sheet)</option>}
+          <select value={selectedOfficer} onChange={(event) => setSelectedOfficer(event.target.value)} disabled={!canSelectOfficer} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm disabled:bg-slate-100">
+            {canSelectOfficer && <option value="">সকল অধীনস্থ অফিসার (Top Sheet)</option>}
             {officers.map((officer) => (
               <option key={officer.officerId || officer.officerCode} value={officer.officerId || officer.officerCode}>
                 {officer.officerName} {officer.officerCode ? `(${officer.officerCode})` : ''}

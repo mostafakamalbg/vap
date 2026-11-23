@@ -8,7 +8,10 @@ import { isDealerAssignedToOfficer, normalizeOfficerCode } from '../shared/codes
 import { getDealersWithOfficerCodes } from '../lib/dealerAssignments.js';
 import { getPackageQuantityUnit } from '../shared/quantityUnits.js';
 import { STOCK_RECONCILIATION_START_DATE } from '../shared/stockReconciliation.js';
-import { ADMIN_ROLES, OFFICER_ROLE, isAdminRole } from '../shared/roles.js';
+import { ADMIN_ROLES, isAdminRole, isSalesOfficerRole } from '../shared/roles.js';
+import { HIERARCHY_ROLE_VALUES } from '../shared/roles.js';
+import { resolveHierarchyScope } from '../lib/hierarchy.js';
+import { buildOfficerOwnerFilter } from '../shared/hierarchy.js';
 
 const invoiceIdPattern = /^VAP-(\d{4})-(\d+)$/;
 
@@ -91,7 +94,7 @@ export default async function handler(req, res) {
   const user = await authorize(
     req,
     res,
-    req.method === 'PATCH' ? ADMIN_ROLES : [...ADMIN_ROLES, OFFICER_ROLE]
+    req.method === 'PATCH' ? ADMIN_ROLES : [...ADMIN_ROLES, ...HIERARCHY_ROLE_VALUES]
   );
   if (!user) return;
 
@@ -101,12 +104,13 @@ export default async function handler(req, res) {
 
   try {
     if (req.method === 'GET') {
-      const filter = isAdminRole(user.role) ? {} : { officerId: user.officerId };
+      const scope = await resolveHierarchyScope(user);
+      const filter = buildOfficerOwnerFilter(scope);
       return res.status(200).json(await Order.find(filter).sort({ createdAt: -1 }).lean());
     }
 
     if (req.method === 'POST') {
-      if (user.role !== 'officer') return res.status(403).json({ error: 'অর্ডার কেবল অফিসার জমা দিতে পারবেন।' });
+      if (!isSalesOfficerRole(user.role)) return res.status(403).json({ error: 'অর্ডার কেবল অফিসার জমা দিতে পারবেন।' });
       const dealer = await getAssignedDealer(user, req.body?.dealerId);
       if (!dealer) return res.status(400).json({ error: 'আপনার কোডের সঙ্গে যুক্ত ডিলার নির্বাচন করুন।' });
       const date = getBangladeshBusinessDate();

@@ -3,9 +3,11 @@ import dbConnect from '../lib/mongodb.js';
 import { MonthlySalesCollection } from '../lib/models.js';
 import { authorize } from '../lib/auth.js';
 import { normalizeMonthlySalesReport, validateMonthlySalesReport } from '../shared/salesReports.js';
-import { normalizeOfficerCode } from '../shared/codes.js';
 import { invoiceSessionCondition } from '../shared/reportDateFilters.js';
-import { ADMIN_ROLES, OFFICER_ROLE, isAdminRole } from '../shared/roles.js';
+import { ADMIN_ROLES, isAdminRole } from '../shared/roles.js';
+import { HIERARCHY_ROLE_VALUES } from '../shared/roles.js';
+import { resolveHierarchyScope } from '../lib/hierarchy.js';
+import { buildOfficerOwnerFilter } from '../shared/hierarchy.js';
 
 function getMonthFilter(value) {
   const month = String(value || '').trim();
@@ -29,28 +31,19 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
   if (!await dbConnect()) return res.status(503).json({ error: 'MongoDB is not configured.' });
-  const user = await authorize(req, res, [...ADMIN_ROLES, OFFICER_ROLE]);
+  const user = await authorize(req, res, [...ADMIN_ROLES, ...HIERARCHY_ROLE_VALUES]);
   if (!user) return;
 
   try {
     if (req.method === 'GET') {
       const filters = [];
+      const scope = await resolveHierarchyScope(user);
       if (req.query?.session) {
         filters.push(invoiceSessionCondition(String(req.query.session), 'reportingDate'));
       }
       if (req.query?.month) filters.push(getMonthFilter(req.query.month));
       if (req.query?.date) filters.push(getMonthFilter(req.query.date));
-      if (!isAdminRole(user.role)) {
-        const code = normalizeOfficerCode(user.officerCode);
-        const ownerConditions = [
-          ...(user.officerId ? [{ officerId: String(user.officerId) }] : []),
-          ...(code ? [
-            { officerCode: code },
-            { officerCode: String(user.officerCode) }
-          ] : [])
-        ];
-        filters.push(ownerConditions.length ? { $or: ownerConditions } : { _id: null });
-      }
+      if (!scope.global) filters.push(buildOfficerOwnerFilter(scope));
       const query = filters.length ? { $and: filters } : {};
       const records = await MonthlySalesCollection.find(query).sort({
         reportingDate: -1,

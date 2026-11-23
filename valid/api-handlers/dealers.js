@@ -3,17 +3,19 @@ import { hasSuperAdminAccess } from '../lib/auth.js';
 import { Dealer } from '../lib/models.js';
 import { authorize } from '../lib/auth.js';
 import { getDealersWithOfficerCodes } from '../lib/dealerAssignments.js';
-import { normalizeDealerAssignment, normalizeOfficerCode, isDealerAssignedToOfficer } from '../shared/codes.js';
+import { normalizeDealerAssignment, normalizeOfficerCode } from '../shared/codes.js';
 import { normalizeSessionText } from '../shared/sessions.js';
 import { parseSessionDateRange } from '../shared/reportDateFilters.js';
-import { ADMIN_ROLES, OFFICER_ROLE, isAdminRole } from '../shared/roles.js';
+import { ADMIN_ROLES, isAdminRole } from '../shared/roles.js';
+import { HIERARCHY_ROLE_VALUES } from '../shared/roles.js';
+import { resolveHierarchyScope } from '../lib/hierarchy.js';
 
 export default async function handler(req, res) {
   if (!['GET', 'POST', 'PATCH'].includes(req.method)) {
     return res.status(405).json({ message: 'Method Not Allowed' });
   }
   if (!await dbConnect()) return res.status(503).json({ error: 'MongoDB is not configured.' });
-  const user = await authorize(req, res, [...ADMIN_ROLES, OFFICER_ROLE]);
+  const user = await authorize(req, res, [...ADMIN_ROLES, ...HIERARCHY_ROLE_VALUES]);
   if (!user) return;
   if (req.method === 'POST' && !isAdminRole(user.role)) {
     return res.status(403).json({ error: 'এই কাজের অনুমতি নেই।' });
@@ -25,18 +27,13 @@ export default async function handler(req, res) {
     try {
       const { officers, dealers } = await getDealersWithOfficerCodes();
       if (isAdminRole(user.role)) return res.status(200).json(dealers);
-      const normalizedUserCode = normalizeOfficerCode(user.officerCode);
-      const officer = (user.officerId && officers.find((entry) => (
-        String(entry.id || entry.officerId || '') === String(user.officerId || '')
-      ))) || (normalizedUserCode && officers.find((entry) => (
-        normalizeOfficerCode(entry.code, entry.designation) === normalizedUserCode
-      )));
+      const scope = await resolveHierarchyScope(user);
+      const codes = new Set([...scope.officerCodes]
+        .map((code) => normalizeOfficerCode(code))
+        .filter(Boolean));
       return res.status(200).json(dealers.filter((dealer) => (
-        isDealerAssignedToOfficer(
-          dealer,
-          user.officerCode || officer?.code,
-          officer?.designation
-        )
+        codes.has(normalizeOfficerCode(dealer.officerCode))
+        || scope.officerIds.has(String(dealer.previousDueOfficerId || ''))
       )));
     } catch (error) {
       console.error('Dealer lookup failed:', error);

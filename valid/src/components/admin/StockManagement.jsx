@@ -13,6 +13,7 @@ import {
   Sparkles
 } from 'lucide-react';
 import { useAgro } from '../../context/AgroContext';
+import { LOGISTIC_OFFICER_ROLE, isAdminRole } from '../../../shared/roles';
 import {
   getPackageQuantityUnit,
   getStockInQuantities,
@@ -66,7 +67,9 @@ const createEmptyStockInForm = () => ({
 });
 
 export default function StockManagement() {
-  const { products, stockInLogs, addStockIn, addNewProduct, addProductVariant } = useAgro();
+  const { products, stockInLogs, addStockIn, addNewProduct, addProductVariant, currentUser } = useAgro();
+  const canManageProducts = isAdminRole(currentUser?.role);
+  const canReceiveStock = canManageProducts || currentUser?.role === LOGISTIC_OFFICER_ROLE;
 
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('ALL');
@@ -298,29 +301,33 @@ export default function StockManagement() {
             বর্তমান স্টক তালিকা
           </button>
 
-          <button
-            onClick={() => setActiveTab('stock-in')}
-            className={`flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-lg transition ${
-              activeTab === 'stock-in'
-                ? 'bg-emerald-700 text-white shadow'
-                : 'bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100'
-            }`}
-          >
-            <ArrowDownLeft className="w-3.5 h-3.5" />
-            <span>ডিস্ট্রিবিউশন অফিসে স্টক ইন</span>
-          </button>
+          {canReceiveStock && (
+            <button
+              onClick={() => setActiveTab('stock-in')}
+              className={`flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-lg transition ${
+                activeTab === 'stock-in'
+                  ? 'bg-emerald-700 text-white shadow'
+                  : 'bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100'
+              }`}
+            >
+              <ArrowDownLeft className="w-3.5 h-3.5" />
+              <span>ডিস্ট্রিবিউশন অফিসে স্টক ইন</span>
+            </button>
+          )}
 
-          <button
-            onClick={() => setActiveTab('new-product')}
-            className={`flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-lg transition ${
-              activeTab === 'new-product'
-                ? 'bg-emerald-700 text-white shadow'
-                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-            }`}
-          >
-            <PlusCircle className="w-3.5 h-3.5" />
-            <span>নতুন পণ্য এড অপশন</span>
-          </button>
+          {canManageProducts && (
+            <button
+              onClick={() => setActiveTab('new-product')}
+              className={`flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-lg transition ${
+                activeTab === 'new-product'
+                  ? 'bg-emerald-700 text-white shadow'
+                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+              }`}
+            >
+              <PlusCircle className="w-3.5 h-3.5" />
+              <span>নতুন পণ্য এড অপশন</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -540,7 +547,7 @@ export default function StockManagement() {
       )}
 
       {/* TAB 2: Distribution Office Stock-In Form */}
-      {activeTab === 'stock-in' && (
+      {canReceiveStock && activeTab === 'stock-in' && (
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 space-y-4 sm:p-5">
           <div className="border-b border-slate-200 pb-2">
             <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
@@ -835,7 +842,7 @@ export default function StockManagement() {
       )}
 
       {/* TAB 3: Add Brand New Product to Catalog */}
-      {activeTab === 'new-product' && (
+      {canManageProducts && activeTab === 'new-product' && (
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-6">
           <div className="border-b border-slate-200 pb-3">
             <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">

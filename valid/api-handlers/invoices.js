@@ -10,7 +10,10 @@ import { STOCK_RECONCILIATION_START_DATE } from '../shared/stockReconciliation.j
 import { transactionCreateOptions, transactionOptions, withTransactionFallback } from '../lib/transactions.js';
 import { normalizeSessionText } from '../shared/sessions.js';
 import { parseSessionDateRange } from '../shared/reportDateFilters.js';
-import { ADMIN_ROLES, OFFICER_ROLE, isAdminRole } from '../shared/roles.js';
+import { ADMIN_ROLES, isAdminRole } from '../shared/roles.js';
+import { HIERARCHY_ROLE_VALUES } from '../shared/roles.js';
+import { resolveHierarchyScope } from '../lib/hierarchy.js';
+import { buildOfficerOwnerFilter } from '../shared/hierarchy.js';
 
 const isValidDate = (value) => {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -261,7 +264,7 @@ export default async function handler(req, res) {
     const user = await authorize(
       req,
       res,
-      req.method === 'GET' ? [...ADMIN_ROLES, OFFICER_ROLE] : ADMIN_ROLES
+      req.method === 'GET' ? [...ADMIN_ROLES, ...HIERARCHY_ROLE_VALUES] : ADMIN_ROLES
     );
     if (!user) return;
     if (req.method !== 'GET' && req.method !== 'POST') {
@@ -271,21 +274,9 @@ export default async function handler(req, res) {
     }
 
     if (req.method === 'GET') {
-      const officerCodeMatch = String(user.officerCode || '').match(/\d+/);
-      const officerCodeDigits = officerCodeMatch ? String(Number(officerCodeMatch[0])) : '';
-      const ownerConditions = [
-        ...(user.officerId ? [{ officerId: user.officerId }] : []),
-        ...(user.officerCode ? [{ officerCode: user.officerCode }] : []),
-        ...(officerCodeDigits ? [
-          { officerId: `OFF-${officerCodeDigits.padStart(2, '0')}` },
-          { officerCode: `SO-${officerCodeDigits.padStart(2, '0')}` },
-          { officerCode: officerCodeDigits }
-        ] : [])
-      ];
+      const scope = await resolveHierarchyScope(user);
       const filters = [];
-      if (!isAdminRole(user.role)) {
-        filters.push(ownerConditions.length ? { $or: ownerConditions } : { id: '__no_records__' });
-      }
+      if (!scope.global) filters.push(buildOfficerOwnerFilter(scope));
       if (req.query?.session != null) {
         const session = String(req.query.session).trim();
         if (!session || session.length > 100) return res.status(400).json({ error: 'সঠিক সেশন নির্বাচন করুন।' });

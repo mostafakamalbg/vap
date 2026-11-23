@@ -4,7 +4,14 @@ import {
   ADMIN_ROLE,
   LEGACY_ADMIN_ROLE,
   SUPER_ADMIN_ROLE,
+  GENERAL_ADMIN_ROLE,
+  LOGISTIC_OFFICER_ROLE,
+  RSM_ROLE,
+  ASM_ROLE,
+  SO_ROLE,
   isActiveUserStatus,
+  isAdminRole,
+  isHierarchyRole,
   matchesExpectedRole,
   normalizeAdminRole,
   normalizeUserStatus
@@ -27,4 +34,15 @@ test('legacy active status values remain usable and normalize to active', () => 
   assert.equal(isActiveUserStatus('সুপার এডমিন'), true);
   assert.equal(normalizeUserStatus('এডমিন'), 'active');
   assert.equal(isActiveUserStatus('pending'), false);
+});
+
+test('new role types preserve admin and reporting authorization categories', () => {
+  assert.equal(isAdminRole(GENERAL_ADMIN_ROLE), true);
+  assert.equal(isAdminRole('MD'), true);
+  assert.equal(isAdminRole('Chairman'), true);
+  for (const role of [RSM_ROLE, ASM_ROLE, SO_ROLE, 'officer']) {
+    assert.equal(isHierarchyRole(role), true);
+    assert.equal(matchesExpectedRole('officer', role), true);
+  }
+  assert.equal(matchesExpectedRole('officer', LOGISTIC_OFFICER_ROLE), true);
 });

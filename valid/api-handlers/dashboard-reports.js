@@ -12,7 +12,10 @@ import {
 } from '../shared/paymentMethods.js';
 import { dateRangeCondition, parseReportMonth, parseSessionDateRange } from '../shared/reportDateFilters.js';
 import { getInvoiceSessionForDate, normalizeSessionText } from '../shared/sessions.js';
-import { ADMIN_ROLES, OFFICER_ROLE, isAdminRole } from '../shared/roles.js';
+import { ADMIN_ROLES } from '../shared/roles.js';
+import { HIERARCHY_ROLE_VALUES } from '../shared/roles.js';
+import { resolveHierarchyScope } from '../lib/hierarchy.js';
+import { buildOfficerOwnerFilter, matchesOfficerScope } from '../shared/hierarchy.js';
 
 const DAMAGE_TYPES = ['factory_damage', 'depot_factory_return'];
 const RECEIPT_TYPES = new Set(['dealer_collection']);
@@ -30,27 +33,6 @@ function getPeriodRange(period, value) {
     return { start: `${value}-01-01`, end: `${Number(value) + 1}-01-01` };
   }
   return null;
-}
-
-function getOfficerAliases(user) {
-  const code = normalizeOfficerCode(user.officerCode);
-  const digits = code.match(/\d+$/)?.[0];
-  const aliases = [
-    ...(user.officerId ? [{ officerId: String(user.officerId) }] : []),
-    ...(user.officerCode ? [{ officerCode: String(user.officerCode) }] : []),
-    ...(code ? [{ officerCode: code }] : []),
-    ...(digits ? [
-      { officerId: `OFF-${digits}` },
-      { officerCode: digits },
-      { officerCode: `FSO-${digits}` }
-    ] : []),
-    ...(user.name ? [{
-      officerId: { $in: ['', null] },
-      officerCode: { $in: ['', null] },
-      officerName: String(user.name)
-    }] : [])
-  ];
-  return aliases.length ? { $or: aliases } : { _id: null };
 }
 
 function invoicePipeline(match) {
@@ -122,6 +104,9 @@ function invoicePipeline(match) {
 }
 
 export function paymentPipeline(match) {
+  const directMatch = { ...match };
+  const matchConditions = Array.isArray(directMatch.$and) ? directMatch.$and : [];
+  delete directMatch.$and;
   const normalizeTypeField = (field) => ({
     $toLower: {
       $trim: {
@@ -178,8 +163,9 @@ export function paymentPipeline(match) {
   return [
     {
       $match: {
-        ...match,
+        ...directMatch,
         $and: [
+          ...matchConditions,
           {
             $or: [
               { sourceInvoiceId: { $exists: false } },
@@ -287,19 +273,14 @@ function officerMatches(row, officer) {
   );
 }
 
-function addPaymentRows(groups, rows, { period, periodValue, periodRange, beforePeriod, user }) {
+function addPaymentRows(groups, rows, { period, periodValue, periodRange, beforePeriod, scope }) {
   rows.forEach((payment) => {
     const date = String(payment.date || '');
     if (date) {
       if (beforePeriod ? date >= periodRange.start : date < periodRange.start || date >= periodRange.end) return;
     } else if (period !== 'session' || beforePeriod
       || normalizeSessionText(payment.session) !== normalizeSessionText(periodValue)) return;
-    const matchesOwner = Boolean(payment.officerId && user.officerId
-      && String(payment.officerId) === String(user.officerId))
-      || Boolean(payment.officerCode && user.officerCode
-        && normalizeOfficerCode(payment.officerCode) === normalizeOfficerCode(user.officerCode))
-      || (!payment.officerId && !payment.officerCode && payment.officerName === user.name);
-    if (!isAdminRole(user.role) && !matchesOwner) return;
+    if (!matchesOfficerScope(payment, scope)) return;
     if (payment.sourceInvoiceId || /(?:invoice|চালান)\s*#/i.test(String(payment.reference || ''))) return;
     const owner = {
       officerId: payment.officerId || '',
@@ -340,7 +321,7 @@ export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method Not Allowed' });
   if (!await dbConnect()) return res.status(503).json({ error: 'MongoDB is not configured.' });
   res.setHeader('Cache-Control', 'no-store, max-age=0');
-  const user = await authorize(req, res, [...ADMIN_ROLES, OFFICER_ROLE]);
+  const user = await authorize(req, res, [...ADMIN_ROLES, ...HIERARCHY_ROLE_VALUES]);
   if (!user) return;
 
   const period = String(req.query?.period || 'session');
@@ -349,7 +330,8 @@ export default async function handler(req, res) {
   if (!periodRange) return res.status(400).json({ error: 'রিপোর্টের সময়সীমা সঠিক নয়।' });
 
   try {
-    const ownerMatch = isAdminRole(user.role) ? {} : getOfficerAliases(user);
+    const scope = await resolveHierarchyScope(user);
+    const ownerMatch = buildOfficerOwnerFilter(scope);
     const periodMatch = { date: dateRangeCondition('date', periodRange).date, ...ownerMatch };
     const periodPaymentMatch = period === 'session'
       ? {
@@ -373,7 +355,7 @@ export default async function handler(req, res) {
     };
     const [officerRecords, salesOfficerRecords, periodInvoices, priorInvoices, periodPayments, priorPayments, typedPayments, legacyRecords] = await Promise.all([
       BusinessRecord.find({ type: 'officers' }).select('data').lean(),
-      SalesOfficer.find({}).sort({ slNo: 1 }).lean(),
+      SalesOfficer.find(ownerMatch).sort({ slNo: 1 }).lean(),
       Invoice.aggregate(invoicePipeline(periodMatch)),
       Invoice.aggregate(invoicePipeline(priorMatch)),
       Payment.aggregate(paymentPipeline(periodPaymentMatch)),
@@ -407,23 +389,29 @@ export default async function handler(req, res) {
         roster.push(officer);
       }
     });
-    if (!isAdminRole(user.role)) {
-      let ownOfficer = roster.find((officer) => officerMatches({
-        officerId: user.officerId,
-        officerCode: user.officerCode,
-        officerName: user.name
-      }, officer));
-      if (!ownOfficer) {
-        ownOfficer = {
-          id: String(user.officerId || ''),
-          code: normalizeOfficerCode(user.officerCode),
-          name: user.name || '',
-          phone: user.phone || ''
-        };
-        roster.push(ownOfficer);
+    scope.users.forEach((entry) => {
+      if (!entry.officerId && !entry.officerCode && !entry.name) return;
+      const officer = {
+        id: String(entry.officerId || ''),
+        officerId: String(entry.officerId || ''),
+        code: normalizeOfficerCode(entry.officerCode),
+        officerCode: entry.officerCode || '',
+        name: entry.name || '',
+        phone: entry.phone || '',
+        territory: entry.territory || ''
+      };
+      const key = officer.code || officer.id || officer.name;
+      const previous = rosterByCode.get(key);
+      if (previous) Object.assign(previous, officer, {
+        id: previous.id || officer.id,
+        code: previous.code || officer.code,
+        name: previous.name || officer.name
+      });
+      else {
+        rosterByCode.set(key, officer);
+        roster.push(officer);
       }
-      roster.splice(0, roster.length, ownOfficer);
-    }
+    });
 
     const typedPaymentIds = new Set(typedPayments.map((payment) => String(payment.id)));
     const typedInvoiceSources = new Set(typedPayments.map((payment) => String(payment.sourceInvoiceId || '')).filter(Boolean));
@@ -439,23 +427,24 @@ export default async function handler(req, res) {
       periodValue: value,
       periodRange,
       beforePeriod: false,
-      user
+      scope
     });
     addPaymentRows(priorPaymentGroups, legacyPayments, {
       period,
       periodValue: value,
       periodRange,
       beforePeriod: true,
-      user
+      scope
     });
     const allPeriodPayments = [...periodPayments, ...periodPaymentGroups.values()];
     const allPriorPayments = [...priorPayments, ...priorPaymentGroups.values()];
 
     const filteredRoster = roster.filter((officer) => (
-      isAdminRole(user.role)
-      || (normalizeOfficerCode(officer.code) === normalizeOfficerCode(user.officerCode)
-        || String(officer.id || '') === String(user.officerId || '')
-        || officer.name === user.name)
+      matchesOfficerScope({
+        officerId: officer.id || officer.officerId,
+        officerCode: officer.code || officer.officerCode,
+        officerName: officer.name || officer.officerName
+      }, scope)
     ));
     const rows = filteredRoster.map((officer, index) => {
       const periodOfficerInvoices = periodInvoices.filter((row) => officerMatches(row._id, officer));
@@ -622,7 +611,7 @@ export default async function handler(req, res) {
     });
 
     const officerFilter = String(req.query?.officer || '');
-    const resultRows = isAdminRole(user.role) && officerFilter
+    const resultRows = officerFilter
       ? rows.filter((row) => row.officerId === officerFilter || row.officerCode === officerFilter)
       : rows;
     return res.status(200).json({ period, value, officers: resultRows });

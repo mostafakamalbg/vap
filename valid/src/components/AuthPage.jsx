@@ -1,8 +1,16 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ArrowLeft, Eye, EyeOff, KeyRound, ShieldCheck, UserRound, UserRoundPlus } from 'lucide-react';
 import { useAgro } from '../context/AgroContext';
 import { useUiPreferences } from '../context/UiPreferencesContext';
-import { ADMIN_ROLE, OFFICER_ROLE } from '../../shared/roles';
+import {
+  ADMIN_ROLE,
+  ASM_ROLE,
+  GENERAL_ADMIN_ROLE,
+  LOGISTIC_OFFICER_ROLE,
+  OFFICER_ROLE,
+  RSM_ROLE,
+  SO_ROLE
+} from '../../shared/roles';
 
 export default function AuthPage({ initialRole = 'admin', onNavigate, onLoginSuccess }) {
   const { login, registerOfficer } = useAgro();
@@ -19,15 +27,53 @@ export default function AuthPage({ initialRole = 'admin', onNavigate, onLoginSuc
     email: isRegistering ? '' : deviceOwnerEmail,
     password: '',
     officerCode: '',
-    phone: ''
+    phone: '',
+    territory: '',
+    role: initialRole === 'officer-register' ? SO_ROLE : '',
+    rsmId: '',
+    asmId: ''
   });
   const [message, setMessage] = useState('');
   const [warning, setWarning] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [supervisors, setSupervisors] = useState({ rsms: [], asms: [] });
+
+  useEffect(() => {
+    if (!isRegistering || ![ASM_ROLE, SO_ROLE].includes(form.role)) return undefined;
+    let cancelled = false;
+    const roles = form.role === ASM_ROLE ? [RSM_ROLE] : [ASM_ROLE, RSM_ROLE];
+    Promise.all(roles.map(async (supervisorRole) => {
+      const response = await fetch(`/api/auth/supervisors?role=${encodeURIComponent(supervisorRole)}`);
+      if (!response.ok) {
+        const result = await response.json();
+        throw new Error(result.error || 'সুপারভাইজারের তালিকা লোড করা যায়নি।');
+      }
+      return [supervisorRole, await response.json()];
+    })).then((results) => {
+      if (cancelled) return;
+      const lists = Object.fromEntries(results);
+      setSupervisors((previous) => ({
+        rsms: lists[RSM_ROLE] || previous.rsms,
+        asms: lists[ASM_ROLE] || previous.asms
+      }));
+      setError('');
+    }).catch((requestError) => {
+      if (!cancelled) setError(requestError.message);
+    });
+    return () => { cancelled = true; };
+  }, [form.role, isRegistering]);
 
   const changeForm = (event) => {
-    setForm((previous) => ({ ...previous, [event.target.name]: event.target.value }));
+    const { name, value } = event.target;
+    setForm((previous) => {
+      if (name === 'role') return { ...previous, role: value, rsmId: '', asmId: '' };
+      if (name === 'asmId') {
+        const selectedAsm = supervisors.asms.find((entry) => entry.id === value);
+        return { ...previous, asmId: value, rsmId: selectedAsm?.rsmId || '' };
+      }
+      return { ...previous, [name]: value };
+    });
   };
 
   const handleSubmit = async (event) => {
@@ -135,19 +181,65 @@ export default function AuthPage({ initialRole = 'admin', onNavigate, onLoginSuc
           {isRegistering && (
             <>
               <label className="block space-y-1">
+                <span className="text-xs font-bold text-slate-700">পদবি নির্বাচন করুন</span>
+                <select required name="role" value={form.role} onChange={changeForm} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100">
+                  <option value="">পদবি নির্বাচন করুন</option>
+                  <option value={RSM_ROLE}>রিজওনাল সেলস ম্যানেজার / RSM</option>
+                  <option value={ASM_ROLE}>এরিয়া সেলস ম্যানেজার / ASM</option>
+                  <option value={SO_ROLE}>সেলস অফিসার / SO</option>
+                  <option value={LOGISTIC_OFFICER_ROLE}>লজিস্টিক অফিসার / Logistic Officer</option>
+                  <option value={GENERAL_ADMIN_ROLE}>জেনারেল এডমিন / General Admin</option>
+                </select>
+              </label>
+              <label className="block space-y-1">
                 <span className="text-xs font-bold text-slate-700">{t('auth.officerName')}</span>
                 <input required name="name" value={form.name} onChange={changeForm} autoComplete="name" className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100" />
               </label>
+              {form.role === ASM_ROLE && (
+                <label className="block space-y-1">
+                  <span className="text-xs font-bold text-slate-700">সুপারভাইজিং RSM নির্বাচন করুন</span>
+                  <select required name="rsmId" value={form.rsmId} onChange={changeForm} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm">
+                    <option value="">RSM নির্বাচন করুন</option>
+                    {supervisors.rsms.map((supervisor) => (
+                      <option key={supervisor.id} value={supervisor.id}>
+                        {supervisor.name}{supervisor.territory ? ` • ${supervisor.territory}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              {form.role === SO_ROLE && (
+                <>
+                  <label className="block space-y-1">
+                    <span className="text-xs font-bold text-slate-700">সুপারভাইজিং ASM নির্বাচন করুন</span>
+                    <select required name="asmId" value={form.asmId} onChange={changeForm} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm">
+                      <option value="">ASM নির্বাচন করুন</option>
+                      {supervisors.asms.map((supervisor) => (
+                        <option key={supervisor.id} value={supervisor.id}>
+                          {supervisor.name}{supervisor.territory ? ` • ${supervisor.territory}` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                    অভিভাবক RSM: {supervisors.rsms.find((entry) => entry.id === form.rsmId)?.name || 'ASM নির্বাচন করুন'}
+                  </p>
+                </>
+              )}
               <div className="grid grid-cols-2 gap-3">
                 <label className="block space-y-1">
-                  <span className="text-xs font-bold text-slate-700">{t('auth.officerCode')}</span>
-                  <input required name="officerCode" value={form.officerCode} onChange={changeForm} placeholder="যেমন: SO-09" autoCapitalize="characters" className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100" />
+                  <span className="text-xs font-bold text-slate-700">অফিসার কোড / Code</span>
+                  <input required={form.role === SO_ROLE} name="officerCode" value={form.officerCode} onChange={changeForm} placeholder="যেমন: SO-09" autoCapitalize="characters" className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100" />
                 </label>
                 <label className="block space-y-1">
-                  <span className="text-xs font-bold text-slate-700">{t('auth.phone')}</span>
-                  <input required name="phone" value={form.phone} onChange={changeForm} autoComplete="tel" className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100" />
+                  <span className="text-xs font-bold text-slate-700">ফোন নম্বর / Phone</span>
+                  <input required={form.role === SO_ROLE} name="phone" value={form.phone} onChange={changeForm} autoComplete="tel" className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100" />
                 </label>
               </div>
+              <label className="block space-y-1">
+                <span className="text-xs font-bold text-slate-700">অঞ্চল / Territory</span>
+                <input name="territory" value={form.territory} onChange={changeForm} className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100" />
+              </label>
             </>
           )}
 
@@ -220,7 +312,7 @@ export default function AuthPage({ initialRole = 'admin', onNavigate, onLoginSuc
           ) : (
             <div className="flex flex-wrap justify-center gap-4">
               {role === OFFICER_ROLE && (
-                <button type="button" onClick={() => { setForm((previous) => ({ ...previous, email: '', password: '' })); setPasswordFieldActive(false); setShowPassword(false); setIsRegistering(true); setMessage(''); setWarning(''); setError(''); }} className="text-sm font-bold text-emerald-700 hover:underline">
+                <button type="button" onClick={() => { setForm((previous) => ({ ...previous, email: '', password: '', role: SO_ROLE, rsmId: '', asmId: '' })); setPasswordFieldActive(false); setShowPassword(false); setIsRegistering(true); setMessage(''); setWarning(''); setError(''); }} className="text-sm font-bold text-emerald-700 hover:underline">
                   {t('auth.newOfficer')}
                 </button>
               )}

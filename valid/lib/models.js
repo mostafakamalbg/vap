@@ -18,6 +18,9 @@ const userSchema = new Schema({
   },
   officerId: { type: String, default: '' },
   officerCode: { type: String, default: '' },
+  territory: { type: String, default: '' },
+  rsmId: { type: Schema.Types.ObjectId, ref: 'User', default: null },
+  asmId: { type: Schema.Types.ObjectId, ref: 'User', default: null },
   phone: { type: String, default: '' },
   officerPhoneMismatch: { type: Boolean, default: false },
   registeredOfficerPhone: { type: String, default: '' }

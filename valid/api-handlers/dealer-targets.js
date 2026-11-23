@@ -4,7 +4,10 @@ import { Dealer, DealerSalesTarget } from '../lib/models.js';
 import { authorize } from '../lib/auth.js';
 import { parseSessionDateRange } from '../shared/reportDateFilters.js';
 import { normalizeSessionText } from '../shared/sessions.js';
-import { ADMIN_ROLES } from '../shared/roles.js';
+import { ADMIN_ROLES, isAdminRole } from '../shared/roles.js';
+import { HIERARCHY_ROLE_VALUES } from '../shared/roles.js';
+import { resolveHierarchyScope } from '../lib/hierarchy.js';
+import { normalizeOfficerCode } from '../shared/codes.js';
 
 function isValidDate(value) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -17,12 +20,28 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
   if (!await dbConnect()) return res.status(503).json({ error: 'MongoDB is not configured.' });
-  const user = await authorize(req, res, ADMIN_ROLES);
+  const user = await authorize(
+    req,
+    res,
+    req.method === 'GET' ? [...ADMIN_ROLES, ...HIERARCHY_ROLE_VALUES] : ADMIN_ROLES
+  );
   if (!user) return;
 
   if (req.method === 'GET') {
     try {
-      return res.status(200).json(await DealerSalesTarget.find({}).sort({
+      const scope = await resolveHierarchyScope(user);
+      let filter = {};
+      if (!scope.global) {
+        const dealers = await Dealer.find({}).select('id officerCode').lean();
+        const codes = new Set([...scope.officerCodes]
+          .map((code) => normalizeOfficerCode(code))
+          .filter(Boolean));
+        const dealerIds = dealers.filter((dealer) => codes.has(
+          normalizeOfficerCode(dealer.officerCode)
+        )).map((dealer) => dealer.id);
+        filter = dealerIds.length ? { dealerId: { $in: dealerIds } } : { _id: null };
+      }
+      return res.status(200).json(await DealerSalesTarget.find(filter).sort({
         targetDate: -1,
         createdAt: -1
       }).lean());

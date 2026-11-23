@@ -5,7 +5,7 @@ import { BusinessRecord, Product } from '../lib/models.js';
 import { transactionOptions, withTransactionFallback } from '../lib/transactions.js';
 import { getStockInQuantities, isValidStockInQuantities } from '../shared/quantityUnits.js';
 import { STOCK_RECONCILIATION_START_DATE } from '../shared/stockReconciliation.js';
-import { ADMIN_ROLES } from '../shared/roles.js';
+import { ADMIN_ROLES, LOGISTIC_OFFICER_ROLE } from '../shared/roles.js';
 
 function isValidDate(value) {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -37,7 +37,7 @@ export default async function handler(req, res) {
     console.error('Stock-in database connection failed:', error);
     return res.status(503).json({ error: 'ডাটাবেজে সংযোগ করা যায়নি; পরে আবার চেষ্টা করুন।' });
   }
-  const user = await authorize(req, res, ADMIN_ROLES);
+  const user = await authorize(req, res, [...ADMIN_ROLES, LOGISTIC_OFFICER_ROLE]);
   if (!user) return;
 
   const inputs = Array.isArray(req.body?.entries) ? req.body.entries : [req.body || {}];
