@@ -1,5 +1,6 @@
 import { getInvoiceStockChanges } from './invoiceStock.js';
 import { getPackageQuantityUnit, getStockPackageCount } from './quantityUnits.js';
+import { compareNaturalText, compareProductsByCode } from './productSorting.js';
 
 function isInRange(date, range) {
   return String(date || '') >= range.start && String(date || '') < range.end;
@@ -78,6 +79,7 @@ export function calculateMonthlyStockReport({ products = [], invoices = [], stoc
     const calculatedNetStock = totalStock - movement.factoryReturn - movement.sales;
     rows.push({
       productId: product.id,
+      productCode: product.productCode || product.code || product.id,
       productName: product.name || 'পণ্য',
       sku: variant.sku,
       packSize: variant.size || '—',
@@ -96,8 +98,13 @@ export function calculateMonthlyStockReport({ products = [], invoices = [], stoc
     });
   }));
 
-  return rows.sort((left, right) => left.productName.localeCompare(right.productName)
-    || String(left.packSize).localeCompare(String(right.packSize)));
+  return rows.sort((left, right) => (
+    compareProductsByCode(
+      { id: left.productId, code: left.productCode, name: left.productName },
+      { id: right.productId, code: right.productCode, name: right.productName }
+    )
+    || compareNaturalText(left.packSize, right.packSize)
+  ));
 }
 
 export function sumMonthlyStockReport(rows = []) {

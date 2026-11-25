@@ -48,6 +48,8 @@ export default function DashboardReports() {
   const { currentUser } = useAgro();
   const [period, setPeriod] = useState('session');
   const [value, setValue] = useState(() => getInvoiceSessionForDate(new Date().toISOString().slice(0, 10)));
+  const [startSession, setStartSession] = useState(() => getInvoiceSessionForDate(new Date().toISOString().slice(0, 10)));
+  const [endSession, setEndSession] = useState(() => getInvoiceSessionForDate(new Date().toISOString().slice(0, 10)));
   const [selectedOfficer, setSelectedOfficer] = useState('');
   const [report, setReport] = useState({ officers: [] });
   const [loading, setLoading] = useState(true);
@@ -56,9 +58,13 @@ export default function DashboardReports() {
 
   const query = useMemo(() => {
     const params = new URLSearchParams({ period, value });
+    if (period === 'session-range') {
+      params.set('startSession', startSession);
+      params.set('endSession', endSession);
+    }
     if (selectedOfficer) params.set('officer', selectedOfficer);
     return params.toString();
-  }, [period, selectedOfficer, value]);
+  }, [endSession, period, selectedOfficer, startSession, value]);
 
   useEffect(() => {
     let cancelled = false;
@@ -130,7 +136,9 @@ export default function DashboardReports() {
     officePayment: 0, expenses: 0, fare: 0, salary: 0, lc: 0, received: 0, dues: 0,
     salesDues: 0
   });
-  const periodLabel = period === 'month'
+  const periodLabel = period === 'session-range'
+    ? `${startSession} থেকে ${endSession}`
+    : period === 'month'
     ? new Date(`${value}-01T00:00:00`).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
     : period === 'year' ? value : value;
 
@@ -138,6 +146,7 @@ export default function DashboardReports() {
     setPeriod(nextPeriod);
     if (nextPeriod === 'month') setValue(currentMonth);
     else if (nextPeriod === 'year') setValue(currentYear);
+    else if (nextPeriod === 'session-range') setValue(startSession);
     else setValue(getInvoiceSessionForDate(new Date().toISOString().slice(0, 10)));
     setSelectedOfficer('');
   };
@@ -172,11 +181,21 @@ export default function DashboardReports() {
             <option value="month">মাসিক</option>
             <option value="session">সেশন অনুযায়ী</option>
             <option value="year">বার্ষিক</option>
+            <option value="session-range">এত সেশন থেকে এত সেশন</option>
           </select>
         </label>
         <label className="text-xs font-bold text-slate-600">
-          {period === 'month' ? 'মাস' : period === 'year' ? 'বছর' : 'সেশন'}
-          {period === 'month' ? (
+          {period === 'month' ? 'মাস' : period === 'year' ? 'বছর' : period === 'session-range' ? 'শুরুর সেশন → শেষ সেশন' : 'সেশন'}
+          {period === 'session-range' ? (
+            <div className="mt-1 grid grid-cols-2 gap-2">
+              <select value={startSession} onChange={(event) => setStartSession(event.target.value)} className="w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-xs">
+                {sortSessionsNewestFirst(INVOICE_SESSIONS.filter(isCurrentSession)).map((session) => <option key={session} value={session}>{session}</option>)}
+              </select>
+              <select value={endSession} onChange={(event) => setEndSession(event.target.value)} className="w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-xs">
+                {sortSessionsNewestFirst(INVOICE_SESSIONS.filter(isCurrentSession)).map((session) => <option key={session} value={session}>{session}</option>)}
+              </select>
+            </div>
+          ) : period === 'month' ? (
             <input type="month" min="2025-07" value={value} onChange={(event) => setValue(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" />
           ) : period === 'year' ? (
             <select value={value} onChange={(event) => setValue(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm">

@@ -11,7 +11,7 @@ import {
   resolvePaymentRecordType
 } from '../shared/paymentMethods.js';
 import { dateRangeCondition, parseReportMonth, parseSessionDateRange } from '../shared/reportDateFilters.js';
-import { getInvoiceSessionForDate, normalizeSessionText } from '../shared/sessions.js';
+import { getInvoiceSessionForDate, INVOICE_SESSIONS, normalizeSessionText } from '../shared/sessions.js';
 import { ADMIN_ROLES } from '../shared/roles.js';
 import { HIERARCHY_ROLE_VALUES } from '../shared/roles.js';
 import { resolveHierarchyScope } from '../lib/hierarchy.js';
@@ -26,9 +26,16 @@ const EXPENSE_FIELDS = {
   lc_commission: 'lc'
 };
 
-function getPeriodRange(period, value) {
+function getPeriodRange(period, value, startSession, endSession) {
   if (period === 'month') return parseReportMonth(value);
   if (period === 'session') return parseSessionDateRange(value);
+  if (period === 'session-range') {
+    const start = parseSessionDateRange(startSession)?.start;
+    const endRange = parseSessionDateRange(endSession);
+    if (!start || !endRange) return null;
+    if (start >= endRange.end) return null;
+    return { start, end: endRange.end };
+  }
   if (period === 'year' && /^20\d{2}$/.test(value)) {
     return { start: `${value}-01-01`, end: `${Number(value) + 1}-01-01` };
   }
@@ -326,7 +333,12 @@ export default async function handler(req, res) {
 
   const period = String(req.query?.period || 'session');
   const value = String(req.query?.value || '');
-  const periodRange = getPeriodRange(period, value);
+  const periodRange = getPeriodRange(
+    period,
+    value,
+    String(req.query?.startSession || ''),
+    String(req.query?.endSession || '')
+  );
   if (!periodRange) return res.status(400).json({ error: 'রিপোর্টের সময়সীমা সঠিক নয়।' });
 
   try {
@@ -566,9 +578,12 @@ export default async function handler(req, res) {
         : period === 'month'
           ? getInvoiceSessionForDate(`${value}-01`)
           : `জানুয়ারি - জুন ${value}`;
-      const sessionTarget = session
-        ? getOfficerSalesTarget(officer, session)
-        : 0;
+      const sessionTarget = period === 'session-range'
+        ? INVOICE_SESSIONS.filter((entry) => {
+            const range = parseSessionDateRange(entry);
+            return Boolean(range && range.start >= periodRange.start && range.end <= periodRange.end);
+          }).reduce((sum, entry) => sum + getOfficerSalesTarget(officer, entry), 0)
+        : session ? getOfficerSalesTarget(officer, session) : 0;
       const targetYear = value.match(/\d{4}/)?.[0] || String(new Date().getFullYear());
       const julyDecemberTarget = getOfficerSalesTarget(officer, `জুলাই - ডিসেম্বর ${targetYear}`);
       const yearlyTarget = period === 'year'

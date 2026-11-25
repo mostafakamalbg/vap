@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { useAgro } from '../../context/AgroContext';
 import { formatDealerCode, formatOfficerCode, normalizeOfficerCode } from '../../../shared/codes';
+import { sortProductsByCode } from '../../../shared/productSorting';
 
 function formatDamageQuantity(log, products) {
   const product = products.find((entry) => entry.id === log.productId);
@@ -274,7 +275,7 @@ export default function DamageReturns() {
                   onChange={(e) => handleProductChange(e.target.value)}
                   className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm font-medium"
                 >
-                  {products.map((p) => (
+                  {sortProductsByCode(products).map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.name} ({p.category})
                     </option>

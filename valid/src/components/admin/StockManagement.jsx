@@ -19,11 +19,12 @@ import {
   getStockInQuantities,
   getStockPackageCount
 } from '../../../shared/quantityUnits';
+import { sortProductsByCode } from '../../../shared/productSorting';
 
 const MINIMUM_STOCK_LEVEL = 20;
 
 function getStockInRows(products, previousRows = []) {
-  return products.flatMap((product) => (product.variants || []).map((variant) => {
+  return sortProductsByCode(products).flatMap((product) => (product.variants || []).map((variant) => {
     const previous = previousRows.find((row) => row.productId === product.id && row.sku === variant.sku);
     return {
       productId: product.id,
@@ -123,7 +124,7 @@ export default function StockManagement() {
   const categories = ['ALL', 'কীটনাশক', 'ছত্রাকনাশক', 'সার ও অনুখাদ্য', 'গ্রোথ প্রমোটার'];
 
   // Filter products
-  const filteredProducts = products.filter((prod) => {
+  const filteredProducts = sortProductsByCode(products).filter((prod) => {
     const matchesCategory = selectedCategory === 'ALL' || prod.category === selectedCategory;
     const matchesSearch =
       prod.name.toLowerCase().includes(searchTerm.toLowerCase()) ||

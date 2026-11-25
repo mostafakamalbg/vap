@@ -10,6 +10,8 @@ import {
 import { normalizeOfficerCode } from '../../../shared/codes';
 import { roundAmount } from '../../../shared/salesReports';
 import { readJsonResponse } from '../../utils/api';
+import { getInvoiceSalesAmount, roundCurrency } from '../../../shared/invoiceTotals';
+import { isDealerCollection } from '../../../shared/paymentMethods';
 
 const amount = (value) => Math.round(Number(value) || 0).toLocaleString('en-US');
 const emptyParty = () => ({
@@ -71,11 +73,10 @@ function ReportField({ label, value, onChange, type = 'text', required = false, 
 }
 
 export default function MonthlySalesReports() {
-  const { officers } = useAgro();
+  const { officers, invoices = [], payments = [], dealers = [] } = useAgro();
   const [reports, setReports] = useState([]);
   const [allReports, setAllReports] = useState([]);
   const [reportDraft, setReportDraft] = useState(createReportDraft);
-  const [sessionFilter, setSessionFilter] = useState('ALL');
   const [monthFilter, setMonthFilter] = useState('ALL');
   const [selectedReportId, setSelectedReportId] = useState('');
   const [error, setError] = useState('');
@@ -93,7 +94,6 @@ export default function MonthlySalesReports() {
   useEffect(() => {
     let cancelled = false;
     const query = new URLSearchParams();
-    if (sessionFilter !== 'ALL') query.set('session', sessionFilter);
     if (monthFilter !== 'ALL') query.set('month', monthFilter);
     requestJson(`/api/reports?${query}`)
       .then((records) => {
@@ -108,7 +108,7 @@ export default function MonthlySalesReports() {
       })
       .catch((requestError) => { if (!cancelled) setError(requestError.message); });
     return () => { cancelled = true; };
-  }, [monthFilter, selectedReportId, sessionFilter]);
+  }, [monthFilter, selectedReportId]);
 
   const availableMonths = useMemo(() => (
     [...new Set(allReports
@@ -140,6 +140,73 @@ export default function MonthlySalesReports() {
   const updateReportHeader = (field, value) => {
     setReportDraft((current) => ({ ...current, [field]: value }));
   };
+
+  useEffect(() => {
+    const monthPrefix = String(reportDraft.reportingDate || '').slice(0, 7);
+    const officerCode = normalizeOfficerCode(reportDraft.officerCode);
+    if (!monthPrefix || (!reportDraft.officerId && !officerCode)) return;
+    const officerMatches = (record) => (
+      (reportDraft.officerId && record.officerId === reportDraft.officerId)
+      || (officerCode && normalizeOfficerCode(record.officerCode) === officerCode)
+      || (!record.officerId && !record.officerCode
+        && reportDraft.personName && record.officerName === reportDraft.personName)
+    );
+    const partyMap = new Map();
+    invoices.filter((invoice) => (
+      String(invoice.date || '').startsWith(monthPrefix) && officerMatches(invoice)
+    )).forEach((invoice) => {
+      const dealerId = String(invoice.dealerId || '');
+      const dealerCode = String(invoice.dealerCode || '');
+      const dealerName = String(invoice.dealerName || dealers.find((dealer) => dealer.id === dealerId)?.shopName || 'নাম নেই');
+      const key = dealerId || dealerCode || dealerName;
+      const party = partyMap.get(key) || {
+        lastMonthDues: roundCurrency(dealers.find((dealer) => dealer.id === dealerId)?.lastSessionDue || 0),
+        sales: 0,
+        returned: 0,
+        dealerName
+      };
+      if (invoice.invoiceType === 'dealer_return') party.returned += Math.abs(roundCurrency(getInvoiceSalesAmount(invoice)));
+      else party.sales += roundCurrency(getInvoiceSalesAmount(invoice));
+      partyMap.set(key, party);
+    });
+    payments.filter((payment) => (
+      String(payment.date || '').startsWith(monthPrefix)
+      && officerMatches(payment)
+      && isDealerCollection(payment)
+      && !payment.sourceInvoiceId
+      && !/(?:invoice|চালান)\s*#/i.test(String(payment.reference || ''))
+    )).forEach((payment) => {
+      const dealerId = String(payment.dealerId || '');
+      const dealerName = String(payment.dealerName || 'নাম নেই');
+      const key = dealerId || dealerName;
+      const party = partyMap.get(key) || { lastMonthDues: 0, sales: 0, returned: 0, dealerName };
+      party.collection = roundCurrency((party.collection || 0) + roundCurrency(payment.amount));
+      partyMap.set(key, party);
+    });
+    if (!partyMap.size) return;
+    setReportDraft((current) => ({
+      ...current,
+      parties: [...partyMap.entries()].map(([key, party], index) => ({
+        slNo: index + 1,
+        nameOfTheParty: String(party.dealerName || key),
+        lastMonthDues: roundCurrency(party.lastMonthDues),
+        presentMonth: {
+          sales: roundCurrency(party.sales),
+          return: roundCurrency(party.returned),
+          netSales: roundCurrency(party.sales - party.returned)
+        },
+        lastAndPresent: {
+          netSales: roundCurrency(party.lastMonthDues + party.sales - party.returned),
+          salary: 0,
+          collection: roundCurrency(party.collection || 0),
+          fare: 0,
+          l_c: 0
+        },
+        presentMonthTotalCollection: roundCurrency(party.collection || 0),
+        presentMonthNetDues: roundCurrency(party.lastMonthDues + party.sales - party.returned - (party.collection || 0))
+      }))
+    }));
+  }, [dealers, invoices, payments, reportDraft.officerId, reportDraft.officerCode, reportDraft.personName, reportDraft.reportingDate]);
 
   const saveReport = async (event) => {
     event.preventDefault();
@@ -202,15 +269,9 @@ export default function MonthlySalesReports() {
         <div className="no-print flex flex-wrap items-end justify-between gap-3">
           <div>
             <h2 className="font-black text-slate-900">মাসিক রিপোর্ট</h2>
-            <p className="text-xs text-slate-500">সেশন এবং মাস/তারিখ—দুটি ফিল্টারই সার্ভারে প্রয়োগ হয়।</p>
+            <p className="text-xs text-slate-500">মাস/তারিখ প্রাথমিক ফিল্টার; সেশন রেকর্ডের স্বতন্ত্র তথ্য হিসেবে থাকে।</p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <label className="text-xs font-semibold text-slate-600">সেশন
-              <select value={sessionFilter} onChange={(event) => setSessionFilter(event.target.value)} className="ml-2 rounded-lg border border-slate-300 bg-white px-3 py-2">
-                <option value="ALL">সকল সেশন</option>
-                {availableSessions.map((session) => <option key={session} value={session}>{session}</option>)}
-              </select>
-            </label>
             <label className="text-xs font-semibold text-slate-600">মাস
               <select value={monthFilter} onChange={(event) => setMonthFilter(event.target.value)} className="ml-2 rounded-lg border border-slate-300 bg-white px-3 py-2">
                 <option value="ALL">সকল মাস</option>

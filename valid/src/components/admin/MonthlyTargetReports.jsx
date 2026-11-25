@@ -258,7 +258,14 @@ export default function MonthlyTargetReports() {
   const officerReport = useMemo(() => {
     const range = periodRange(officerFilter);
     if (!range) return { rows: [], totals: null };
-    const rows = officers.map((officer) => {
+    const uniqueOfficers = new Map();
+    officers.forEach((officer) => {
+      const key = normalizeOfficerCode(officer.code, officer.designation)
+        || String(officer.id || officer.officerId || '')
+        || String(officer.name || '').trim();
+      if (key && !uniqueOfficers.has(key)) uniqueOfficers.set(key, officer);
+    });
+    const rows = [...uniqueOfficers.values()].map((officer) => {
       const saved = officerTargets.find((record) => officerMatches(record, officer)) || {};
       const target = getTargetValue({ ...officer, ...saved }, officerFilter, range);
       const officerInvoices = invoices.filter((invoice) => (
@@ -317,9 +324,17 @@ export default function MonthlyTargetReports() {
   const dealerReport = useMemo(() => {
     const range = periodRange(dealerFilter);
     if (!range) return { rows: [], totals: null };
-    const rows = dealerTargets.filter((target) => isInPeriod(target.targetDate, range)
+    const groupedTargets = new Map();
+    dealerTargets.filter((target) => isInPeriod(target.targetDate, range)
       && (dealerFilter.type !== 'session' || target.session === dealerFilter.value))
-      .map((target) => {
+      .forEach((target) => {
+        const key = `${String(target.dealerId || target.dealerCode || target.dealerName || '')}|${String(target.session || '')}`;
+        const previous = groupedTargets.get(key);
+        if (!previous || String(target.targetDate || '').localeCompare(String(previous.targetDate || '')) >= 0) {
+          groupedTargets.set(key, target);
+        }
+      });
+    const rows = [...groupedTargets.values()].map((target) => {
         const dealer = dealers.find((entry) => entry.id === target.dealerId);
         const isDealerInvoice = (invoice) => (
           invoice.dealerId === target.dealerId

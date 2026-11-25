@@ -36,6 +36,7 @@ import {
   SUPER_ADMIN_ROLE
 } from '../../shared/roles';
 import { readJsonResponse } from '../utils/api';
+import { sortProductsByCode } from '../../shared/productSorting';
 
 const AgroContext = createContext();
 
@@ -165,7 +166,7 @@ export function AgroProvider({ children }) {
   // Version 5 storage keys for continuous serial 1 to 83 dealer codes and 26 products
   const [products, setProducts] = useState(() => {
     const saved = localStorage.getItem('vap_products_v5');
-    return normalizeProductDisplayNames(saved ? JSON.parse(saved) : INITIAL_PRODUCTS);
+    return sortProductsByCode(normalizeProductDisplayNames(saved ? JSON.parse(saved) : INITIAL_PRODUCTS));
   });
 
   const [officers, setOfficers] = useState(() => {
@@ -368,7 +369,7 @@ export function AgroProvider({ children }) {
       records,
       type === 'dealers' ? officers : []
     ));
-    setters[type](normalizedRecords);
+    setters[type](type === 'products' ? sortProductsByCode(normalizedRecords) : normalizedRecords);
     return normalizedRecords;
   };
 

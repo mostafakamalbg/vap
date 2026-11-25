@@ -8,6 +8,7 @@ import { ADMIN_ROLES, isAdminRole } from '../shared/roles.js';
 import { HIERARCHY_ROLE_VALUES } from '../shared/roles.js';
 import { resolveHierarchyScope } from '../lib/hierarchy.js';
 import { normalizeOfficerCode } from '../shared/codes.js';
+import { normalizeDealerAssignment } from '../shared/codes.js';
 
 function isValidDate(value) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -32,13 +33,17 @@ export default async function handler(req, res) {
       const scope = await resolveHierarchyScope(user);
       let filter = {};
       if (!scope.global) {
-        const dealers = await Dealer.find({}).select('id officerCode').lean();
+        const dealers = await Dealer.find({}).select('id code shopName officerCode assignedOfficerCode assignedOfficerId officerId').lean();
         const codes = new Set([...scope.officerCodes]
           .map((code) => normalizeOfficerCode(code))
           .filter(Boolean));
-        const dealerIds = dealers.filter((dealer) => codes.has(
-          normalizeOfficerCode(dealer.officerCode)
-        )).map((dealer) => dealer.id);
+        const dealerIds = dealers.map((dealer) => normalizeDealerAssignment(dealer, []))
+          .filter((dealer) => (
+            codes.has(normalizeOfficerCode(dealer.officerCode))
+            || codes.has(normalizeOfficerCode(dealer.assignedOfficerCode))
+            || scope.officerIds.has(String(dealer.assignedOfficerId || dealer.officerId || ''))
+          ))
+          .map((dealer) => dealer.id);
         filter = dealerIds.length ? { dealerId: { $in: dealerIds } } : { _id: null };
       }
       return res.status(200).json(await DealerSalesTarget.find(filter).sort({

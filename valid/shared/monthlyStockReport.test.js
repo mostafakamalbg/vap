@@ -34,6 +34,7 @@ test('monthly stock report computes opening stock and all requested movement cat
 
   assert.deepEqual(rows[0], {
     productId: 'p1',
+    productCode: 'p1',
     productName: 'Crop Guard',
     sku: 's1',
     packSize: '১০০ মিলি',

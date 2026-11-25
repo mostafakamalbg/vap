@@ -2,6 +2,7 @@ import dbConnect from '../lib/mongodb.js';
 import { Product } from '../lib/models.js';
 import { authorize } from '../lib/auth.js';
 import { ADMIN_ROLES, OFFICER_ROLE } from '../shared/roles.js';
+import { sortProductsByCode } from '../shared/productSorting.js';
 
 export default async function handler(req, res) {
   if (!['GET', 'POST'].includes(req.method)) {
@@ -15,8 +16,8 @@ export default async function handler(req, res) {
   }
   if (req.method === 'GET') {
     try {
-      const products = await Product.find({}).sort({ id: 1 });
-      return res.status(200).json(products.map((product) => product.toObject()));
+      const products = await Product.find({}).lean();
+      return res.status(200).json(sortProductsByCode(products));
     } catch (error) {
       console.error('Product lookup failed:', error);
       return res.status(500).json({ error: 'পণ্য লোড করা যায়নি।' });

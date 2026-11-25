@@ -12,6 +12,7 @@ import {
 import { useAgro } from '../../context/AgroContext';
 import { useUiPreferences } from '../../context/UiPreferencesContext';
 import { toBn } from '../../utils/bengali';
+import { sortProductsByCode } from '../../../shared/productSorting';
 
 const categoryDefinitions = [
   { value: 'pesticide', label: 'কীটনাশক', aliases: ['কীটনাশক', 'pesticide', 'pesticides', 'insecticide'] },
@@ -75,7 +76,7 @@ export default function ProductCatalog({
   }));
   const selectedCategoryDetails = categories.find((category) => category.value === selectedCategory);
 
-  const filtered = products.filter((p) => {
+  const filtered = sortProductsByCode(products).filter((p) => {
     const matchCat = selectedCategory === 'ALL'
       || (selectedCategoryDetails && belongsToCategory(p.category, selectedCategoryDetails));
     const matchSearch =
