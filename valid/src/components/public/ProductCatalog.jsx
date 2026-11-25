@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Package,
   Search,
@@ -11,27 +11,73 @@ import {
 } from 'lucide-react';
 import { useAgro } from '../../context/AgroContext';
 import { useUiPreferences } from '../../context/UiPreferencesContext';
+import { toBn } from '../../utils/bengali';
 
-export default function ProductCatalog({ onSelectProductForInvoice, actionLabel = 'চালানে যোগ করুন' }) {
+const categoryDefinitions = [
+  { value: 'pesticide', label: 'কীটনাশক', aliases: ['কীটনাশক', 'pesticide', 'pesticides', 'insecticide'] },
+  { value: 'nematicide', label: 'নেমাটোডানাশক', aliases: ['নেমাটোডানাশক', 'nematicide'] },
+  { value: 'fungicide', label: 'ছত্রাকনাশক', aliases: ['ছত্রাকনাশক', 'fungicide'] },
+  { value: 'bactericide', label: 'ব্যাকটেরিয়ানাশক', aliases: ['ব্যাকটেরিয়ানাশক', 'ব্যাকটেরিয়ানাশক', 'bactericide'] },
+  { value: 'herbicide', label: 'আগাছানাশক', aliases: ['আগাছানাশক', 'herbicide'] },
+  { value: 'bio', label: 'জৈব বালাইনাশক', aliases: ['জৈব বালাইনাশক', 'জৈব বালাই নাশক', 'bio pesticide', 'biopesticide'] },
+  { value: 'pgr', label: 'পিজিআর – উদ্ভিদ বৃদ্ধি নিয়ন্ত্রক', aliases: ['পিজিআর', 'গ্রোথ প্রমোটার', 'উদ্ভিদ বৃদ্ধি নিয়ন্ত্রক', 'plant growth regulator', 'pgr'] },
+  { value: 'fertilizer', label: 'সার – ফার্টিলাইজার', aliases: ['সার', 'সার ও অনুখাদ্য', 'ফার্টিলাইজার', 'fertilizer', 'fertiliser', 'অনুখাদ্য'] },
+  { value: 'seeds', label: 'বীজ', aliases: ['বীজ', 'বীজ অনুখাদ্য', 'seed', 'seeds'] },
+  { value: 'miticide', label: 'মাকড়নাশক', aliases: ['মাকড়নাশক', 'মাকড় নাশক', 'miticide', 'acaricide'] },
+  { value: 'rodenticide', label: 'ইঁদুরনাশক', aliases: ['ইঁদুরনাশক', 'ইঁদুর নাশক', 'রোডেন্টিসাইড', 'rodenticide', 'rat killer'] },
+  { value: 'other', label: 'অন্যান্য পণ্য', aliases: [] },
+  { value: 'education', label: 'শিক্ষণীয় তথ্য', aliases: [] },
+  { value: 'ALL', label: 'সকল পণ্য – All Products', aliases: [] }
+];
+
+function normalizeCategory(value) {
+  return String(value || '')
+    .normalize('NFC')
+    .toLocaleLowerCase()
+    .replace(/[\s–—-]+/g, '');
+}
+
+function belongsToCategory(productCategory, category) {
+  const normalized = normalizeCategory(productCategory);
+  if (category.value === 'ALL' || category.value === 'education' || !normalized) return false;
+  if (category.value === 'other') {
+    return !categoryDefinitions.some((entry) => (
+      !['ALL', 'other', 'education'].includes(entry.value)
+      && entry.aliases.some((alias) => normalizeCategory(alias) === normalized)
+    ));
+  }
+  return category.aliases.some((alias) => normalizeCategory(alias) === normalized);
+}
+
+export default function ProductCatalog({
+  onSelectProductForInvoice,
+  actionLabel = 'চালানে যোগ করুন',
+  initialCategory = 'ALL'
+}) {
   const { products } = useAgro();
   const { t, language } = useUiPreferences();
   const localizedActionLabel = language === 'en'
     ? actionLabel === 'অর্ডার করুন' ? 'Place Order' : 'Add to Invoice'
     : actionLabel;
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('ALL');
+  const [selectedCategory, setSelectedCategory] = useState(initialCategory);
   const [activeModalProduct, setActiveModalProduct] = useState(null);
 
-  const categories = [
-    { value: 'ALL', label: t('catalog.all') },
-    { value: 'কীটনাশক', label: t('catalog.pesticide') },
-    { value: 'ছত্রাকনাশক', label: t('catalog.fungicide') },
-    { value: 'সার ও অনুখাদ্য', label: t('catalog.fertilizer') },
-    { value: 'গ্রোথ প্রমোটার', label: t('catalog.growth') }
-  ];
+  useEffect(() => {
+    setSelectedCategory(initialCategory);
+  }, [initialCategory]);
+
+  const categories = categoryDefinitions.map((category) => ({
+    ...category,
+    count: category.value === 'ALL'
+      ? products.length
+      : products.filter((product) => belongsToCategory(product.category, category)).length
+  }));
+  const selectedCategoryDetails = categories.find((category) => category.value === selectedCategory);
 
   const filtered = products.filter((p) => {
-    const matchCat = selectedCategory === 'ALL' || p.category === selectedCategory;
+    const matchCat = selectedCategory === 'ALL'
+      || (selectedCategoryDetails && belongsToCategory(p.category, selectedCategoryDetails));
     const matchSearch =
       (p.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
       (p.generic || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -78,7 +124,7 @@ export default function ProductCatalog({ onSelectProductForInvoice, actionLabel 
                   : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
               }`}
             >
-              {cat.label}
+              {cat.label} ({language === 'bn' ? toBn(cat.count) : cat.count})
             </button>
           ))}
         </div>
@@ -94,7 +140,7 @@ export default function ProductCatalog({ onSelectProductForInvoice, actionLabel 
             <div>
               <div className="flex justify-between items-start gap-2 mb-2">
                 <span className="bg-emerald-50 text-emerald-800 text-[11px] font-bold px-2.5 py-0.5 rounded-full border border-emerald-200">
-                  {categories.find((category) => category.value === prod.category)?.label || prod.category}
+                  {categories.find((category) => belongsToCategory(prod.category, category))?.label || prod.category}
                 </span>
                 <span className="text-slate-400 font-mono text-xs">#{idx + 1}</span>
               </div>
@@ -144,7 +190,13 @@ export default function ProductCatalog({ onSelectProductForInvoice, actionLabel 
         ))}
       </div>
 
-      {filtered.length === 0 && (
+      {selectedCategory === 'education' && (
+        <section className="space-y-3 rounded-xl border border-emerald-100 bg-white p-5 shadow-sm">
+          <h2 className="text-lg font-black text-slate-900">পণ্য ব্যবহারের আগে গুরুত্বপূর্ণ তথ্য</h2>
+          <p className="text-sm leading-6 text-slate-600">পণ্য নির্বাচন ও ব্যবহারের আগে প্যাকেটের লেবেল, অনুমোদিত ফসল, মাত্রা, সতর্কতা এবং অপেক্ষাকাল ভালোভাবে পড়ুন। ফসল বা রোগ শনাক্তকরণে নিশ্চিত না হলে কৃষি কর্মকর্তা বা অনুমোদিত বিশেষজ্ঞের পরামর্শ নিন।</p>
+        </section>
+      )}
+      {filtered.length === 0 && selectedCategory !== 'education' && (
         <div className="text-center py-16 bg-white rounded-xl border border-slate-200 p-8 space-y-2">
           <p className="text-slate-500 font-medium text-sm">{t('catalog.notFound')}</p>
           <button

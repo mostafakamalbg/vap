@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Check, ClipboardCheck, KeyRound, Pencil, Plus, RefreshCw, ShieldX, Trash2, Users } from 'lucide-react';
 import { useAgro } from '../../context/AgroContext';
 import { formatOfficerCode } from '../../../shared/codes';
+import LivePresenceBoard from './LivePresenceBoard';
 import {
   ASM_ROLE,
   LOGISTIC_OFFICER_ROLE,
@@ -30,6 +31,7 @@ export default function AdminAccess({ onInvoiceCreated }) {
   const [activeUsers, setActiveUsers] = useState([]);
   const [orders, setOrders] = useState([]);
   const [approvalRequests, setApprovalRequests] = useState([]);
+  const [farmerOpinions, setFarmerOpinions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState('');
   const [editingOrderId, setEditingOrderId] = useState('');
@@ -43,16 +45,18 @@ export default function AdminAccess({ onInvoiceCreated }) {
     setLoading(true);
     setError('');
     try {
-      const [users, officers, allOrders, requests] = await Promise.all([
+      const [users, officers, allOrders, requests, opinions] = await Promise.all([
         canManageUsers ? requestJson('/api/users') : Promise.resolve([]),
         canManageUsers ? requestJson('/api/users?status=active') : Promise.resolve([]),
         requestJson('/api/orders'),
-        isSuperAdmin ? requestJson('/api/approvals') : Promise.resolve([])
+        canManageUsers ? requestJson('/api/approvals') : Promise.resolve([]),
+        canManageUsers ? requestJson('/api/farmer-opinions?queue=1') : Promise.resolve([])
       ]);
       setPendingUsers(users);
       setActiveUsers(officers);
       setOrders(allOrders);
       setApprovalRequests(requests);
+      setFarmerOpinions(opinions);
     } catch (requestError) {
       setError(requestError.message);
     } finally {
@@ -61,6 +65,10 @@ export default function AdminAccess({ onInvoiceCreated }) {
   }, [canManageUsers, isSuperAdmin]);
 
   useEffect(() => { refresh(); }, [refresh]);
+  useEffect(() => {
+    const timer = window.setInterval(refresh, 30_000);
+    return () => window.clearInterval(timer);
+  }, [refresh]);
 
   const updateOfficer = async (userId, status) => {
     setBusyId(userId);
@@ -200,6 +208,26 @@ export default function AdminAccess({ onInvoiceCreated }) {
         ));
       }
       setMessage(decision === 'approved' ? 'পরিবর্তন অনুমোদিত ও সংরক্ষিত হয়েছে।' : 'অনুরোধ প্রত্যাখ্যান করা হয়েছে।');
+      await refresh();
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setBusyId('');
+    }
+  };
+
+  const decideFarmerOpinion = async (opinion, decision) => {
+    if (decision === 'rejected' && !window.confirm('এই অপেক্ষমাণ মতামত ও ছবির রেফারেন্স স্থায়ীভাবে সরিয়ে ফেলবেন?')) return;
+    setBusyId(opinion.id);
+    setError('');
+    setMessage('');
+    try {
+      const result = await requestJson('/api/farmer-opinions', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: opinion.id, decision })
+      });
+      setMessage(result.message);
       await refresh();
     } catch (requestError) {
       setError(requestError.message);
@@ -460,13 +488,13 @@ export default function AdminAccess({ onInvoiceCreated }) {
         </div>
       </section>
 
-      {isSuperAdmin && (
+      {canManageUsers && (
         <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
           <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
             <div className="flex items-center gap-2">
               <ClipboardCheck className="h-5 w-5 text-amber-700" />
               <div>
-                <h2 className="font-black text-slate-900">সুপার অ্যাডমিন অনুমোদন কিউ</h2>
+                <h2 className="font-black text-slate-900">{isSuperAdmin ? 'সুপার অ্যাডমিন অনুমোদন কিউ' : 'অফিসার পেমেন্ট অনুমোদন কিউ'}</h2>
                 <p className="text-xs text-slate-500">{approvalRequests.length}টি পরিবর্তন পর্যালোচনার অপেক্ষায়</p>
               </div>
             </div>
@@ -479,7 +507,8 @@ export default function AdminAccess({ onInvoiceCreated }) {
                     <p className="font-bold text-slate-900">
                       {request.requestType === 'invoice_update' ? 'ইনভয়েস সংশোধন'
                         : request.requestType === 'payment_update' ? 'পেমেন্ট সংশোধন'
-                          : 'স্টক-ইন চালান সংশোধন'} • {request.targetId}
+                          : request.requestType === 'officer_payment_submission' ? 'অফিসার পেমেন্ট অনুমোদন'
+                            : 'স্টক-ইন চালান সংশোধন'} • {request.targetId}
                     </p>
                     <p className="text-xs text-slate-500">
                       জমাদানকারী: {request.submittedBy} ({request.submittedByRole}) •{' '}
@@ -491,12 +520,14 @@ export default function AdminAccess({ onInvoiceCreated }) {
                 <div className="grid gap-3 lg:grid-cols-2">
                   {[
                     ['মূল তথ্য', request.original],
-                    ['প্রস্তাবিত পরিবর্তন', request.proposed]
+                    ['প্রস্তাবিত পরিবর্তন', request.requestType === 'officer_payment_submission'
+                      ? request.proposed?.payment
+                      : request.proposed]
                   ].map(([label, values]) => (
                     <div key={label} className="min-w-0 rounded-lg border border-slate-200 bg-slate-50 p-3">
                       <h3 className="mb-2 text-xs font-black text-slate-700">{label}</h3>
                       <dl className="space-y-1">
-                        {Object.entries(values || {}).filter(([key]) => !['_id', '__v', 'createdAt', 'updatedAt'].includes(key)).map(([key, value]) => (
+                        {Object.entries(values || {}).filter(([key]) => !['_id', '__v', 'createdAt', 'updatedAt', 'proof'].includes(key)).map(([key, value]) => (
                           <div key={key} className="grid grid-cols-[minmax(5rem,auto)_1fr] gap-2 text-[11px]">
                             <dt className="break-all font-semibold text-slate-500">{key}</dt>
                             <dd className="break-all text-slate-800">{value != null && typeof value === 'object' ? JSON.stringify(value) : String(value ?? '—')}</dd>
@@ -506,6 +537,12 @@ export default function AdminAccess({ onInvoiceCreated }) {
                     </div>
                   ))}
                 </div>
+                {request.requestType === 'officer_payment_submission' && request.proposed?.proof?.dataUrl && (
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                    <h3 className="mb-2 text-xs font-black text-slate-700">পেমেন্টের ছবি প্রমাণ</h3>
+                    <img src={request.proposed.proof.dataUrl} alt="অফিসার জমাকৃত পেমেন্টের প্রমাণ" className="max-h-64 max-w-full rounded-lg object-contain" />
+                  </div>
+                )}
                 <div className="flex gap-2">
                   <button disabled={busyId === request.id} onClick={() => decideApprovalRequest(request, 'approved')} className="inline-flex items-center gap-1 rounded-lg bg-emerald-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">
                     <Check className="h-4 w-4" /> অনুমোদন ও প্রয়োগ
@@ -520,6 +557,35 @@ export default function AdminAccess({ onInvoiceCreated }) {
           </div>
         </section>
       )}
+
+      {canManageUsers && (
+        <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+          <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+            <div>
+              <h2 className="font-black text-slate-900">কৃষকের মতামত অনুমোদন</h2>
+              <p className="text-xs text-slate-500">{farmerOpinions.length}টি মতামত পর্যালোচনার অপেক্ষায়</p>
+            </div>
+          </div>
+          <div className="divide-y divide-slate-100">
+            {farmerOpinions.map((opinion) => (
+              <article key={opinion.id} className="space-y-3 px-5 py-4">
+                <div>
+                  <p className="font-bold text-slate-900">{opinion.farmerName} • {opinion.district}</p>
+                  <p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">{opinion.opinion}</p>
+                  <p className="mt-1 text-[11px] text-slate-500">{opinion.showNamePublicly ? 'নাম প্রকাশে সম্মতি দিয়েছেন' : 'নাম গোপন থাকবে'}</p>
+                </div>
+                {opinion.photo?.dataUrl && <img src={opinion.photo.dataUrl} alt="পর্যালোচনার জন্য জমাকৃত ছবি" className="max-h-64 rounded-lg object-contain" />}
+                <div className="flex gap-2">
+                  <button disabled={busyId === opinion.id} onClick={() => decideFarmerOpinion(opinion, 'approved')} className="rounded-lg bg-emerald-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">অনুমোদন ও প্রকাশ</button>
+                  <button disabled={busyId === opinion.id} onClick={() => decideFarmerOpinion(opinion, 'rejected')} className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700 disabled:opacity-50">প্রত্যাখ্যান ও সরান</button>
+                </div>
+              </article>
+            ))}
+            {!loading && farmerOpinions.length === 0 && <p className="px-5 py-8 text-center text-sm text-slate-500">অনুমোদনের অপেক্ষায় কোনো মতামত নেই।</p>}
+          </div>
+        </section>
+      )}
+      {(isAdminRole(currentUser?.role) || currentUser?.role === LOGISTIC_OFFICER_ROLE) && <LivePresenceBoard />}
     </div>
   );
 }

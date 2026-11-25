@@ -16,6 +16,11 @@ import reports from '../api-handlers/reports.js';
 import salesOfficers from '../api-handlers/sales-officers.js';
 import dealerTargets from '../api-handlers/dealer-targets.js';
 import approvals from '../api-handlers/approvals.js';
+import publicDashboard from '../api-handlers/public-dashboard.js';
+import farmerOpinions from '../api-handlers/farmer-opinions.js';
+import dealerLedger from '../api-handlers/dealer-ledger.js';
+import presence from '../api-handlers/presence.js';
+import officerPayments from '../api-handlers/officer-payments.js';
 
 const handlers = {
   backup,
@@ -34,7 +39,12 @@ const handlers = {
   reports,
   'sales-officers': salesOfficers,
   'dealer-targets': dealerTargets,
-  approvals
+  approvals,
+  'public-dashboard': publicDashboard,
+  'farmer-opinions': farmerOpinions,
+  'dealer-ledger': dealerLedger,
+  presence,
+  'officer-payments': officerPayments
 };
 
 function requestPath(value) {

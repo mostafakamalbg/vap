@@ -15,6 +15,7 @@ import { getInvoicePackageCount } from '../../../shared/invoiceCartons';
 import { getInvoiceSalesAmount } from '../../../shared/invoiceTotals';
 import { printInvoiceSheet } from '../../utils/printInvoice';
 import InvoicePrintHeader from './InvoicePrintHeader';
+import InvoiceGenerator from './InvoiceGenerator';
 import { LOGISTIC_OFFICER_ROLE, SUPER_ADMIN_ROLE, isAdminRole } from '../../../shared/roles';
 
 function getInvoiceSequence(invoice) {
@@ -62,7 +63,7 @@ function toDamageInvoice(log) {
   };
 }
 
-export default function InvoiceList({ onNewInvoiceClick, onEditInvoice, initialInvoiceId = '' }) {
+export default function InvoiceList({ onNewInvoiceClick, initialInvoiceId = '' }) {
   const { invoices, damageLogs, deleteInvoice, currentUser } = useAgro();
   const canEditSales = isAdminRole(currentUser?.role)
     || currentUser?.role === LOGISTIC_OFFICER_ROLE;
@@ -75,6 +76,7 @@ export default function InvoiceList({ onNewInvoiceClick, onEditInvoice, initialI
   const [filterError, setFilterError] = useState('');
   const [filterLoading, setFilterLoading] = useState(false);
   const [printInvoice, setPrintInvoice] = useState(null);
+  const [editingInvoiceId, setEditingInvoiceId] = useState('');
   const [deletingId, setDeletingId] = useState('');
   const hasPeriodFilter = sessionFilter !== 'ALL' || monthFilter !== 'ALL' || Boolean(dateFilter);
   const sessions = useMemo(() => sortSessionsNewestFirst([
@@ -120,8 +122,11 @@ export default function InvoiceList({ onNewInvoiceClick, onEditInvoice, initialI
 
   const printSelectedInvoice = () => {
     document.body.classList.add('print-invoice-only');
-    printInvoiceSheet(document.querySelector('.invoice-print-sheet'));
-    document.body.classList.remove('print-invoice-only');
+    try {
+      printInvoiceSheet(document.querySelector('.invoice-print-preview .invoice-print-sheet'));
+    } finally {
+      document.body.classList.remove('print-invoice-only');
+    }
   };
   const printInvoiceList = () => {
     document.body.classList.add('print-invoice-list-only');
@@ -212,6 +217,11 @@ export default function InvoiceList({ onNewInvoiceClick, onEditInvoice, initialI
       setDeletingId('');
     }
   };
+  const beginInlineEdit = (invoice) => {
+    if (!window.confirm(`ইনভয়েস ${invoice.id} সম্পাদনা খুলবেন? পরিবর্তন অনুমোদনের জন্য জমা হতে পারে।`)) return;
+    setPrintInvoice(null);
+    setEditingInvoiceId(invoice.id);
+  };
 
   return (
     <div className="invoice-list-print mx-auto max-w-7xl space-y-5 px-4 py-6">
@@ -292,7 +302,8 @@ export default function InvoiceList({ onNewInvoiceClick, onEditInvoice, initialI
               const isReturnInvoice = invoice.invoiceType === 'dealer_return';
               const isRegularInvoice = !invoice.invoiceType || invoice.invoiceType === 'regular';
               return (
-              <tr key={`${type}-${record.id}`} className="border-t border-slate-100">
+              <React.Fragment key={`${type}-${record.id}`}>
+              <tr className="border-t border-slate-100">
                 <td className="p-2"><strong>{toBn(formatInvoiceNumber(invoice.invoiceNo || invoice.id))}</strong><p className="text-xs text-slate-500">{toBnDate(invoice.date)}</p>{isDamage && <span className="text-[10px] font-bold text-rose-700">ডেমেজ / ফেরত</span>}</td>
                 <td className="p-2 font-semibold text-emerald-800">{invoice.session || 'সেশন নির্ধারিত নয়'}</td>
                 <td className="p-2">{invoice.dealerName || invoice.dealerId}</td>
@@ -309,11 +320,23 @@ export default function InvoiceList({ onNewInvoiceClick, onEditInvoice, initialI
                 <td className="no-print p-2">
                   <div className="flex gap-1">
                     <button type="button" title="প্রিন্ট" onClick={() => setPrintInvoice(invoice)} className="rounded p-2 text-slate-600 hover:bg-slate-100"><Printer className="h-4 w-4" /></button>
-                    {canEditSales && !isDamage && onEditInvoice && <button type="button" title={isWithinEditWindow(invoice) ? 'অনুমোদনের জন্য সম্পাদনা' : 'ইনভয়েস তৈরির ১৫ দিনের পর সম্পাদনা করা যাবে না'} disabled={!isWithinEditWindow(invoice)} onClick={() => onEditInvoice(invoice)} className="rounded p-2 text-blue-700 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-40"><Pencil className="h-4 w-4" /></button>}
+                    {canEditSales && !isDamage && <button type="button" title={isWithinEditWindow(invoice) ? 'সারির ভেতরে সম্পাদনা' : 'ইনভয়েস তৈরির ১৫ দিনের পর সম্পাদনা করা যাবে না'} disabled={!isWithinEditWindow(invoice)} onClick={() => beginInlineEdit(invoice)} className="rounded p-2 text-blue-700 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-40"><Pencil className="h-4 w-4" /></button>}
                     {canDeleteSales && !isDamage && <button type="button" title={isWithinDeleteWindow(invoice) ? 'পাসওয়ার্ড দিয়ে মুছুন' : 'ইনভয়েস তৈরির এক মাস পর মুছতে পারবেন না'} disabled={!isWithinDeleteWindow(invoice) || deletingId === invoice.id} onClick={() => handleDelete(invoice)} className="rounded p-2 text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-40"><Trash2 className="h-4 w-4" /></button>}
                   </div>
                 </td>
               </tr>
+              {editingInvoiceId === invoice.id && !isDamage && (
+                <tr className="border-t border-blue-100 bg-blue-50/40">
+                  <td colSpan="10" className="p-3 sm:p-5">
+                    <InvoiceGenerator
+                      key={`inline-${invoice.id}`}
+                      editInvoiceData={invoice}
+                      onCancelEdit={() => setEditingInvoiceId('')}
+                    />
+                  </td>
+                </tr>
+              )}
+              </React.Fragment>
               );
             })}
             {!filteredRecords.length && <tr><td colSpan="10" className="p-8 text-center text-slate-500">{filterLoading ? 'ইনভয়েস লোড হচ্ছে…' : 'কোনো ইনভয়েস পাওয়া যায়নি।'}</td></tr>}
@@ -322,14 +345,17 @@ export default function InvoiceList({ onNewInvoiceClick, onEditInvoice, initialI
       </div>
 
       {printInvoice && (
-        <section className="invoice-print-preview space-y-3">
-          <div className="no-print flex justify-end">
-            <button type="button" onClick={printSelectedInvoice} className="rounded-lg bg-slate-800 px-4 py-2 font-semibold text-white">
-              <Printer className="mr-2 inline h-4 w-4" /> প্রিন্ট করুন
-            </button>
+        <div className="invoice-print-preview fixed inset-0 z-[70] overflow-y-auto bg-slate-950/70 p-3 sm:p-6" role="dialog" aria-modal="true" aria-label="ইনভয়েস প্রিন্ট প্রিভিউ">
+          <div className="mx-auto max-w-5xl space-y-3">
+            <div className="no-print flex justify-end gap-2">
+              <button type="button" onClick={() => setPrintInvoice(null)} className="rounded-lg bg-white px-4 py-2 font-semibold text-slate-700">বন্ধ করুন</button>
+              <button type="button" onClick={printSelectedInvoice} className="rounded-lg bg-slate-800 px-4 py-2 font-semibold text-white">
+                <Printer className="mr-2 inline h-4 w-4" /> প্রিন্ট করুন
+              </button>
+            </div>
+            <div className="rounded-xl bg-slate-100 p-3 sm:p-6"><InvoicePrintHeader invoice={printInvoice} /></div>
           </div>
-          <div className="rounded-xl bg-slate-100 p-3 sm:p-6"><InvoicePrintHeader invoice={printInvoice} /></div>
-        </section>
+        </div>
       )}
     </div>
   );

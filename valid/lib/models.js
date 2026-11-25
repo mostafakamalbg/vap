@@ -18,12 +18,15 @@ const userSchema = new Schema({
   },
   officerId: { type: String, default: '' },
   officerCode: { type: String, default: '' },
+  dealerId: { type: String, default: undefined },
+  dealerCode: { type: String, default: '' },
   territory: { type: String, default: '' },
   rsmId: { type: Schema.Types.ObjectId, ref: 'User', default: null },
   asmId: { type: Schema.Types.ObjectId, ref: 'User', default: null },
   phone: { type: String, default: '' },
   officerPhoneMismatch: { type: Boolean, default: false },
-  registeredOfficerPhone: { type: String, default: '' }
+  registeredOfficerPhone: { type: String, default: '' },
+  lastActiveAt: { type: Date, default: null }
 }, { timestamps: true });
 
 const adminSeatSchema = new Schema({

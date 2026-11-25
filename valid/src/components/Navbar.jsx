@@ -21,6 +21,7 @@ import { UI_THEMES, useUiPreferences } from '../context/UiPreferencesContext';
 import { HOTLINE_NUMBER } from '../../shared/companyContact';
 import {
   ADMIN_ROLE,
+  DEALER_ROLE,
   SUPER_ADMIN_ROLE,
   ASM_ROLE,
   LOGISTIC_OFFICER_ROLE,
@@ -59,6 +60,8 @@ export default function Navbar({ activeTab, setActiveTab }) {
   ];
   const navItems = isAdminRole(currentUser?.role)
     ? [...publicItems, ...adminItems]
+    : currentUser?.role === DEALER_ROLE
+      ? [...publicItems, { id: 'dealer-ledger-portal', label: 'আমার ডিলার লেজার', icon: Users }]
     : [RSM_ROLE, ASM_ROLE].includes(currentUser?.role)
       ? [
           ...publicItems,
@@ -274,6 +277,7 @@ export default function Navbar({ activeTab, setActiveTab }) {
               <button onClick={() => handleNavClick('admin-login')} className="w-full rounded-lg px-3 py-2.5 text-left text-sm font-medium text-slate-700 hover:bg-slate-50"><LogIn className="mr-3 inline h-4 w-4 text-emerald-600" />{t('nav.adminLogin')}</button>
               <button onClick={() => handleNavClick('officer-login')} className="w-full rounded-lg px-3 py-2.5 text-left text-sm font-medium text-slate-700 hover:bg-slate-50"><UserCheck className="mr-3 inline h-4 w-4 text-emerald-600" />{t('nav.officerLogin')}</button>
               <button onClick={() => handleNavClick('officer-register')} className="w-full rounded-lg px-3 py-2.5 text-left text-sm font-medium text-slate-700 hover:bg-slate-50"><Users className="mr-3 inline h-4 w-4 text-emerald-600" />{t('nav.officerRegister')}</button>
+              <button onClick={() => handleNavClick('dealer-access')} className="w-full rounded-lg px-3 py-2.5 text-left text-sm font-medium text-slate-700 hover:bg-slate-50"><Users className="mr-3 inline h-4 w-4 text-emerald-600" />ডিলার লগইন / নিবন্ধন</button>
             </div>
           )}
           {isAdminRole(currentUser?.role) && (

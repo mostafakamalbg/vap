@@ -9,6 +9,7 @@ export const LOGISTIC_OFFICER_ROLE = 'Logistic Officer';
 export const RSM_ROLE = 'RSM';
 export const ASM_ROLE = 'ASM';
 export const SO_ROLE = 'SO';
+export const DEALER_ROLE = 'Dealer';
 
 export const ADMIN_ROLES = Object.freeze([
   SUPER_ADMIN_ROLE,
@@ -30,7 +31,8 @@ export const HIERARCHY_ROLE_VALUES = Object.freeze([
 export const USER_ROLE_VALUES = Object.freeze([
   ...ADMIN_ROLE_VALUES,
   ...HIERARCHY_ROLE_VALUES,
-  LOGISTIC_OFFICER_ROLE
+  LOGISTIC_OFFICER_ROLE,
+  DEALER_ROLE
 ]);
 export const LEGACY_ACTIVE_STATUSES = Object.freeze([
   'একটিভ',

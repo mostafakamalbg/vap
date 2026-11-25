@@ -21,6 +21,7 @@ import { getOfficerPreviousDueByDealer } from '../../shared/officerLedger';
 import { getInvoiceSalesAmount } from '../../shared/invoiceTotals';
 import { isDealerBalanceCredit } from '../../shared/paymentMethods';
 import { readJsonResponse } from '../utils/api';
+import OfficerPaymentSubmission from './OfficerPaymentSubmission';
 
 async function requestJson(url, options) {
   return readJsonResponse(await fetch(url, { cache: 'no-store', ...options }));
@@ -720,6 +721,7 @@ export default function OfficerDashboard() {
         </div>
 
         <div className="no-print space-y-6">
+          <OfficerPaymentSubmission dealers={availableDealers} officer={currentOfficer} />
           <form onSubmit={submitOrder} className="space-y-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
             <div>
               <h2 className="flex items-center gap-2 font-black text-slate-900"><ShoppingCart className="h-5 w-5 text-emerald-700" /> {t('officer.newOrder')}</h2>

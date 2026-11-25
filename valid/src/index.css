@@ -1923,3 +1923,22 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
     page-break-inside: avoid;
   }
 }
+
+@media print {
+  body.print-invoice-only .invoice-print-preview,
+  body.print-invoice-only .invoice-print-preview * {
+    visibility: visible !important;
+  }
+
+  body.print-invoice-only .invoice-print-preview {
+    position: static !important;
+    inset: auto !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    background: #fff !important;
+  }
+
+  body.print-invoice-only .invoice-print-preview .no-print {
+    display: none !important;
+  }
+}

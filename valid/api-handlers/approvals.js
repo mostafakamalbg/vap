@@ -10,7 +10,11 @@ import {
   getStockInPieceQuantity
 } from '../shared/quantityUnits.js';
 import { STOCK_RECONCILIATION_START_DATE } from '../shared/stockReconciliation.js';
-import { transactionOptions, withTransactionFallback } from '../lib/transactions.js';
+import {
+  transactionCreateOptions,
+  transactionOptions,
+  withTransactionFallback
+} from '../lib/transactions.js';
 
 function fail(statusCode, message) {
   const error = new Error(message);
@@ -192,6 +196,18 @@ async function applyRequest(request, session) {
     return;
   }
 
+  if (requestType === 'officer_payment_submission') {
+    const payment = proposed?.payment;
+    if (!payment?.id || !Number.isFinite(Number(payment.amount)) || Number(payment.amount) <= 0) {
+      fail(400, 'অফিসার পেমেন্টের প্রস্তাবটি সঠিক নয়।');
+    }
+    const existingQuery = Payment.findOne({ id: payment.id });
+    if (session) existingQuery.session(session);
+    if (await existingQuery.lean()) fail(409, 'এই পেমেন্টটি ইতোমধ্যে পোস্ট হয়েছে।');
+    await Payment.create([payment], transactionCreateOptions(session));
+    return;
+  }
+
   fail(400, 'অনুমোদনের অনুরোধের ধরন সঠিক নয়।');
 }
 
@@ -202,16 +218,16 @@ export default async function handler(req, res) {
   if (!await dbConnect()) return res.status(503).json({ error: 'MongoDB is not configured.' });
   const user = await authorize(req, res, ['SuperAdmin', 'Admin', 'General Admin', 'MD', 'Chairman']);
   if (!user) return;
-  if (!await hasSuperAdminAccess(user)) {
-    return res.status(403).json({ error: 'অনুমোদনের অনুরোধ শুধু সুপার অ্যাডমিন পর্যালোচনা করতে পারবেন।' });
-  }
-
   try {
     if (req.method === 'GET') {
-      const requests = await BusinessRecord.find({
+      const filter = {
         type: 'approvalRequests',
         'data.status': 'pending_super_admin_approval'
-      }).sort({ createdAt: 1 }).lean();
+      };
+      if (!await hasSuperAdminAccess(user)) {
+        filter['data.requestType'] = 'officer_payment_submission';
+      }
+      const requests = await BusinessRecord.find(filter).sort({ createdAt: 1 }).lean();
       return res.status(200).json(requests.map((record) => record.data));
     }
 
@@ -235,6 +251,12 @@ export default async function handler(req, res) {
       const record = await query;
       if (!record || record.data?.status !== 'pending_super_admin_approval') {
         fail(404, 'অপেক্ষমাণ অনুমোদনের অনুরোধটি পাওয়া যায়নি।');
+      }
+      if (
+        record.data.requestType !== 'officer_payment_submission'
+        && !await hasSuperAdminAccess(user)
+      ) {
+        fail(403, 'এই পরিবর্তন শুধু সুপার অ্যাডমিন অনুমোদন করতে পারবেন।');
       }
 
       const decidedAt = new Date();

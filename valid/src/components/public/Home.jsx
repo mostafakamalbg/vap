@@ -19,6 +19,7 @@ import { useAgro } from '../../context/AgroContext';
 import { useUiPreferences } from '../../context/UiPreferencesContext';
 import { toBn } from '../../utils/bengali';
 import { HEAD_OFFICE_ADDRESS, HOTLINE_ADDRESS, HOTLINE_NUMBER } from '../../../shared/companyContact';
+import FarmerOpinions from './FarmerOpinions';
 
 const heroSlides = [
   {
@@ -81,7 +82,55 @@ export default function Home({ onNavigate }) {
   const { products } = useAgro();
   const { t } = useUiPreferences();
   const [activeSlide, setActiveSlide] = useState(0);
+  const [publicDashboard, setPublicDashboard] = useState(null);
+  const [dashboardError, setDashboardError] = useState('');
   const featured = products;
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadDashboard = async () => {
+      try {
+        const response = await fetch('/api/public-dashboard', { cache: 'no-store' });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'লাইভ ড্যাশবোর্ড ডেটা লোড করা যায়নি।');
+        if (!cancelled) {
+          setPublicDashboard(result);
+          setDashboardError('');
+        }
+      } catch (error) {
+        if (!cancelled) setDashboardError(error.message);
+      }
+    };
+    const recordVisit = async () => {
+      let visitorId = '';
+      try {
+        visitorId = localStorage.getItem('vap_public_visitor_id_v1') || '';
+        if (!visitorId) {
+          visitorId = globalThis.crypto?.randomUUID?.()
+            || `${Date.now()}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+          localStorage.setItem('vap_public_visitor_id_v1', visitorId);
+        }
+      } catch {
+        visitorId = `${Date.now()}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+      }
+      const response = await fetch('/api/public-dashboard', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ visitorId })
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'ভিজিট রেকর্ড করা যায়নি।');
+    };
+    recordVisit().then(loadDashboard).catch((error) => {
+      if (!cancelled) setDashboardError(error.message);
+      loadDashboard();
+    });
+    const timer = window.setInterval(loadDashboard, 60_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, []);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -383,6 +432,87 @@ export default function Home({ onNavigate }) {
         </div>
       </section>
 
+      <section className="mx-auto max-w-7xl space-y-5 px-4 sm:px-6 lg:px-8">
+        <div className="flex flex-wrap items-end justify-between gap-3 border-b border-slate-200 pb-4">
+          <div>
+            <span className="text-xs font-bold uppercase tracking-wider text-emerald-700">পণ্য বিভাগ</span>
+            <h2 className="mt-1 text-2xl font-black text-slate-900">জনপ্রিয় ক্যাটাগরি</h2>
+          </div>
+          <button type="button" onClick={() => onNavigate('website-products')} className="text-sm font-bold text-emerald-700 hover:text-emerald-900">
+            আরও ক্যাটাগরি দেখুন &gt;
+          </button>
+        </div>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+          {[
+            ['pesticide', 'কীটনাশক', '/hero-crops/potatoes.jpg'],
+            ['fungicide', 'ছত্রাকনাশক', '/hero-crops/submitted-eggplant.jpeg'],
+            ['herbicide', 'আগাছানাশক', '/hero-crops/green-fields.jpg'],
+            ['fertilizer', 'সার', '/hero-crops/farmer-seedlings.jpg'],
+            ['pgr', 'পিজিআর', '/hero-crops/submitted-corn.jpeg'],
+            ['bio', 'জৈব বালাইনাশক', '/hero-crops/rice-fields.jpg'],
+            ['seeds', 'বীজ অনুখাদ্য', '/hero-crops/beans.jpg'],
+            ['nematicide', 'নেমাটোডানাশক', '/hero-crops/submitted-potatoes.jpeg'],
+            ['miticide', 'মাকড়নাশক', '/hero-crops/submitted-tomatoes.jpeg'],
+            ['rodenticide', 'ইঁদুরনাশক', '/hero-crops/submitted-rice-harvest.jpeg'],
+            ['bactericide', 'ব্যাকটেরিয়ানাশক', '/hero-crops/mustard-field.webp']
+          ].map(([category, label, image]) => (
+            <button key={category} type="button" onClick={() => onNavigate('website-products', category)} className="group relative h-36 overflow-hidden rounded-xl border border-slate-200 bg-slate-900 text-left shadow-sm">
+              <img src={image} alt="" loading="lazy" className="absolute inset-0 h-full w-full object-cover opacity-80 transition duration-300 group-hover:scale-105 group-hover:opacity-95" />
+              <span className="absolute inset-0 bg-gradient-to-t from-slate-950/85 via-transparent to-transparent" />
+              <span className="absolute bottom-3 left-3 right-2 text-sm font-black text-white">{label}</span>
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-7xl space-y-5 px-4 sm:px-6 lg:px-8">
+        <div>
+          <span className="text-xs font-bold uppercase tracking-wider text-emerald-700">সংগঠন ও মাঠপর্যায়</span>
+          <h2 className="mt-1 text-2xl font-black text-slate-900">লাইভ কার্যক্রম বোর্ড</h2>
+        </div>
+        {dashboardError && <p role="alert" className="rounded-lg bg-amber-50 p-3 text-xs font-semibold text-amber-800">{dashboardError}</p>}
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {[
+            ['কোম্পানির ইমপ্লয়ী', publicDashboard?.organization?.employees],
+            ['অফিসার', publicDashboard?.organization?.officers],
+            ['ডিলার', publicDashboard?.organization?.dealers],
+            ['লজিস্টিক অফিস / অফিসার', publicDashboard?.organization?.logisticOfficers]
+          ].map(([label, count]) => (
+            <div key={label} className="rounded-xl border border-emerald-100 bg-white p-4 shadow-sm">
+              <p className="text-xs font-semibold text-slate-500">{label}</p>
+              <p className="mt-1 text-2xl font-black text-emerald-800">{toBn(Number.isFinite(Number(count)) ? Number(count) : 0)}</p>
+            </div>
+          ))}
+        </div>
+        <div className="grid gap-4 lg:grid-cols-[0.7fr_1.3fr]">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
+            {[
+              ['কাস্টমার ভিজিট', publicDashboard?.engagement?.customerVisits],
+              ['কৃষক এনগেজমেন্ট', publicDashboard?.engagement?.engagedFarmers]
+            ].map(([label, count]) => (
+              <div key={label} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                <p className="text-xs font-semibold text-slate-500">{label}</p>
+                <p className="mt-1 text-2xl font-black text-slate-900">{toBn(Number.isFinite(Number(count)) ? Number(count) : 0)}</p>
+              </div>
+            ))}
+          </div>
+          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <h3 className="font-bold text-slate-800">জেলাভিত্তিক কৃষক এনগেজমেন্ট</h3>
+            <div className="mt-3 space-y-2">
+              {(publicDashboard?.engagement?.districts || []).map((district) => (
+                <div key={district.district} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2 text-sm">
+                  <span className="font-semibold text-slate-700">{district.district}</span>
+                  <span className="text-xs text-emerald-800">{toBn(district.count)} জন{district.farmers?.length ? ` • ${district.farmers.join(', ')}` : ''}</span>
+                </div>
+              ))}
+              {(!publicDashboard?.engagement?.districts || publicDashboard.engagement.districts.length === 0) && (
+                <p className="text-sm text-slate-500">অনুমোদিত কৃষক এনগেজমেন্ট এখনো নেই।</p>
+              )}
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Production & Depot Information Section */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="bg-gradient-to-r from-slate-900 to-slate-800 rounded-2xl text-white p-8 sm:p-12 shadow-xl grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
@@ -437,10 +567,15 @@ export default function Home({ onNavigate }) {
               >
                 ডিলার হতে কল করুন: {toBn(HOTLINE_NUMBER)}
               </a>
+              <button type="button" onClick={() => onNavigate('dealer-access')} className="mt-2 inline-flex w-full items-center justify-center rounded-lg border border-white/30 bg-white/10 py-2.5 text-xs font-bold text-white transition hover:bg-white/20">
+                ডিলার লগইন / নিবন্ধন
+              </button>
             </div>
           </div>
         </div>
       </section>
+
+      <FarmerOpinions />
 
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="overflow-hidden rounded-2xl border border-emerald-100 bg-white shadow-sm">

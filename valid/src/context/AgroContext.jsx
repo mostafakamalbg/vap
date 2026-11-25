@@ -30,6 +30,7 @@ import { STOCK_RECONCILIATION_START_DATE } from '../../shared/stockReconciliatio
 import { normalizeHotlineNumber } from '../../shared/companyContact';
 import { normalizeProductDisplayNames } from '../../shared/productNames';
 import {
+  DEALER_ROLE,
   isAdminRole,
   LOGISTIC_OFFICER_ROLE,
   SUPER_ADMIN_ROLE
@@ -157,6 +158,7 @@ export function AgroProvider({ children }) {
   const [currentUser, setCurrentUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [authError, setAuthError] = useState('');
+  const [presenceError, setPresenceError] = useState('');
   const [cloudError, setCloudError] = useState('');
   const [cloudReady, setCloudReady] = useState(false);
 
@@ -272,6 +274,26 @@ export function AgroProvider({ children }) {
     return () => { cancelled = true; };
   }, []);
 
+  useEffect(() => {
+    if (!currentUser?.id || currentUser.role === 'Dealer') return undefined;
+    let cancelled = false;
+    const heartbeat = async () => {
+      try {
+        const response = await fetch('/api/presence', { method: 'POST' });
+        await readJsonResponse(response);
+        if (!cancelled) setPresenceError('');
+      } catch (error) {
+        if (!cancelled) setPresenceError(error.message);
+      }
+    };
+    heartbeat();
+    const timer = window.setInterval(heartbeat, 30_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [currentUser?.id, currentUser?.role]);
+
   const login = async (credentials) => {
     const response = await fetch('/api/auth/login', {
       method: 'POST',
@@ -291,6 +313,29 @@ export function AgroProvider({ children }) {
       body: JSON.stringify(registration)
     });
     return readJsonResponse(response);
+  };
+
+  const loginDealer = async (credentials) => {
+    const response = await fetch('/api/auth/dealer-login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(credentials)
+    });
+    const result = await readJsonResponse(response);
+    setCurrentUser(result.user);
+    setAuthError('');
+    return result.user;
+  };
+
+  const registerDealer = async (registration) => {
+    const response = await fetch('/api/auth/dealer-register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(registration)
+    });
+    const result = await readJsonResponse(response);
+    if (result.user) setCurrentUser(result.user);
+    return result;
   };
 
   const logout = async () => {
@@ -345,6 +390,10 @@ export function AgroProvider({ children }) {
       payments: setPayments,
       salesAgreements: setSalesAgreements
     };
+    if (currentUser.role === DEALER_ROLE) {
+      if (!cancelled) setCloudReady(true);
+      return () => { cancelled = true; };
+    }
     if (!isAdminRole(currentUser.role)) {
       Object.values(setters).forEach((setter) => setter([]));
     }
@@ -1201,9 +1250,12 @@ export function AgroProvider({ children }) {
         currentUser,
         authLoading,
         authError,
+        presenceError,
         cloudError,
         cloudReady,
         login,
+        loginDealer,
+        registerDealer,
         registerOfficer,
         logout,
         refreshSharedRecords

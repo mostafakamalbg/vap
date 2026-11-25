@@ -65,6 +65,9 @@ export default function OfficerPerformance() {
     cartons: totals.cartons + officer.totalCartonsSold,
     sales: totals.sales + officer.salesAmount,
     returns: totals.returns + officer.returnAmount,
+    netSales: totals.netSales
+      + (Number(officer.salesAmount) || 0)
+      - (Number(officer.returnAmount) || 0),
     collected: totals.collected + officer.totalCollected,
     officePayment: totals.officePayment + officer.paymentAndExpense.officePayment,
     salary: totals.salary + officer.paymentAndExpense.salary,
@@ -73,7 +76,7 @@ export default function OfficerPerformance() {
     expenses: totals.expenses + officer.totalExpenses,
     due: totals.due + officer.totalAmountDues
   }), {
-    invoices: 0, cartons: 0, sales: 0, returns: 0, collected: 0,
+    invoices: 0, cartons: 0, sales: 0, returns: 0, netSales: 0, collected: 0,
     officePayment: 0, salary: 0, fare: 0, lc: 0, expenses: 0, due: 0
   });
 
@@ -242,6 +245,7 @@ export default function OfficerPerformance() {
                 <th className="px-1.5 py-1 text-center">মোট কার্টুন বিক্রয়</th>
                 <th className="px-1.5 py-1 text-right">মোট সেলস (৳)</th>
                 <th className="px-1.5 py-1 text-right">মোট ফেরত (৳)</th>
+                <th className="px-1.5 py-1 text-right">নিট সেলস (৳)</th>
                 <th className="px-1.5 py-1 text-right">মোট আদায় (৳)</th>
                 <th className="px-1.5 py-1 text-right">অফিস পেমেন্ট (৳)</th>
                 <th className="px-1.5 py-1 text-right">বেতন (৳)</th>
@@ -320,6 +324,10 @@ export default function OfficerPerformance() {
                     ৳{off.returnAmount.toLocaleString()}
                   </td>
 
+                  <td className="px-1.5 py-1 text-right font-mono font-bold text-blue-800">
+                    ৳{((Number(off.salesAmount) || 0) - (Number(off.returnAmount) || 0)).toLocaleString()}
+                  </td>
+
                   <td className="px-1.5 py-1 text-right font-mono font-bold text-emerald-700">
                     ৳{Math.round(off.totalCollected).toLocaleString()}
                   </td>
@@ -360,6 +368,7 @@ export default function OfficerPerformance() {
                 <td className="px-1.5 py-1 text-center">{Math.round(tableTotals.cartons)}</td>
                 <td className="px-1.5 py-1 text-right">৳{Math.round(tableTotals.sales).toLocaleString()}</td>
                 <td className="px-1.5 py-1 text-right">৳{Math.round(tableTotals.returns).toLocaleString()}</td>
+                <td className="px-1.5 py-1 text-right">৳{Math.round(tableTotals.netSales).toLocaleString()}</td>
                 <td className="px-1.5 py-1 text-right">৳{Math.round(tableTotals.collected).toLocaleString()}</td>
                 <td className="px-1.5 py-1 text-right">৳{Math.round(tableTotals.officePayment).toLocaleString()}</td>
                 <td className="px-1.5 py-1 text-right">৳{Math.round(tableTotals.salary).toLocaleString()}</td>

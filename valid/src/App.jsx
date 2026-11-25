@@ -7,6 +7,8 @@ import AboutCompany from './components/public/AboutCompany';
 import Footer from './components/public/Footer';
 import AuthPage from './components/AuthPage';
 import OfficerDashboard from './components/OfficerDashboard';
+import DealerAccess from './components/DealerAccess';
+import DealerLedgerPortal from './components/DealerLedgerPortal';
 import DamageReturns from './components/admin/DamageReturns';
 import { UiPreferencesProvider } from './context/UiPreferencesContext';
 
@@ -24,6 +26,7 @@ import AdminDataManagement from './components/admin/AdminDataManagement';
 import FactoryDataReset from './components/admin/FactoryDataReset';
 import {
   ASM_ROLE,
+  DEALER_ROLE,
   LOGISTIC_OFFICER_ROLE,
   OFFICER_ROLE,
   RSM_ROLE,
@@ -36,17 +39,19 @@ function AppContent() {
     currentUser,
     authLoading,
     authError,
+    presenceError,
     cloudError
   } = useAgro();
   const [activeTab, setActiveTab] = useState('website-home');
-  const [editingInvoice, setEditingInvoice] = useState(null);
   const [invoiceToPrintId, setInvoiceToPrintId] = useState('');
   const [invoiceFormKey, setInvoiceFormKey] = useState(0);
+  const [initialProductCategory, setInitialProductCategory] = useState('ALL');
 
-  const handleNavigate = (tab) => {
-    const publicTabs = ['website-home', 'website-products', 'website-about'];
+  const handleNavigate = (tab, category = 'ALL') => {
+    const publicTabs = ['website-home', 'website-products', 'website-about', 'dealer-access'];
     const authTabs = ['admin-login', 'officer-login', 'officer-register'];
     if (publicTabs.includes(tab) || authTabs.includes(tab)) {
+      if (tab === 'website-products') setInitialProductCategory(category);
       setActiveTab(tab);
       return;
     }
@@ -72,6 +77,8 @@ function AppContent() {
         'dealer-ledger',
         'damage-returns'
       ].includes(tab) ? tab : 'inventory');
+    } else if (currentUser?.role === DEALER_ROLE) {
+      setActiveTab(tab === 'dealer-ledger-portal' ? tab : 'dealer-ledger-portal');
     } else if ([OFFICER_ROLE, SO_ROLE].includes(currentUser?.role)) {
       setActiveTab(tab === 'officer-dashboard' ? tab : 'officer-dashboard');
     } else {
@@ -80,14 +87,8 @@ function AppContent() {
   };
 
   const handleStartNewInvoice = () => {
-    setEditingInvoice(null);
     setInvoiceToPrintId('');
     setInvoiceFormKey((key) => key + 1);
-    handleNavigate('new-invoice');
-  };
-
-  const handleEditInvoice = (inv) => {
-    setEditingInvoice(inv);
     handleNavigate('new-invoice');
   };
 
@@ -100,10 +101,15 @@ function AppContent() {
           ? 'dashboard-reports'
         : user.role === LOGISTIC_OFFICER_ROLE
           ? 'admin-access'
+        : user.role === DEALER_ROLE
+          ? 'dealer-ledger-portal'
           : 'officer-dashboard');
   };
 
   const renderActivePage = () => {
+    if (activeTab === 'dealer-access' && !currentUser) {
+      return <DealerAccess onNavigate={handleNavigate} onLoginSuccess={handleLoginSuccess} />;
+    }
     if (['admin-login', 'officer-login', 'officer-register'].includes(activeTab)) {
       return (
         <AuthPage
@@ -118,6 +124,10 @@ function AppContent() {
       [OFFICER_ROLE, SO_ROLE].includes(currentUser?.role)
       && !['website-home', 'website-products', 'website-about'].includes(activeTab)
     ) return <OfficerDashboard />;
+    if (currentUser?.role === DEALER_ROLE
+      && !['website-home', 'website-products', 'website-about'].includes(activeTab)) {
+      return <DealerLedgerPortal />;
+    }
     if (!currentUser && !['website-home', 'website-products', 'website-about'].includes(activeTab)) {
       return <AuthPage key="admin-login" initialRole="admin-login" onNavigate={handleNavigate} onLoginSuccess={handleLoginSuccess} />;
     }
@@ -125,6 +135,7 @@ function AppContent() {
     if (activeTab === 'website-products') {
       return (
         <ProductCatalog
+          initialCategory={initialProductCategory}
           onSelectProductForInvoice={[OFFICER_ROLE, SO_ROLE].includes(currentUser?.role)
             ? () => handleNavigate('officer-dashboard')
             : handleStartNewInvoice}
@@ -145,13 +156,11 @@ function AppContent() {
           key={invoiceFormKey}
           onViewInvoices={() => handleNavigate('invoice-list')}
           onInvoiceCreated={() => {
-            setEditingInvoice(null);
             setInvoiceToPrintId('');
             setInvoiceFormKey((key) => key + 1);
           }}
-          editInvoiceData={editingInvoice}
+          editInvoiceData={null}
           onCancelEdit={() => {
-            setEditingInvoice(null);
             setInvoiceFormKey((key) => key + 1);
           }}
         />
@@ -161,7 +170,6 @@ function AppContent() {
       return (
         <InvoiceList
           onNewInvoiceClick={handleStartNewInvoice}
-          onEditInvoice={handleEditInvoice}
           initialInvoiceId={invoiceToPrintId}
         />
       );
@@ -199,6 +207,11 @@ function AppContent() {
               {authError && !currentUser && activeTab.includes('login') && (
                 <div role="alert" className="mx-auto mt-4 max-w-2xl rounded-lg bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">
                   {authError}
+                </div>
+              )}
+              {presenceError && currentUser && (
+                <div role="alert" className="mx-auto mt-4 max-w-7xl rounded-lg bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">
+                  সক্রিয় সেশন আপডেট হয়নি: {presenceError}
                 </div>
               )}
               {renderActivePage()}

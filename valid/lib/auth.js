@@ -170,6 +170,8 @@ export function publicUser(user, isSuperAdmin = false) {
     status: normalizeUserStatus(user.status),
     officerId: user.officerId || '',
     officerCode: normalizeOfficerCode(user.officerCode),
+    dealerId: user.dealerId || '',
+    dealerCode: user.dealerCode || '',
     territory: user.territory || '',
     rsmId: user.rsmId ? String(user.rsmId) : '',
     asmId: user.asmId ? String(user.asmId) : '',
