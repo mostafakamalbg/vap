@@ -1362,6 +1362,18 @@ export const INITIAL_DEALERS = [
     officerCode: '7',
     transport: '',
     openingDue: 0
+  },
+  {
+    id: 'DLR-84',
+    code: '84',
+    shopName: 'মেসার্স আকতার ট্রেডার্স',
+    proprietor: 'মোঃ আকতারুজ্জামান',
+    address: 'ভন্ডগ্রাম  বাজার, নন্দুয়ার, রানীশংকৈল, ঠাকুরগাঁও।',
+    phone: '০১৭৭৩-৩৭৭৪০০',
+    zone: 'ঠাকুরগাঁও',
+    officerCode: '9',
+    transport: '',
+    openingDue: 0
   }
 ];
 
