@@ -13,6 +13,7 @@ import {
   TrendingUp,
   X,
   AlertCircle,
+  Pencil,
 } from 'lucide-react';
 import { useAgro } from '../../context/AgroContext';
 import {
@@ -32,7 +33,11 @@ import {
 import { getDealerLedgerTransactions } from '../../../shared/dealerLedger';
 import CompanyLetterhead from './CompanyLetterhead';
 import { getBangladeshBusinessDate, getInvoiceSessionForDate, INVOICE_SESSIONS } from '../../../shared/sessions';
-import { SUPER_ADMIN_ROLE, isAdminRole } from '../../../shared/roles';
+import {
+  LOGISTIC_OFFICER_ROLE,
+  SUPER_ADMIN_ROLE,
+  isAdminRole
+} from '../../../shared/roles';
 import { readJsonResponse } from '../../utils/api';
 
 const createPaymentEntries = () => LEDGER_PAYMENT_TYPES.map(({ value }) => ({
@@ -113,6 +118,7 @@ export default function DealerLedger() {
     officers,
     addNewDealer,
     addDealerPayment,
+    updatePayment,
     getDealerSummary,
     invoices,
     payments,
@@ -121,6 +127,7 @@ export default function DealerLedger() {
   } = useAgro();
   const canSetPreviousDue = currentUser?.role === SUPER_ADMIN_ROLE || currentUser?.isSuperAdmin;
   const canManageLedger = isAdminRole(currentUser?.role);
+  const canEditPayments = canManageLedger || currentUser?.role === LOGISTIC_OFFICER_ROLE;
 
   const [searchTerm, setSearchTerm] = useState('');
   const [showAddDealerModal, setShowAddDealerModal] = useState(false);
@@ -136,6 +143,9 @@ export default function DealerLedger() {
   const ledgerTriggerRef = useRef(null);
   const wasLedgerOpenRef = useRef(false);
   const [successMsg, setSuccessMsg] = useState('');
+  const [paymentEdit, setPaymentEdit] = useState(null);
+  const [paymentEditBusy, setPaymentEditBusy] = useState(false);
+  const [paymentEditError, setPaymentEditError] = useState('');
   const closeDealerLedger = () => setSelectedDealerForLedger(null);
 
   useEffect(() => {
@@ -271,6 +281,51 @@ export default function DealerLedger() {
           receivedBy: paymentForm.receivedBy,
           note: paymentForm.note || PAYMENT_TYPES.find((type) => type.value === paymentType)?.label || ''
         };
+
+        const openPaymentEdit = (payment) => {
+          setPaymentEdit({
+            original: payment,
+            date: payment.date || '',
+            session: payment.session || '',
+            amount: String(payment.amount ?? ''),
+            paymentMethod: normalizePaymentMethod(payment.paymentMethod),
+            reference: payment.reference || '',
+            receivedBy: payment.receivedBy || '',
+            note: payment.note || ''
+          });
+          setPaymentEditError('');
+        };
+
+        const handlePaymentEditSubmit = async (event) => {
+          event.preventDefault();
+          if (!paymentEdit || !Number.isFinite(Number(paymentEdit.amount)) || Number(paymentEdit.amount) < 0) {
+            setPaymentEditError('পেমেন্টের পরিমাণ সঠিকভাবে দিন।');
+            return;
+          }
+          setPaymentEditBusy(true);
+          setPaymentEditError('');
+          try {
+            const result = await updatePayment({
+              ...paymentEdit.original,
+              date: paymentEdit.date,
+              session: paymentEdit.session,
+              amount: Number(paymentEdit.amount),
+              paymentMethod: paymentEdit.paymentMethod,
+              reference: paymentEdit.reference,
+              receivedBy: paymentEdit.receivedBy,
+              note: paymentEdit.note
+            });
+            setPaymentEdit(null);
+            setSuccessMsg(result.pendingApproval
+              ? 'পেমেন্ট সংশোধনের অনুরোধ সুপার অ্যাডমিন অনুমোদনের জন্য জমা হয়েছে।'
+              : 'পেমেন্ট সংশোধন সংরক্ষিত হয়েছে।');
+            setTimeout(() => setSuccessMsg(''), 5000);
+          } catch (error) {
+            setPaymentEditError(error.message);
+          } finally {
+            setPaymentEditBusy(false);
+          }
+        };
     });
     try {
       await addDealerPayment(newPayments);
@@ -393,6 +448,58 @@ export default function DealerLedger() {
             >
               পূর্বের বকেয়া ইনপুট
             </button>
+          )}
+          {paymentEdit && (
+            <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/60 p-4">
+              <form onSubmit={handlePaymentEditSubmit} className="w-full max-w-xl space-y-4 rounded-xl bg-white p-5 shadow-2xl">
+                <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+                  <div>
+                    <h3 className="font-black text-slate-900">পেমেন্ট সংশোধনের অনুরোধ</h3>
+                    <p className="text-xs text-slate-500">{paymentEdit.original.id} • অনুমোদনের আগে মূল রেকর্ড অপরিবর্তিত থাকবে</p>
+                  </div>
+                  <button type="button" onClick={() => setPaymentEdit(null)} aria-label="বন্ধ করুন" className="rounded p-1 text-slate-500 hover:bg-slate-100"><X className="h-5 w-5" /></button>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="text-xs font-semibold text-slate-600">তারিখ
+                    <input required type="date" value={paymentEdit.date} onChange={(event) => setPaymentEdit((previous) => ({
+                      ...previous,
+                      date: event.target.value,
+                      session: getInvoiceSessionForDate(event.target.value) || previous.session
+                    }))} className="mt-1 w-full rounded border border-slate-300 p-2" />
+                  </label>
+                  <label className="text-xs font-semibold text-slate-600">সেশন
+                    <select required value={paymentEdit.session} onChange={(event) => setPaymentEdit((previous) => ({ ...previous, session: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 p-2">
+                      <option value="">সেশন নির্বাচন করুন</option>
+                      {INVOICE_SESSIONS.map((session) => <option key={session} value={session}>{session}</option>)}
+                    </select>
+                  </label>
+                  <label className="text-xs font-semibold text-slate-600">পরিমাণ
+                    <input required type="number" min="0" step="0.01" value={paymentEdit.amount} onChange={(event) => setPaymentEdit((previous) => ({ ...previous, amount: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 p-2" />
+                  </label>
+                  <label className="text-xs font-semibold text-slate-600">পেমেন্ট পদ্ধতি
+                    <select value={paymentEdit.paymentMethod} onChange={(event) => setPaymentEdit((previous) => ({ ...previous, paymentMethod: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 p-2">
+                      {PAYMENT_METHODS.map((method) => <option key={method.value} value={method.value}>{method.label}</option>)}
+                    </select>
+                  </label>
+                  <label className="text-xs font-semibold text-slate-600">রেফারেন্স
+                    <input value={paymentEdit.reference} onChange={(event) => setPaymentEdit((previous) => ({ ...previous, reference: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 p-2" />
+                  </label>
+                  <label className="text-xs font-semibold text-slate-600">রিসিভ করেছেন
+                    <input value={paymentEdit.receivedBy} onChange={(event) => setPaymentEdit((previous) => ({ ...previous, receivedBy: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 p-2" />
+                  </label>
+                  <label className="text-xs font-semibold text-slate-600 sm:col-span-2">নোট
+                    <input value={paymentEdit.note} onChange={(event) => setPaymentEdit((previous) => ({ ...previous, note: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 p-2" />
+                  </label>
+                </div>
+                {paymentEditError && <p role="alert" className="rounded bg-rose-50 p-2 text-xs font-semibold text-rose-700">{paymentEditError}</p>}
+                <div className="flex justify-end gap-2 border-t border-slate-200 pt-3">
+                  <button type="button" onClick={() => setPaymentEdit(null)} className="rounded border border-slate-300 px-3 py-2 text-xs font-bold text-slate-600">বাতিল</button>
+                  <button disabled={paymentEditBusy} className="rounded bg-emerald-700 px-4 py-2 text-xs font-bold text-white disabled:opacity-50">
+                    {paymentEditBusy ? 'জমা হচ্ছে…' : 'অনুমোদনের জন্য জমা দিন'}
+                  </button>
+                </div>
+              </form>
+            </div>
           )}
           {canManageLedger && (
             <>
@@ -1098,6 +1205,7 @@ export default function DealerLedger() {
                     <th className="p-2 text-right">ডেবিট</th>
                     <th className="p-2 text-right">ক্রেডিট</th>
                     <th className="p-2 text-right">নিট ব্যালেন্স</th>
+                    <th className="no-print p-2">অ্যাকশন</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
@@ -1120,12 +1228,28 @@ export default function DealerLedger() {
                         <td className={`p-2 text-right font-mono font-bold ${transaction.balance < 0 ? 'text-sky-700' : 'text-rose-700'}`}>
                           {formatBalanceAmount(transaction.balance)}
                         </td>
+                        <td className="no-print p-2">
+                          {canEditPayments
+                            && transaction.sourceType === 'payment'
+                            && !transaction.source?.sourceInvoiceId
+                            && !/(?:invoice|চালান)\s*#/i.test(String(transaction.source?.reference || ''))
+                            && (
+                              <button
+                                type="button"
+                                onClick={() => openPaymentEdit(transaction.source)}
+                                title="সুপার অ্যাডমিন অনুমোদনের জন্য পেমেন্ট সংশোধন"
+                                className="inline-flex items-center gap-1 rounded border border-amber-200 bg-amber-50 px-2 py-1 font-semibold text-amber-800"
+                              >
+                                <Pencil className="h-3 w-3" /> সংশোধন
+                              </button>
+                            )}
+                        </td>
                       </tr>
                     );
                   })}
                   {ledgerTransactions.length === 0 && (
                     <tr>
-                      <td colSpan={6} className="p-3 text-center text-slate-400 italic">কোনো লেনদেনের রেকর্ড নেই</td>
+                      <td colSpan={7} className="p-3 text-center text-slate-400 italic">কোনো লেনদেনের রেকর্ড নেই</td>
                     </tr>
                   )}
                 </tbody>

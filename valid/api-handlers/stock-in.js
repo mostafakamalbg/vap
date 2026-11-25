@@ -6,6 +6,7 @@ import { transactionOptions, withTransactionFallback } from '../lib/transactions
 import { getStockInQuantities, isValidStockInQuantities } from '../shared/quantityUnits.js';
 import { STOCK_RECONCILIATION_START_DATE } from '../shared/stockReconciliation.js';
 import { ADMIN_ROLES, LOGISTIC_OFFICER_ROLE } from '../shared/roles.js';
+import { createApprovalRequest } from '../lib/approvalRequests.js';
 
 function isValidDate(value) {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -30,7 +31,7 @@ function isValidEntry(input) {
 }
 
 export default async function handler(req, res) {
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method Not Allowed' });
+  if (!['POST', 'PATCH'].includes(req.method)) return res.status(405).json({ error: 'Method Not Allowed' });
   try {
     if (!await dbConnect()) return res.status(503).json({ error: 'MongoDB is not configured.' });
   } catch (error) {
@@ -39,6 +40,81 @@ export default async function handler(req, res) {
   }
   const user = await authorize(req, res, [...ADMIN_ROLES, LOGISTIC_OFFICER_ROLE]);
   if (!user) return;
+
+  if (req.method === 'PATCH') {
+    const id = String(req.body?.id || '').trim();
+    const input = req.body?.entry;
+    if (!id || !input || typeof input !== 'object') {
+      return res.status(400).json({ error: 'সংশোধনের জন্য স্টক-ইন চালান নির্বাচন করুন।' });
+    }
+    try {
+      const current = await BusinessRecord.findOne({ type: 'stockInLogs', recordId: id })
+        .select('recordId data updatedAt')
+        .lean();
+      if (!current) return res.status(404).json({ error: 'স্টক-ইন চালান পাওয়া যায়নি।' });
+      const editableFields = [
+        'productId',
+        'sku',
+        'date',
+        'cartons',
+        'quantity',
+        'source',
+        'batchNo',
+        'challanNo',
+        'mfgDate',
+        'expDate',
+        'receivedBy',
+        'note'
+      ];
+      const changes = Object.fromEntries(Object.entries(input).filter(([key]) => (
+        editableFields.includes(key)
+      )));
+      const proposed = { ...current.data, ...changes, id: current.data.id || id };
+      if (!isValidEntry(proposed)) {
+        return res.status(400).json({ error: 'স্টক-ইন তারিখ, পণ্য ও সঠিক পরিমাণ দিন।' });
+      }
+      const product = await Product.findOne({ id: String(proposed.productId).trim() }).lean();
+      const variant = product?.variants?.find((item) => item.sku === String(proposed.sku).trim());
+      if (!variant) return res.status(400).json({ error: 'নির্বাচিত পণ্য বা প্যাক সাইজ পাওয়া যায়নি।' });
+      const packPerBox = Number(variant.packPerBox);
+      if (!Number.isSafeInteger(packPerBox) || packPerBox < 1) {
+        return res.status(409).json({ error: 'নির্বাচিত পণ্যের প্যাক তথ্য সঠিক নয়।' });
+      }
+      const quantities = getStockInQuantities({
+        ...variant,
+        productName: product.name,
+        generic: product.generic
+      }, getCartons(proposed));
+      if (!isValidStockInQuantities(quantities)) {
+        return res.status(400).json({ error: 'স্টক পরিমাণ সঠিকভাবে হিসাব করা যায়নি; প্যাক ও মজুত তথ্য যাচাই করুন।' });
+      }
+      const revisedEntry = {
+        ...proposed,
+        productId: String(proposed.productId).trim(),
+        productName: product.name,
+        sku: String(proposed.sku).trim(),
+        cartons: getCartons(proposed),
+        quantity: getCartons(proposed),
+        quantityPieces: quantities.quantityPieces,
+        quantityUnit: quantities.quantityUnit,
+        packPerBox,
+        size: variant.size || ''
+      };
+      const approvalRequest = await createApprovalRequest({
+        requestType: 'stock_in_update',
+        targetId: id,
+        original: current.data,
+        originalUpdatedAt: current.updatedAt,
+        proposed: revisedEntry,
+        user
+      });
+      return res.status(202).json({ pendingApproval: true, approvalRequest });
+    } catch (error) {
+      if (error.statusCode) return res.status(error.statusCode).json({ error: error.message });
+      console.error('Stock-in update request failed:', error);
+      return res.status(500).json({ error: 'স্টক-ইন সংশোধনের অনুরোধ জমা করা যায়নি।' });
+    }
+  }
 
   const inputs = Array.isArray(req.body?.entries) ? req.body.entries : [req.body || {}];
   if (!inputs.length || inputs.length > 200 || inputs.some((input) => !isValidEntry(input))) {

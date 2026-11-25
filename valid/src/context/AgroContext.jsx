@@ -29,7 +29,11 @@ import { getStockInQuantities } from '../../shared/quantityUnits';
 import { STOCK_RECONCILIATION_START_DATE } from '../../shared/stockReconciliation';
 import { normalizeHotlineNumber } from '../../shared/companyContact';
 import { normalizeProductDisplayNames } from '../../shared/productNames';
-import { isAdminRole, SUPER_ADMIN_ROLE } from '../../shared/roles';
+import {
+  isAdminRole,
+  LOGISTIC_OFFICER_ROLE,
+  SUPER_ADMIN_ROLE
+} from '../../shared/roles';
 import { readJsonResponse } from '../utils/api';
 
 const AgroContext = createContext();
@@ -591,8 +595,10 @@ export function AgroProvider({ children }) {
 
   // Update existing invoice (Edit capability)
   const updateInvoice = async (updatedInvoice) => {
-    if (currentUser?.role !== SUPER_ADMIN_ROLE && !currentUser?.isSuperAdmin) {
-      throw new Error('ইনভয়েস সম্পাদনার অনুমতি শুধু সুপার অ্যাডমিনের।');
+    const canRequestUpdate = isAdminRole(currentUser?.role)
+      || currentUser?.role === LOGISTIC_OFFICER_ROLE;
+    if (!canRequestUpdate) {
+      throw new Error('ইনভয়েস সংশোধনের অনুমতি নেই।');
     }
     const calculatedTotalCartons = (updatedInvoice.items || []).reduce(
       (sum, it) => sum + getItemCartons(it),
@@ -612,6 +618,7 @@ export function AgroProvider({ children }) {
       body: JSON.stringify({ invoice: finalInvoice })
     });
     const savedInvoice = await readJsonResponse(response);
+    if (savedInvoice?.pendingApproval) return savedInvoice;
     if (previousInvoice) {
       setProducts((prevProducts) =>
         applyInvoiceStockChanges(
@@ -710,6 +717,15 @@ export function AgroProvider({ children }) {
     }));
   };
 
+  const updateStockIn = async (id, entry) => {
+    const response = await fetch('/api/stock-in', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, entry })
+    });
+    return readJsonResponse(response);
+  };
+
   // Record Damage / Return Log
   const recordDamageReturn = async (damageEntry) => {
     const response = await fetch('/api/damage-returns', {
@@ -748,6 +764,20 @@ export function AgroProvider({ children }) {
       ...previous
     ]);
     return savedPayments;
+  };
+
+  const updatePayment = async (payment) => {
+    const response = await fetch('/api/payments', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: payment.id, payment })
+    });
+    const result = await readJsonResponse(response);
+    if (result?.pendingApproval) return result;
+    setPayments((previous) => previous.map((entry) => (
+      entry.id === result.id ? result : entry
+    )));
+    return result;
   };
 
   const saveSalesAgreement = (agreement) => {
@@ -1151,8 +1181,10 @@ export function AgroProvider({ children }) {
         updateInvoice,
         deleteInvoice,
         addStockIn,
+        updateStockIn,
         recordDamageReturn,
         addDealerPayment,
+        updatePayment,
         saveSalesAgreement,
         deleteSalesAgreement,
         addNewDealer,

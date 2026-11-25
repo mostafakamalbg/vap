@@ -8,7 +8,8 @@ import {
   OFFICER_ROLE,
   RSM_ROLE,
   SO_ROLE,
-  SUPER_ADMIN_ROLE
+  SUPER_ADMIN_ROLE,
+  isAdminRole
 } from '../../../shared/roles';
 
 async function requestJson(url, options) {
@@ -20,10 +21,15 @@ async function requestJson(url, options) {
 
 export default function AdminAccess({ onInvoiceCreated }) {
   const { products, refreshSharedRecords, currentUser } = useAgro();
-  const canApproveOrders = currentUser?.role === SUPER_ADMIN_ROLE || currentUser?.isSuperAdmin;
+  const isSuperAdmin = currentUser?.role === SUPER_ADMIN_ROLE || currentUser?.isSuperAdmin;
+  const canManageUsers = isAdminRole(currentUser?.role);
+  const canApproveOrders = isSuperAdmin
+    || currentUser?.role === LOGISTIC_OFFICER_ROLE
+    || currentUser?.role === ASM_ROLE;
   const [pendingUsers, setPendingUsers] = useState([]);
   const [activeUsers, setActiveUsers] = useState([]);
   const [orders, setOrders] = useState([]);
+  const [approvalRequests, setApprovalRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState('');
   const [editingOrderId, setEditingOrderId] = useState('');
@@ -37,20 +43,22 @@ export default function AdminAccess({ onInvoiceCreated }) {
     setLoading(true);
     setError('');
     try {
-      const [users, officers, allOrders] = await Promise.all([
-        requestJson('/api/users'),
-        requestJson('/api/users?status=active'),
-        requestJson('/api/orders')
+      const [users, officers, allOrders, requests] = await Promise.all([
+        canManageUsers ? requestJson('/api/users') : Promise.resolve([]),
+        canManageUsers ? requestJson('/api/users?status=active') : Promise.resolve([]),
+        requestJson('/api/orders'),
+        isSuperAdmin ? requestJson('/api/approvals') : Promise.resolve([])
       ]);
       setPendingUsers(users);
       setActiveUsers(officers);
       setOrders(allOrders);
+      setApprovalRequests(requests);
     } catch (requestError) {
       setError(requestError.message);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [canManageUsers, isSuperAdmin]);
 
   useEffect(() => { refresh(); }, [refresh]);
 
@@ -148,7 +156,7 @@ export default function AdminAccess({ onInvoiceCreated }) {
           orderId,
           status,
           ...(status === 'approved' && editingOrderId === orderId ? { items: editedItems } : {}),
-          decisionNote: status === 'approved' ? 'অ্যাডমিন অনুমোদন করেছেন।' : 'অর্ডারটি অনুমোদন করা হয়নি।'
+          decisionNote: status === 'approved' ? `${currentUser?.role || 'অনুমোদনকারী'} অনুমোদন করেছেন।` : 'অর্ডারটি অনুমোদন করা হয়নি।'
         })
       });
       if (status === 'approved') {
@@ -172,14 +180,42 @@ export default function AdminAccess({ onInvoiceCreated }) {
     }
   };
 
-  const pendingOrders = orders.filter((order) => order.status === 'pending');
+  const decideApprovalRequest = async (request, decision) => {
+    const reason = decision === 'rejected'
+      ? window.prompt('প্রত্যাখ্যানের কারণ লিখুন:')
+      : '';
+    if (decision === 'rejected' && !reason?.trim()) return;
+    setBusyId(request.id);
+    setError('');
+    setMessage('');
+    try {
+      await requestJson('/api/approvals', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: request.id, decision, reason })
+      });
+      if (decision === 'approved') {
+        await Promise.all(['products', 'invoices', 'payments', 'stockInLogs'].map(
+          (type) => refreshSharedRecords(type)
+        ));
+      }
+      setMessage(decision === 'approved' ? 'পরিবর্তন অনুমোদিত ও সংরক্ষিত হয়েছে।' : 'অনুরোধ প্রত্যাখ্যান করা হয়েছে।');
+      await refresh();
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setBusyId('');
+    }
+  };
+
+  const pendingOrders = orders.filter((order) => ['pending', 'pending_approval'].includes(order.status));
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 px-4 py-8">
       <header className="flex flex-col justify-between gap-3 rounded-2xl bg-slate-900 p-6 text-white sm:flex-row sm:items-center">
         <div>
           <p className="text-xs font-bold uppercase tracking-wider text-emerald-300">
-            {canApproveOrders ? 'SuperAdmin' : 'Admin'} • অ্যাডমিন নিয়ন্ত্রণ
+            {isSuperAdmin ? 'SuperAdmin' : currentUser?.role} • অ্যাডমিন নিয়ন্ত্রণ
           </p>
           <h1 className="mt-1 text-2xl font-black">অফিসার অ্যাকাউন্ট ও অর্ডার</h1>
           <p className="mt-1 text-xs text-slate-300">অফিসার অ্যাকাউন্ট অনুমোদন করুন এবং পণ্যের অর্ডার দেখুন।</p>
@@ -192,7 +228,7 @@ export default function AdminAccess({ onInvoiceCreated }) {
       {error && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm font-semibold text-rose-700">{error}</p>}
       {message && <p role="status" className="rounded-lg bg-emerald-50 p-3 text-sm font-semibold text-emerald-800">{message}</p>}
 
-      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      {canManageUsers && <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
           <div className="flex items-center gap-2"><Users className="h-5 w-5 text-emerald-700" /><div><h2 className="font-black text-slate-900">অনুমোদনের অপেক্ষায় থাকা অফিসার</h2><p className="text-xs text-slate-500">{pendingUsers.length}টি আবেদন</p></div></div>
         </div>
@@ -216,9 +252,9 @@ export default function AdminAccess({ onInvoiceCreated }) {
           ))}
           {!loading && pendingUsers.length === 0 && <p className="px-5 py-8 text-center text-sm text-slate-500">নতুন কোনো অফিসার আবেদন নেই।</p>}
         </div>
-      </section>
+      </section>}
 
-      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      {canManageUsers && <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="flex items-center gap-2 border-b border-slate-100 px-5 py-4">
           <KeyRound className="h-5 w-5 text-emerald-700" />
           <div><h2 className="font-black text-slate-900">অফিসার পাসওয়ার্ড রিসেট</h2><p className="text-xs text-slate-500">পরিচয় যাচাই করে নতুন পাসওয়ার্ড সেট করুন এবং ব্যক্তিগতভাবে জানান।</p></div>
@@ -313,7 +349,7 @@ export default function AdminAccess({ onInvoiceCreated }) {
           ))}
           {!loading && activeUsers.length === 0 && <p className="px-5 py-8 text-center text-sm text-slate-500">সক্রিয় অফিসার অ্যাকাউন্ট নেই।</p>}
         </div>
-      </section>
+      </section>}
 
       <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="flex items-center gap-2 border-b border-slate-100 px-5 py-4">
@@ -322,7 +358,7 @@ export default function AdminAccess({ onInvoiceCreated }) {
         </div>
         {!canApproveOrders && pendingOrders.length > 0 && (
           <p className="border-b border-slate-100 bg-amber-50 px-5 py-3 text-xs font-semibold text-amber-800">
-            অর্ডার সম্পাদনা, অনুমোদন বা প্রত্যাখ্যান শুধু SuperAdmin করতে পারবেন।
+            এই অর্ডারগুলোর অনুমোদন আপনার জন্য উপলভ্য নয়।
           </p>
         )}
         <div className="divide-y divide-slate-100">
@@ -423,6 +459,67 @@ export default function AdminAccess({ onInvoiceCreated }) {
           {!loading && pendingOrders.length === 0 && <p className="px-5 py-8 text-center text-sm text-slate-500">নতুন কোনো অর্ডার অনুমোদনের অপেক্ষায় নেই।</p>}
         </div>
       </section>
+
+      {isSuperAdmin && (
+        <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+          <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+            <div className="flex items-center gap-2">
+              <ClipboardCheck className="h-5 w-5 text-amber-700" />
+              <div>
+                <h2 className="font-black text-slate-900">সুপার অ্যাডমিন অনুমোদন কিউ</h2>
+                <p className="text-xs text-slate-500">{approvalRequests.length}টি পরিবর্তন পর্যালোচনার অপেক্ষায়</p>
+              </div>
+            </div>
+          </div>
+          <div className="divide-y divide-slate-100">
+            {approvalRequests.map((request) => (
+              <article key={request.id} className="space-y-3 px-5 py-4">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <p className="font-bold text-slate-900">
+                      {request.requestType === 'invoice_update' ? 'ইনভয়েস সংশোধন'
+                        : request.requestType === 'payment_update' ? 'পেমেন্ট সংশোধন'
+                          : 'স্টক-ইন চালান সংশোধন'} • {request.targetId}
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      জমাদানকারী: {request.submittedBy} ({request.submittedByRole}) •{' '}
+                      {request.submittedAt ? new Date(request.submittedAt).toLocaleString('bn-BD') : 'তারিখ নেই'}
+                    </p>
+                  </div>
+                  <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-bold text-amber-800">অনুমোদন অপেক্ষমাণ</span>
+                </div>
+                <div className="grid gap-3 lg:grid-cols-2">
+                  {[
+                    ['মূল তথ্য', request.original],
+                    ['প্রস্তাবিত পরিবর্তন', request.proposed]
+                  ].map(([label, values]) => (
+                    <div key={label} className="min-w-0 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                      <h3 className="mb-2 text-xs font-black text-slate-700">{label}</h3>
+                      <dl className="space-y-1">
+                        {Object.entries(values || {}).filter(([key]) => !['_id', '__v', 'createdAt', 'updatedAt'].includes(key)).map(([key, value]) => (
+                          <div key={key} className="grid grid-cols-[minmax(5rem,auto)_1fr] gap-2 text-[11px]">
+                            <dt className="break-all font-semibold text-slate-500">{key}</dt>
+                            <dd className="break-all text-slate-800">{value != null && typeof value === 'object' ? JSON.stringify(value) : String(value ?? '—')}</dd>
+                          </div>
+                        ))}
+                      </dl>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <button disabled={busyId === request.id} onClick={() => decideApprovalRequest(request, 'approved')} className="inline-flex items-center gap-1 rounded-lg bg-emerald-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">
+                    <Check className="h-4 w-4" /> অনুমোদন ও প্রয়োগ
+                  </button>
+                  <button disabled={busyId === request.id} onClick={() => decideApprovalRequest(request, 'rejected')} className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700 disabled:opacity-50">
+                    <ShieldX className="h-4 w-4" /> প্রত্যাখ্যান
+                  </button>
+                </div>
+              </article>
+            ))}
+            {!loading && approvalRequests.length === 0 && <p className="px-5 py-8 text-center text-sm text-slate-500">কোনো পরিবর্তন অনুমোদনের অপেক্ষায় নেই।</p>}
+          </div>
+        </section>
+      )}
     </div>
   );
 }

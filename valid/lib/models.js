@@ -173,7 +173,13 @@ const orderSchema = new Schema({
   invoiceNo: { type: String, default: undefined },
   seqNumber: { type: Number, default: 0 },
   officerId: { type: String, required: true, index: true },
-  status: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },
+  status: { type: String, enum: ['pending', 'pending_approval', 'approved', 'rejected'], default: 'pending' },
+  approvedBy: { type: String, default: '' },
+  approvedByRole: { type: String, default: '' },
+  editedByLogistic: { type: String, default: '' },
+  editedBy: { type: String, default: '' },
+  editedByRole: { type: String, default: '' },
+  approvedAt: { type: Date, default: null },
   items: { type: [orderItemSchema], default: [] }
 }, flexibleOptions);
 orderSchema.index({ invoiceNo: 1 }, { unique: true, sparse: true });

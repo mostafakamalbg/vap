@@ -10,10 +10,15 @@ import { STOCK_RECONCILIATION_START_DATE } from '../shared/stockReconciliation.j
 import { transactionCreateOptions, transactionOptions, withTransactionFallback } from '../lib/transactions.js';
 import { normalizeSessionText } from '../shared/sessions.js';
 import { parseSessionDateRange } from '../shared/reportDateFilters.js';
-import { ADMIN_ROLES, isAdminRole } from '../shared/roles.js';
-import { HIERARCHY_ROLE_VALUES } from '../shared/roles.js';
+import {
+  ADMIN_ROLES,
+  HIERARCHY_ROLE_VALUES,
+  LOGISTIC_OFFICER_ROLE,
+  isAdminRole
+} from '../shared/roles.js';
 import { resolveHierarchyScope } from '../lib/hierarchy.js';
 import { buildOfficerOwnerFilter } from '../shared/hierarchy.js';
+import { createApprovalRequest } from '../lib/approvalRequests.js';
 
 const isValidDate = (value) => {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -21,7 +26,7 @@ const isValidDate = (value) => {
   return !Number.isNaN(date.valueOf()) && date.toISOString().slice(0, 10) === value;
 };
 
-function validateInvoice(body) {
+export function validateInvoice(body) {
   if (!body?.id || !isValidDate(body.date) || !String(body.session || '').trim() || String(body.session).length > 100) {
     return 'ইনভয়েস নম্বর, সঠিক তারিখ ও সেশন নির্বাচন করুন।';
   }
@@ -94,7 +99,7 @@ function validateInvoice(body) {
   return '';
 }
 
-function invoiceValues(body) {
+export function invoiceValues(body) {
   const isReturn = ['dealer_return', 'depot_factory_return', 'factory_damage'].includes(body.invoiceType);
   const totals = calculateInvoiceTotals({
     items: body.items,
@@ -166,10 +171,22 @@ function getInvoicePaymentValues(invoice) {
   };
 }
 
-async function syncInvoicePayment(invoice, session) {
+export async function syncInvoicePayment(invoice, session) {
   const options = transactionOptions(session);
-  await Payment.deleteMany({ sourceInvoiceId: invoice.id }, options);
-  await BusinessRecord.deleteMany({
+  const paymentValues = getInvoicePaymentValues(invoice);
+  const paymentFilter = { id: paymentValues.id };
+  let existingPaymentQuery = Payment.findOne(paymentFilter).select('id');
+  if (session) existingPaymentQuery = existingPaymentQuery.session(session);
+  const existingPayment = await existingPaymentQuery.lean();
+  if (invoice.paidAmount > 0 || existingPayment) {
+    await Payment.updateOne(
+      paymentFilter,
+      { $set: paymentValues },
+      { ...options, upsert: true, runValidators: true }
+    );
+  }
+
+  const legacyQuery = BusinessRecord.find({
     type: 'payments',
     $or: [
       { 'data.sourceInvoiceId': invoice.id },
@@ -178,9 +195,15 @@ async function syncInvoicePayment(invoice, session) {
         'data.note': `ইনভয়েস #${invoice.id} এর বিপরীতে পরিশোধ`
       }
     ]
-  }, options);
-  if (invoice.paidAmount > 0) {
-    await Payment.create([getInvoicePaymentValues(invoice)], transactionCreateOptions(session));
+  }).select('recordId data');
+  if (session) legacyQuery.session(session);
+  const legacyPayments = await legacyQuery.lean();
+  for (const legacy of legacyPayments) {
+    await BusinessRecord.updateOne(
+      { type: 'payments', recordId: legacy.recordId },
+      { $set: { data: { ...legacy.data, ...paymentValues } } },
+      options
+    );
   }
 }
 
@@ -209,7 +232,7 @@ function isWithinDeleteWindow(invoice) {
   return Date.now() <= deadline.valueOf();
 }
 
-async function applyInvoiceStockChanges(previousInvoice, nextInvoice, session) {
+export async function applyInvoiceStockChanges(previousInvoice, nextInvoice, session) {
   const effectivePreviousInvoice = previousInvoice?.date >= STOCK_RECONCILIATION_START_DATE
     ? previousInvoice
     : null;
@@ -264,10 +287,15 @@ export default async function handler(req, res) {
     const user = await authorize(
       req,
       res,
-      req.method === 'GET' ? [...ADMIN_ROLES, ...HIERARCHY_ROLE_VALUES] : ADMIN_ROLES
+      req.method === 'GET'
+        ? [...ADMIN_ROLES, ...HIERARCHY_ROLE_VALUES, LOGISTIC_OFFICER_ROLE]
+        : req.method === 'PATCH'
+          ? [...ADMIN_ROLES, LOGISTIC_OFFICER_ROLE]
+          : ADMIN_ROLES
     );
     if (!user) return;
-    if (req.method !== 'GET' && req.method !== 'POST') {
+    if (req.method === 'DELETE' || (req.method === 'PATCH' && !isAdminRole(user.role)
+      && user.role !== LOGISTIC_OFFICER_ROLE)) {
       if (!await hasSuperAdminAccess(user)) {
         return res.status(403).json({ error: 'সেলস সম্পাদনা বা মুছে ফেলার অনুমতি শুধু সুপার অ্যাডমিনের।' });
       }
@@ -276,7 +304,9 @@ export default async function handler(req, res) {
     if (req.method === 'GET') {
       const scope = await resolveHierarchyScope(user);
       const filters = [];
-      if (!scope.global) filters.push(buildOfficerOwnerFilter(scope));
+      if (!scope.global && user.role !== LOGISTIC_OFFICER_ROLE) {
+        filters.push(buildOfficerOwnerFilter(scope));
+      }
       if (req.query?.session != null) {
         const session = String(req.query.session).trim();
         if (!session || session.length > 100) return res.status(400).json({ error: 'সঠিক সেশন নির্বাচন করুন।' });
@@ -383,6 +413,22 @@ export default async function handler(req, res) {
       dealerAddress: dealer?.address || dealer?.businessAddress || input.dealerAddress || '',
       dealerPhone: dealer?.phone || dealer?.mobile || dealer?.phoneNumber || input.dealerPhone || ''
     });
+    if (req.method === 'PATCH' && !await hasSuperAdminAccess(user)) {
+      const existingInvoice = await Invoice.findOne({ id: values.id }).lean();
+      if (!existingInvoice) return res.status(404).json({ error: 'ইনভয়েস পাওয়া যায়নি।' });
+      if (!isWithinEditWindow(existingInvoice)) {
+        return res.status(403).json({ error: 'ইনভয়েস তৈরির ১৫ দিনের মধ্যে সম্পাদনা করা যাবে।' });
+      }
+      const approvalRequest = await createApprovalRequest({
+        requestType: 'invoice_update',
+        targetId: values.id,
+        original: existingInvoice,
+        originalUpdatedAt: existingInvoice.updatedAt,
+        proposed: values,
+        user
+      });
+      return res.status(202).json({ pendingApproval: true, approvalRequest });
+    }
     if (req.method === 'POST') {
       let invoice;
       await withTransactionFallback(async (session) => {

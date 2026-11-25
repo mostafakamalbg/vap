@@ -49,6 +49,7 @@ const createStockInForm = () => {
     date: today,
     source: 'কারখানা হতে প্রাপ্ত (বগুড়া কেন্দ্রীয় প্ল্যান্ট)',
     batchNo: `BAT-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`,
+    challanNo: '',
     mfgDate: today,
     expDate: '',
     receivedBy: 'গোডাউন ইনচার্জ, নিশিন্দারা বগুড়া',
@@ -60,6 +61,7 @@ const createEmptyStockInForm = () => ({
   date: '',
   source: '',
   batchNo: '',
+  challanNo: '',
   mfgDate: '',
   expDate: '',
   receivedBy: '',
@@ -67,7 +69,15 @@ const createEmptyStockInForm = () => ({
 });
 
 export default function StockManagement() {
-  const { products, stockInLogs, addStockIn, addNewProduct, addProductVariant, currentUser } = useAgro();
+  const {
+    products,
+    stockInLogs,
+    addStockIn,
+    updateStockIn,
+    addNewProduct,
+    addProductVariant,
+    currentUser
+  } = useAgro();
   const canManageProducts = isAdminRole(currentUser?.role);
   const canReceiveStock = canManageProducts || currentUser?.role === LOGISTIC_OFFICER_ROLE;
 
@@ -81,6 +91,9 @@ export default function StockManagement() {
   const [stockInSaving, setStockInSaving] = useState(false);
   const [stockInSaveError, setStockInSaveError] = useState('');
   const [stockInSuccess, setStockInSuccess] = useState(null);
+  const [editingStockIn, setEditingStockIn] = useState(null);
+  const [stockInEditBusy, setStockInEditBusy] = useState(false);
+  const [stockInEditError, setStockInEditError] = useState('');
 
   // Stock In Form State
   const [stockInForm, setStockInForm] = useState(createStockInForm);
@@ -148,6 +161,52 @@ export default function StockManagement() {
     .sort((left, right) => String(right.date || '').localeCompare(String(left.date || '')))
     .slice(0, 8);
 
+  const openStockInEdit = (entry) => {
+    setEditingStockIn({
+      original: entry,
+      productId: entry.productId || '',
+      sku: entry.sku || '',
+      date: entry.date || '',
+      cartons: String(entry.cartons ?? entry.quantity ?? ''),
+      source: entry.source || '',
+      batchNo: entry.batchNo || '',
+      challanNo: entry.challanNo || '',
+      mfgDate: entry.mfgDate || '',
+      expDate: entry.expDate || '',
+      receivedBy: entry.receivedBy || '',
+      note: entry.note || ''
+    });
+    setStockInEditError('');
+  };
+
+  const handleStockInEditSubmit = async (event) => {
+    event.preventDefault();
+    if (!editingStockIn || !Number.isSafeInteger(Number(editingStockIn.cartons))
+      || Number(editingStockIn.cartons) < 1) {
+      setStockInEditError('সঠিক স্টক-ইন প্যাকেজ সংখ্যা দিন।');
+      return;
+    }
+    setStockInEditBusy(true);
+    setStockInEditError('');
+    try {
+      const { original, ...entry } = editingStockIn;
+      const result = await updateStockIn(original.id, {
+        ...entry,
+        cartons: Number(entry.cartons)
+      });
+      setEditingStockIn(null);
+      setStockInSuccess({
+        productLines: 1,
+        packages: Number(entry.cartons),
+        pendingApproval: Boolean(result.pendingApproval)
+      });
+    } catch (error) {
+      setStockInEditError(error.message || 'স্টক-ইন সংশোধনের অনুরোধ জমা করা যায়নি।');
+    } finally {
+      setStockInEditBusy(false);
+    }
+  };
+
   // Prepare a stock-in preview from the entered package counts.
   const handleStockInSubmit = async (e) => {
     e.preventDefault();
@@ -200,6 +259,7 @@ export default function StockManagement() {
         size: entry.size,
         cartons: entry.quantity,
         batchNo: stockInForm.batchNo,
+        challanNo: stockInForm.challanNo,
         mfgDate: stockInForm.mfgDate,
         expDate: stockInForm.expDate,
         receivedBy: stockInForm.receivedBy,
@@ -680,6 +740,16 @@ export default function StockManagement() {
               </div>
 
               <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">চালান নম্বর (Challan No)</label>
+                <input
+                  type="text"
+                  value={stockInForm.challanNo}
+                  onChange={(e) => setStockInForm({ ...stockInForm, challanNo: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm"
+                />
+              </div>
+
+              <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1">উৎপাদন তারিখ (Mfg Date)</label>
                 <input
                   type="date"
@@ -790,13 +860,19 @@ export default function StockManagement() {
                 <div className="flex items-start gap-3">
                   <CheckCircle className="mt-0.5 h-7 w-7 shrink-0 text-emerald-600" />
                   <div>
-                    <h3 id="stock-in-success-title" className="text-lg font-black text-slate-900">স্টক ইন সফলভাবে সংরক্ষিত হয়েছে</h3>
+                    <h3 id="stock-in-success-title" className="text-lg font-black text-slate-900">
+                      {stockInSuccess.pendingApproval ? 'সংশোধন অনুমোদনের অপেক্ষায়' : 'স্টক ইন সফলভাবে সংরক্ষিত হয়েছে'}
+                    </h3>
                     <p className="mt-2 text-sm text-slate-600">
-                      {stockInSuccess.productLines.toLocaleString('bn-BD')}টি প্যাক সাইজের এন্ট্রি সংরক্ষণ হয়েছে।
+                      {stockInSuccess.pendingApproval
+                        ? 'সুপার অ্যাডমিন অনুমোদনের আগে মূল চালান ও মজুত অপরিবর্তিত থাকবে।'
+                        : `${stockInSuccess.productLines.toLocaleString('bn-BD')}টি প্যাক সাইজের এন্ট্রি সংরক্ষণ হয়েছে।`}
                     </p>
-                    <p className="mt-2 text-sm font-semibold text-emerald-800">
-                      {stockInSuccess.packages.toLocaleString('bn-BD')}টি প্যাকেজ (পিস বাদে) যোগ হয়েছে।
-                    </p>
+                    {!stockInSuccess.pendingApproval && (
+                      <p className="mt-2 text-sm font-semibold text-emerald-800">
+                        {stockInSuccess.packages.toLocaleString('bn-BD')}টি প্যাকেজ (পিস বাদে) যোগ হয়েছে।
+                      </p>
+                    )}
                   </div>
                 </div>
                 <div className="mt-5 flex justify-end">
@@ -820,6 +896,7 @@ export default function StockManagement() {
                     <th className="py-2.5 px-3">ব্যাচ নং</th>
                     <th className="py-2.5 px-3">উৎস</th>
                     <th className="py-2.5 px-3">রিসিভার</th>
+                    {canReceiveStock && <th className="py-2.5 px-3">অ্যাকশন</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
@@ -832,6 +909,13 @@ export default function StockManagement() {
                       <td className="py-2 px-3 font-mono text-slate-500">{log.batchNo || '-'}</td>
                       <td className="py-2 px-3 text-slate-600">{log.source}</td>
                       <td className="py-2 px-3 text-slate-500">{log.receivedBy}</td>
+                      {canReceiveStock && (
+                        <td className="py-2 px-3">
+                          <button type="button" onClick={() => openStockInEdit(log)} className="rounded border border-amber-200 bg-amber-50 px-2 py-1 font-semibold text-amber-800">
+                            সংশোধন
+                          </button>
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
@@ -997,6 +1081,67 @@ export default function StockManagement() {
                 className="bg-emerald-700 hover:bg-emerald-800 text-white px-6 py-2 rounded-lg text-sm font-bold shadow transition"
               >
                 নতুন পণ্য সংরক্ষণ করুন
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+      {editingStockIn && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/60 p-4">
+          <form onSubmit={handleStockInEditSubmit} className="w-full max-w-2xl space-y-4 rounded-xl bg-white p-5 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+              <div>
+                <h3 className="font-black text-slate-900">স্টক-ইন চালান সংশোধন</h3>
+                <p className="text-xs text-slate-500">{editingStockIn.original.id} • অনুমোদনের আগে মজুত অপরিবর্তিত থাকবে</p>
+              </div>
+              <button type="button" onClick={() => setEditingStockIn(null)} aria-label="বন্ধ করুন" className="rounded p-1 text-slate-500 hover:bg-slate-100">×</button>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="text-xs font-semibold text-slate-600 sm:col-span-2">পণ্য ও প্যাক সাইজ
+                <select required value={`${editingStockIn.productId}::${editingStockIn.sku}`} onChange={(event) => {
+                  const [productId, sku] = event.target.value.split('::');
+                  setEditingStockIn((previous) => ({ ...previous, productId, sku }));
+                }} className="mt-1 w-full rounded border border-slate-300 p-2">
+                  {products.flatMap((product) => (product.variants || []).map((variant) => (
+                    <option key={`${product.id}::${variant.sku}`} value={`${product.id}::${variant.sku}`}>
+                      {product.name} • {variant.size} • {variant.sku}
+                    </option>
+                  )))}
+                </select>
+              </label>
+              <label className="text-xs font-semibold text-slate-600">তারিখ
+                <input required type="date" value={editingStockIn.date} onChange={(event) => setEditingStockIn((previous) => ({ ...previous, date: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 p-2" />
+              </label>
+              <label className="text-xs font-semibold text-slate-600">কার্টুন / প্যাকেজ
+                <input required type="number" min="1" step="1" value={editingStockIn.cartons} onChange={(event) => setEditingStockIn((previous) => ({ ...previous, cartons: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 p-2" />
+              </label>
+              <label className="text-xs font-semibold text-slate-600">ব্যাচ / চালান নম্বর
+                <input value={editingStockIn.batchNo} onChange={(event) => setEditingStockIn((previous) => ({ ...previous, batchNo: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 p-2" />
+              </label>
+              <label className="text-xs font-semibold text-slate-600">চালান নম্বর
+                <input value={editingStockIn.challanNo} onChange={(event) => setEditingStockIn((previous) => ({ ...previous, challanNo: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 p-2" />
+              </label>
+              <label className="text-xs font-semibold text-slate-600">উৎস
+                <input value={editingStockIn.source} onChange={(event) => setEditingStockIn((previous) => ({ ...previous, source: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 p-2" />
+              </label>
+              <label className="text-xs font-semibold text-slate-600">উৎপাদন তারিখ
+                <input type="date" value={editingStockIn.mfgDate} onChange={(event) => setEditingStockIn((previous) => ({ ...previous, mfgDate: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 p-2" />
+              </label>
+              <label className="text-xs font-semibold text-slate-600">মেয়াদ শেষ
+                <input type="date" value={editingStockIn.expDate} onChange={(event) => setEditingStockIn((previous) => ({ ...previous, expDate: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 p-2" />
+              </label>
+              <label className="text-xs font-semibold text-slate-600">রিসিভ করেছেন
+                <input value={editingStockIn.receivedBy} onChange={(event) => setEditingStockIn((previous) => ({ ...previous, receivedBy: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 p-2" />
+              </label>
+              <label className="text-xs font-semibold text-slate-600 sm:col-span-2">নোট
+                <input value={editingStockIn.note} onChange={(event) => setEditingStockIn((previous) => ({ ...previous, note: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 p-2" />
+              </label>
+            </div>
+            {stockInEditError && <p role="alert" className="rounded bg-rose-50 p-2 text-xs font-semibold text-rose-700">{stockInEditError}</p>}
+            <div className="flex justify-end gap-2 border-t border-slate-200 pt-3">
+              <button type="button" onClick={() => setEditingStockIn(null)} className="rounded border border-slate-300 px-3 py-2 text-xs font-bold text-slate-600">বাতিল</button>
+              <button disabled={stockInEditBusy} className="rounded bg-emerald-700 px-4 py-2 text-xs font-bold text-white disabled:opacity-50">
+                {stockInEditBusy ? 'জমা হচ্ছে…' : 'অনুমোদনের জন্য জমা দিন'}
               </button>
             </div>
           </form>

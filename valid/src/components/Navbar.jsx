@@ -62,6 +62,9 @@ export default function Navbar({ activeTab, setActiveTab }) {
     : [RSM_ROLE, ASM_ROLE].includes(currentUser?.role)
       ? [
           ...publicItems,
+        ...(currentUser?.role === ASM_ROLE
+          ? [{ id: 'admin-access', label: t('nav.adminApproval'), icon: UserCheck }]
+          : []),
           { id: 'inventory', label: t('nav.stock'), icon: Package },
           { id: 'invoice-list', label: t('nav.invoiceHistory'), icon: FileText },
           { id: 'dealer-ledger', label: t('nav.dealerLedger'), icon: Users },
@@ -71,7 +74,10 @@ export default function Navbar({ activeTab, setActiveTab }) {
       : currentUser?.role === LOGISTIC_OFFICER_ROLE
         ? [
             ...publicItems,
+            { id: 'admin-access', label: t('nav.adminApproval'), icon: UserCheck },
+            { id: 'invoice-list', label: t('nav.invoiceHistory'), icon: FileText },
             { id: 'inventory', label: t('nav.stock'), icon: Package },
+            { id: 'dealer-ledger', label: t('nav.dealerLedger'), icon: Users },
             { id: 'damage-returns', label: 'ফ্যাক্টরি রিটার্ন / ডেমেজ গ্রহণ', icon: RotateCw }
           ]
         : [OFFICER_ROLE, SO_ROLE].includes(currentUser?.role)

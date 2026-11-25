@@ -61,9 +61,17 @@ function AppContent() {
         'dashboard-reports',
         'monthly-sales-reports'
       ];
-      setActiveTab(reportTabs.includes(tab) ? tab : 'dashboard-reports');
+      setActiveTab((currentUser?.role === ASM_ROLE && tab === 'admin-access')
+        || reportTabs.includes(tab) ? tab : 'dashboard-reports');
     } else if (currentUser?.role === LOGISTIC_OFFICER_ROLE) {
-      setActiveTab(['inventory', 'damage-returns'].includes(tab) ? tab : 'inventory');
+      setActiveTab([
+        'admin-access',
+        'inventory',
+        'invoice-list',
+        'new-invoice',
+        'dealer-ledger',
+        'damage-returns'
+      ].includes(tab) ? tab : 'inventory');
     } else if ([OFFICER_ROLE, SO_ROLE].includes(currentUser?.role)) {
       setActiveTab(tab === 'officer-dashboard' ? tab : 'officer-dashboard');
     } else {
@@ -86,10 +94,12 @@ function AppContent() {
   const handleLoginSuccess = (user) => {
     setActiveTab(isAdminRole(user.role)
       ? 'admin-access'
-      : user.role === RSM_ROLE || user.role === ASM_ROLE
-        ? 'dashboard-reports'
+      : user.role === ASM_ROLE
+        ? 'admin-access'
+        : user.role === RSM_ROLE
+          ? 'dashboard-reports'
         : user.role === LOGISTIC_OFFICER_ROLE
-          ? 'inventory'
+          ? 'admin-access'
           : 'officer-dashboard');
   };
 

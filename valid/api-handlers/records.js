@@ -72,7 +72,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'ইনভয়েস সংরক্ষণ, সম্পাদনা ও মুছতে নির্দিষ্ট ইনভয়েস অপশন ব্যবহার করুন।' });
   }
   if (user.role === LOGISTIC_OFFICER_ROLE
-    && !['products', 'officers', 'dealers', 'stockInLogs', 'damageLogs'].includes(type)) {
+    && !['products', 'officers', 'dealers', 'invoices', 'payments', 'stockInLogs', 'damageLogs'].includes(type)) {
     return res.status(403).json({ error: 'এই রেকর্ড দেখার অনুমতি নেই।' });
   }
 
@@ -107,7 +107,7 @@ export default async function handler(req, res) {
       }
       if (type === 'payments') {
         const conditions = [];
-        if (!isAdminRole(user.role)) {
+        if (!isAdminRole(user.role) && user.role !== LOGISTIC_OFFICER_ROLE) {
           conditions.push(buildOfficerOwnerFilter(scope));
         }
         if (req.query?.session != null) {
@@ -145,7 +145,7 @@ export default async function handler(req, res) {
         const legacy = legacyRecords.map((record) => record.data).filter((payment) => {
           if (!payment || (payment.id && ids.has(String(payment.id)))) return false;
           if (payment.sourceInvoiceId && sources.has(String(payment.sourceInvoiceId))) return false;
-          if (!matchesOfficerScope(payment, scope)) return false;
+          if (user.role !== LOGISTIC_OFFICER_ROLE && !matchesOfficerScope(payment, scope)) return false;
           if (req.query?.date != null && payment.date !== String(req.query.date)) return false;
           if (monthRange && !(String(payment.date || '') >= monthRange.start
             && String(payment.date || '') < monthRange.end)) return false;
@@ -161,7 +161,9 @@ export default async function handler(req, res) {
         return res.status(200).json([...typed, ...legacy].map(normalizePaymentRecord));
       }
       if (Model) {
-        const filter = !isAdminRole(user.role) && type === 'invoices'
+        const filter = !isAdminRole(user.role)
+          && user.role !== LOGISTIC_OFFICER_ROLE
+          && type === 'invoices'
           ? buildOfficerOwnerFilter(scope)
           : {};
         const query = Model.find(filter);

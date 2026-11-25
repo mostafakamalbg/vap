@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { AdminSeat, DealerSalesTarget, Payment, SalesOfficer, User } from './models.js';
+import { AdminSeat, DealerSalesTarget, Order, Payment, SalesOfficer, User } from './models.js';
 import {
   ADMIN_ROLE,
   LEGACY_ADMIN_ROLE,
@@ -35,6 +35,26 @@ test('payment schemas expose only the canonical office payment category', () => 
   assert.equal(paymentTypes.includes('company_transfer'), false);
   assert.equal(paymentTypes.includes('office_pay'), false);
   assert.ok(SalesOfficer.schema.path('paymentAndExpense.officePayment'));
+});
+
+test('order approvals add optional audit fields while preserving legacy order status', async () => {
+  const pendingOrder = new Order({
+    id: 'ORD-2026-NEW',
+    officerId: 'SO-1',
+    status: 'pending_approval'
+  });
+  const legacyOrder = new Order({
+    id: 'ORD-2025-LEGACY',
+    officerId: 'SO-2',
+    status: 'pending'
+  });
+
+  await assert.doesNotReject(pendingOrder.validate());
+  await assert.doesNotReject(legacyOrder.validate());
+  assert.equal(legacyOrder.approvedBy, '');
+  assert.equal(legacyOrder.approvedByRole, '');
+  assert.equal(legacyOrder.editedByLogistic, '');
+  assert.equal(legacyOrder.approvedAt, null);
 });
 
 test('target uniqueness stays scoped to dealer identity and session', () => {

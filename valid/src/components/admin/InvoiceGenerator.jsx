@@ -17,7 +17,7 @@ import { toBnCurrency } from '../../utils/bengali';
 import InvoicePrintHeader from './InvoicePrintHeader';
 import SearchableRecordSelect from './SearchableRecordSelect';
 import { printInvoiceSheet } from '../../utils/printInvoice';
-import { isAdminRole, SUPER_ADMIN_ROLE } from '../../../shared/roles';
+import { isAdminRole, LOGISTIC_OFFICER_ROLE } from '../../../shared/roles';
 
 const today = () => new Date().toISOString().slice(0, 10);
 const TRANSPORT_OPTIONS = ['কাভার্ড ভ্যান', 'অটো', 'ভ্যান'];
@@ -93,7 +93,8 @@ export default function InvoiceGenerator({
     getDealerSummary
   } = useAgro();
   const canAdminister = isAdminRole(currentUser?.role);
-  const canEditInvoice = currentUser?.role === SUPER_ADMIN_ROLE || currentUser?.isSuperAdmin;
+  const canEditInvoice = isAdminRole(currentUser?.role)
+    || currentUser?.role === LOGISTIC_OFFICER_ROLE;
   const [form, setForm] = useState(() => ({
     id: editInvoiceData?.id || '',
     challanNo: editInvoiceData?.challanNo || '',
@@ -505,6 +506,12 @@ export default function InvoiceGenerator({
       const saved = editInvoiceData
         ? await updateInvoice(previewInvoice)
         : await createInvoice(previewInvoice);
+      if (saved?.pendingApproval) {
+        setSavedInvoice(null);
+        setSuccess('পরিবর্তনের অনুরোধ সুপার অ্যাডমিন অনুমোদনের জন্য জমা হয়েছে।');
+        setPreviewInvoice(null);
+        return;
+      }
       setSavedInvoice(saved);
       setSuccess(editInvoiceData ? 'ইনভয়েস আপডেট হয়েছে।' : 'ইনভয়েস তৈরি হয়েছে।');
       setPreviewInvoice(null);
@@ -522,7 +529,7 @@ export default function InvoiceGenerator({
   if (editInvoiceData && !canEditInvoice) {
     return (
       <p role="alert" className="mx-auto mt-8 max-w-2xl rounded-lg bg-rose-50 p-4 text-sm font-semibold text-rose-700">
-        ইনভয়েস সম্পাদনার অনুমতি শুধু SuperAdmin-এর।
+        ইনভয়েস সম্পাদনার অনুমতি নেই।
       </p>
     );
   }

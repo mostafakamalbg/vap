@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import dbConnect from '../lib/mongodb.js';
-import { Dealer, Payment } from '../lib/models.js';
+import { BusinessRecord, Dealer, Payment } from '../lib/models.js';
 import { authorize, hasSuperAdminAccess } from '../lib/auth.js';
 import {
   normalizePaymentMethod,
@@ -13,7 +13,8 @@ import { roundCurrency } from '../shared/invoiceTotals.js';
 import { transactionCreateOptions, transactionOptions, withTransactionFallback } from '../lib/transactions.js';
 import { parseSessionDateRange } from '../shared/reportDateFilters.js';
 import { normalizeSessionText } from '../shared/sessions.js';
-import { ADMIN_ROLES } from '../shared/roles.js';
+import { ADMIN_ROLES, LOGISTIC_OFFICER_ROLE, isAdminRole } from '../shared/roles.js';
+import { createApprovalRequest } from '../lib/approvalRequests.js';
 
 function isValidDate(value) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -21,7 +22,7 @@ function isValidDate(value) {
   return !Number.isNaN(date.valueOf()) && date.toISOString().slice(0, 10) === value;
 }
 
-function paymentValues(payment) {
+export function paymentValues(payment) {
   return {
     id: String(payment.id || `PAY-${randomUUID()}`),
     date: payment.date,
@@ -50,10 +51,18 @@ export default async function handler(req, res) {
     const message = error?.message || 'Payment database connection failed.';
     return res.status(503).json({ error: message, message });
   }
-  const user = await authorize(req, res, ADMIN_ROLES);
+  const user = await authorize(
+    req,
+    res,
+    req.method === 'PATCH' ? [...ADMIN_ROLES, LOGISTIC_OFFICER_ROLE] : ADMIN_ROLES
+  );
   if (!user) return;
   if (req.method !== 'POST') {
-    if (!await hasSuperAdminAccess(user)) {
+    if (req.method === 'DELETE' && !await hasSuperAdminAccess(user)) {
+      return res.status(403).json({ error: 'পেমেন্ট সম্পাদনা বা মুছে ফেলার অনুমতি শুধু সুপার অ্যাডমিনের।' });
+    }
+    if (req.method === 'PATCH' && !isAdminRole(user.role)
+      && user.role !== LOGISTIC_OFFICER_ROLE && !await hasSuperAdminAccess(user)) {
       return res.status(403).json({ error: 'পেমেন্ট সম্পাদনা বা মুছে ফেলার অনুমতি শুধু সুপার অ্যাডমিনের।' });
     }
   }
@@ -84,6 +93,41 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'তারিখ ও সেশন নির্বাচন করুন।' });
     }
     try {
+      if (!await hasSuperAdminAccess(user)) {
+        let existing = await Payment.findOne({ id }).lean();
+        let originalUpdatedAt = existing?.updatedAt || null;
+        if (!existing) {
+          const legacy = await BusinessRecord.findOne({
+            type: 'payments',
+            $or: [{ recordId: id }, { 'data.id': id }]
+          }).select('recordId data updatedAt').lean();
+          if (legacy?.data) {
+            existing = legacy.data;
+            originalUpdatedAt = legacy.updatedAt || null;
+          }
+        }
+        if (!existing) return res.status(404).json({ error: 'পেমেন্ট পাওয়া যায়নি।' });
+        if (existing.sourceInvoiceId) {
+          return res.status(409).json({ error: 'ইনভয়েসের সঙ্গে যুক্ত পেমেন্ট সংশোধন করতে ইনভয়েস আপডেট অনুরোধ দিন।' });
+        }
+        const existingValues = Object.fromEntries(Object.entries(existing).filter(([key]) => (
+          !['_id', '__v', 'createdAt', 'updatedAt'].includes(key)
+        )));
+        const proposed = {
+          ...existingValues,
+          ...paymentValues({ ...existing, ...update, id }),
+          sourceInvoiceId: existing.sourceInvoiceId || ''
+        };
+        const approvalRequest = await createApprovalRequest({
+          requestType: 'payment_update',
+          targetId: id,
+          original: existing,
+          originalUpdatedAt,
+          proposed,
+          user
+        });
+        return res.status(202).json({ pendingApproval: true, approvalRequest });
+      }
       const saved = await Payment.findOneAndUpdate(
         { id },
         { $set: { ...paymentValues({ ...update, id }), session: String(update.session).trim() } },

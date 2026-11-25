@@ -1,14 +1,21 @@
 import { randomUUID } from 'node:crypto';
 import mongoose from 'mongoose';
 import dbConnect from '../lib/mongodb.js';
-import { Invoice, Order, Product } from '../lib/models.js';
+import { Invoice, Order, Product, User } from '../lib/models.js';
 import { authorize, hasSuperAdminAccess } from '../lib/auth.js';
 import { getBangladeshBusinessDate, getInvoiceSessionForDate } from '../shared/sessions.js';
 import { isDealerAssignedToOfficer, normalizeOfficerCode } from '../shared/codes.js';
 import { getDealersWithOfficerCodes } from '../lib/dealerAssignments.js';
 import { getPackageQuantityUnit } from '../shared/quantityUnits.js';
 import { STOCK_RECONCILIATION_START_DATE } from '../shared/stockReconciliation.js';
-import { ADMIN_ROLES, isAdminRole, isSalesOfficerRole } from '../shared/roles.js';
+import {
+  ADMIN_ROLES,
+  ASM_ROLE,
+  LOGISTIC_OFFICER_ROLE,
+  OFFICER_ROLE,
+  SO_ROLE,
+  isSalesOfficerRole
+} from '../shared/roles.js';
 import { HIERARCHY_ROLE_VALUES } from '../shared/roles.js';
 import { resolveHierarchyScope } from '../lib/hierarchy.js';
 import { buildOfficerOwnerFilter } from '../shared/hierarchy.js';
@@ -94,18 +101,16 @@ export default async function handler(req, res) {
   const user = await authorize(
     req,
     res,
-    req.method === 'PATCH' ? ADMIN_ROLES : [...ADMIN_ROLES, ...HIERARCHY_ROLE_VALUES]
+    [...ADMIN_ROLES, ...HIERARCHY_ROLE_VALUES, LOGISTIC_OFFICER_ROLE]
   );
   if (!user) return;
-
-  if (req.method === 'PATCH' && !await hasSuperAdminAccess(user)) {
-    return res.status(403).json({ error: 'অর্ডার সম্পাদনা বা অনুমোদন শুধু সুপার অ্যাডমিনের।' });
-  }
 
   try {
     if (req.method === 'GET') {
       const scope = await resolveHierarchyScope(user);
-      const filter = buildOfficerOwnerFilter(scope);
+      const filter = user.role === LOGISTIC_OFFICER_ROLE
+        ? {}
+        : buildOfficerOwnerFilter(scope);
       return res.status(200).json(await Order.find(filter).sort({ createdAt: -1 }).lean());
     }
 
@@ -140,7 +145,7 @@ export default async function handler(req, res) {
             officerName: user.name,
             items,
             note: String(req.body?.note || '').slice(0, 500),
-            status: 'pending'
+            status: 'pending_approval'
           });
           break;
         } catch (error) {
@@ -160,10 +165,34 @@ export default async function handler(req, res) {
     let createdInvoice;
     try {
       await session.withTransaction(async () => {
-        const pendingOrder = await Order.findOne({ id: orderId, status: 'pending' }).session(session);
+        const pendingOrder = await Order.findOne({
+          id: orderId,
+          status: { $in: ['pending', 'pending_approval'] }
+        }).session(session);
         if (!pendingOrder) {
           const error = new Error('Pending order not found.');
           error.statusCode = 404;
+          throw error;
+        }
+
+        const isSuperAdmin = await hasSuperAdminAccess(user);
+        let canApprove = isSuperAdmin || user.role === LOGISTIC_OFFICER_ROLE;
+        if (!canApprove && user.role === ASM_ROLE) {
+          const supervisedOfficers = await User.find({
+            asmId: user._id,
+            role: { $in: [SO_ROLE, OFFICER_ROLE] },
+            status: { $in: ['active', 'একটিভ', 'এডমিন', 'সুপার এডমিন'] }
+          }).select('officerId officerCode').session(session).lean();
+          const orderOfficerCode = normalizeOfficerCode(pendingOrder.officerCode);
+          canApprove = supervisedOfficers.some((officer) => {
+            const officerCode = normalizeOfficerCode(officer.officerCode);
+            return (officer.officerId && String(officer.officerId) === String(pendingOrder.officerId || ''))
+              || (officerCode && orderOfficerCode && officerCode === orderOfficerCode);
+          });
+        }
+        if (!canApprove) {
+          const error = new Error('এই অর্ডার অনুমোদনের অনুমতি আপনার নেই।');
+          error.statusCode = 403;
           throw error;
         }
 
@@ -265,6 +294,20 @@ export default async function handler(req, res) {
         pendingOrder.status = status;
         pendingOrder.decisionNote = String(decisionNote || '').slice(0, 500);
         pendingOrder.decidedAt = new Date();
+        pendingOrder.decidedBy = String(user.name || '');
+        pendingOrder.decidedByRole = String(user.role || '');
+        if (status === 'approved') {
+          pendingOrder.approvedBy = String(user.name || '');
+          pendingOrder.approvedByRole = String(user.role || '');
+          pendingOrder.approvedAt = new Date();
+        }
+        if (status === 'approved' && req.body?.items != null) {
+          pendingOrder.editedBy = String(user.name || '');
+          pendingOrder.editedByRole = String(user.role || '');
+          pendingOrder.editedByLogistic = user.role === LOGISTIC_OFFICER_ROLE
+            ? String(user.name || '')
+            : '';
+        }
         updatedOrder = await pendingOrder.save({ session });
       });
     } finally {
