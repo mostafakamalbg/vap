@@ -1,4 +1,9 @@
 export const SUPER_ADMIN_ROLE = 'SuperAdmin';
+export const SUPER_ADMIN_ROLE_ALIASES = Object.freeze([
+  'super_admin',
+  'superadmin',
+  'super admin'
+]);
 export const ADMIN_ROLE = 'Admin';
 export const OFFICER_ROLE = 'officer';
 export const LEGACY_ADMIN_ROLE = 'admin';
@@ -20,6 +25,7 @@ export const ADMIN_ROLES = Object.freeze([
 ]);
 export const ADMIN_ROLE_VALUES = Object.freeze([
   ...ADMIN_ROLES,
+  ...SUPER_ADMIN_ROLE_ALIASES,
   LEGACY_ADMIN_ROLE
 ]);
 export const DATA_WRITE_ROLES = Object.freeze([
@@ -51,7 +57,7 @@ export const USER_STATUS_VALUES = Object.freeze([
 ]);
 
 export function isAdminRole(role) {
-  return ADMIN_ROLE_VALUES.includes(role);
+  return ADMIN_ROLE_VALUES.includes(role) || isSuperAdminRole(role);
 }
 
 export function isHierarchyRole(role) {
@@ -63,7 +69,8 @@ export function isSalesOfficerRole(role) {
 }
 
 export function isCoreAdminRole(role) {
-  return [SUPER_ADMIN_ROLE, ADMIN_ROLE, LEGACY_ADMIN_ROLE].includes(role);
+  return [SUPER_ADMIN_ROLE, ADMIN_ROLE, LEGACY_ADMIN_ROLE].includes(role)
+    || isSuperAdminRole(role);
 }
 
 export function isDataWriterRole(role) {
@@ -71,7 +78,10 @@ export function isDataWriterRole(role) {
 }
 
 export function isSuperAdminRole(role) {
-  return role === SUPER_ADMIN_ROLE;
+  const normalizedRole = String(role || '').trim().toLowerCase();
+  return normalizedRole === 'superadmin'
+    || normalizedRole === 'super_admin'
+    || normalizedRole === 'super admin';
 }
 
 export function normalizeAdminRole(role, isSuperAdmin = false) {
@@ -92,6 +102,7 @@ export function matchesExpectedRole(expectedRole, actualRole) {
   if (expectedRole === ADMIN_ROLE || expectedRole === LEGACY_ADMIN_ROLE) {
     return isAdminRole(actualRole);
   }
+  if (expectedRole === SUPER_ADMIN_ROLE) return isSuperAdminRole(actualRole);
   if (expectedRole === OFFICER_ROLE) {
     return isHierarchyRole(actualRole) || actualRole === LOGISTIC_OFFICER_ROLE;
   }

@@ -3,7 +3,7 @@ import test from 'node:test';
 import { canEditStockInDirectly } from './stockInPermissions.js';
 
 test('super admin, MD, and Chairman can edit Stock-In directly', () => {
-  for (const role of ['SuperAdmin', 'MD', 'Chairman']) {
+  for (const role of ['SuperAdmin', 'super_admin', 'superadmin', 'super admin', 'MD', 'Chairman']) {
     assert.equal(canEditStockInDirectly({ role }), true);
   }
   assert.equal(canEditStockInDirectly({ role: 'Admin' }, true), true);

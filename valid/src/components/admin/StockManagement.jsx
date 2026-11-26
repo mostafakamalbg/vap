@@ -1402,7 +1402,7 @@ export default function StockManagement({
             {stockInEditError && <p role="alert" className="rounded bg-rose-50 p-2 text-xs font-semibold text-rose-700">{stockInEditError}</p>}
             <div className="flex justify-end gap-2 border-t border-slate-200 pt-3">
               <button type="button" onClick={() => { setEditingStockIn(null); setStockInActionPassword(''); }} className="rounded border border-slate-300 px-3 py-2 text-xs font-bold text-slate-600">বাতিল</button>
-              <button disabled={stockInEditBusy} className="rounded bg-emerald-700 px-4 py-2 text-xs font-bold text-white disabled:opacity-50">
+              <button type="submit" disabled={stockInEditBusy} aria-busy={stockInEditBusy} className="rounded bg-emerald-700 px-4 py-2 text-xs font-bold text-white disabled:opacity-50">
                 {stockInEditBusy ? 'জমা হচ্ছে…' : canEditStockInDirectlyUser ? 'চালান সংরক্ষণ করুন' : 'অনুমোদনের জন্য জমা দিন'}
               </button>
             </div>

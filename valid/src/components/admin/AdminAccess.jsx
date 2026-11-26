@@ -9,8 +9,8 @@ import {
   OFFICER_ROLE,
   RSM_ROLE,
   SO_ROLE,
-  SUPER_ADMIN_ROLE,
-  isAdminRole
+  isAdminRole,
+  isSuperAdminRole
 } from '../../../shared/roles';
 
 async function requestJson(url, options) {
@@ -22,7 +22,7 @@ async function requestJson(url, options) {
 
 export default function AdminAccess({ onInvoiceCreated, onStockInApproved }) {
   const { products, refreshSharedRecords, currentUser } = useAgro();
-  const isSuperAdmin = currentUser?.role === SUPER_ADMIN_ROLE || currentUser?.isSuperAdmin;
+  const isSuperAdmin = isSuperAdminRole(currentUser?.role) || currentUser?.isSuperAdmin;
   const canManageUsers = isAdminRole(currentUser?.role);
   const canApproveOrders = isSuperAdmin
     || currentUser?.role === LOGISTIC_OFFICER_ROLE

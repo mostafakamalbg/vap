@@ -28,6 +28,12 @@ test('Admin login accepts both admin roles while SuperAdmin expectation stays st
   assert.equal(matchesExpectedRole(ADMIN_ROLE, SUPER_ADMIN_ROLE), true);
   assert.equal(matchesExpectedRole(SUPER_ADMIN_ROLE, ADMIN_ROLE), false);
   assert.equal(matchesExpectedRole(SUPER_ADMIN_ROLE, SUPER_ADMIN_ROLE), true);
+  for (const role of ['super_admin', 'superadmin', 'super admin']) {
+    assert.equal(matchesExpectedRole(SUPER_ADMIN_ROLE, role), true);
+    assert.equal(isAdminRole(role), true);
+    assert.equal(normalizeAdminRole(role, true), SUPER_ADMIN_ROLE);
+    assert.equal(normalizeAdminRole(role), ADMIN_ROLE);
+  }
 });
 
 test('legacy active status values remain usable and normalize to active', () => {
