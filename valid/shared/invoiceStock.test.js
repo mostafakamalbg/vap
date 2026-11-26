@@ -269,7 +269,8 @@ test('stock reconciliation rebuilds whole-package balances from the zero opening
   const stockInLogs = [
     { id: 'old-receipt', date: '2026-09-29', productId: 'product-1', sku: 'sku-1', cartons: 20 },
     { id: 'receipt', date: STOCK_RECONCILIATION_START_DATE, productId: 'product-1', sku: 'sku-1', cartons: 4, quantityUnit: 'কার্টুন' },
-    { id: 'loose-receipt', date: '2026-10-01', productId: 'product-1', sku: 'sku-1', cartons: 6, quantityUnit: 'পিস' }
+    { id: 'loose-receipt', date: '2026-10-01', productId: 'product-1', sku: 'sku-1', cartons: 6, quantityUnit: 'পিস' },
+    { id: 'deleted-receipt', date: '2026-10-01', productId: 'product-1', sku: 'sku-1', cartons: 50, quantityUnit: 'কার্টুন', deletedAt: '2026-10-02T00:00:00.000Z' }
   ];
 
   const result = rebuildStockBalances(products, invoices, stockInLogs);
@@ -286,7 +287,7 @@ test('stock reconciliation rebuilds whole-package balances from the zero opening
   assert.equal(result.stockInCount, 1);
   assert.equal(products[0].variants[0].stockCartons, 99);
   assert.equal(invoices[0].items[0].cartons, 50);
-  assert.equal(stockInLogs.length, 3);
+  assert.equal(stockInLogs.length, 4);
 });
 
 test('stock reconciliation counts jars and bags as whole packages', () => {

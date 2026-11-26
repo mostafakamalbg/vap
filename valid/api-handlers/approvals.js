@@ -183,7 +183,7 @@ async function applyRequest(request, session) {
     const currentQuery = BusinessRecord.findOne(filter);
     if (session) currentQuery.session(session);
     const current = await currentQuery.lean();
-    if (!current || !revisionMatches(current, original, originalUpdatedAt)) {
+    if (!current || current.data?.deletedAt || !revisionMatches(current, original, originalUpdatedAt)) {
       fail(409, 'অনুরোধ জমা হওয়ার পর স্টক-ইন চালান পরিবর্তিত হয়েছে; নতুন করে সম্পাদনা করুন।');
     }
     await applyStockInRevision(current.data, proposed, session);
@@ -193,6 +193,32 @@ async function applyRequest(request, session) {
       { ...options, new: true }
     ).lean();
     if (!saved) fail(409, 'স্টক-ইন চালানটি আর হালনাগাদ করা যায়নি।');
+    return;
+  }
+
+  if (requestType === 'stock_in_delete') {
+    const filter = { type: 'stockInLogs', recordId: targetId };
+    if (originalUpdatedAt) filter.updatedAt = originalUpdatedAt;
+    const currentQuery = BusinessRecord.findOne(filter);
+    if (session) currentQuery.session(session);
+    const current = await currentQuery.lean();
+    if (!current || current.data?.deletedAt || !revisionMatches(current, original, originalUpdatedAt)) {
+      fail(409, 'অনুরোধ জমা হওয়ার পর স্টক-ইন চালান পরিবর্তিত হয়েছে; নতুন করে পর্যালোচনা করুন।');
+    }
+
+    await applyStockInRevision(current.data, null, session);
+    const saved = await BusinessRecord.findOneAndUpdate(
+      filter,
+      {
+        $set: {
+          'data.deletedAt': new Date(),
+          'data.deletedBy': String(proposed?.requestedBy || ''),
+          'data.deletedByRole': String(proposed?.requestedByRole || '')
+        }
+      },
+      { ...options, new: true }
+    ).lean();
+    if (!saved) fail(409, 'স্টক-ইন চালানটি আর মুছে ফেলার জন্য হালনাগাদ করা যায়নি।');
     return;
   }
 

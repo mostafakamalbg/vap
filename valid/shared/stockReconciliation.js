@@ -52,6 +52,7 @@ export function rebuildStockBalances(products, invoices, stockInLogs, startDate 
 
   let stockInCount = 0;
   for (const entry of stockInLogs || []) {
+    if (entry.deletedAt) continue;
     const date = String(entry.date || '');
     if (!isValidDate(date)) {
       throw new Error(`স্টক-ইন ${entry.id || 'রেকর্ড'}-এর তারিখ সঠিক নয়; পুনর্গণনা বন্ধ রাখা হয়েছে।`);

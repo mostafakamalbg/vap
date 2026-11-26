@@ -508,7 +508,8 @@ export default function AdminAccess({ onInvoiceCreated }) {
                       {request.requestType === 'invoice_update' ? 'ইনভয়েস সংশোধন'
                         : request.requestType === 'payment_update' ? 'পেমেন্ট সংশোধন'
                           : request.requestType === 'officer_payment_submission' ? 'অফিসার পেমেন্ট অনুমোদন'
-                            : 'স্টক-ইন চালান সংশোধন'} • {request.targetId}
+                            : request.requestType === 'stock_in_delete' ? 'স্টক-ইন চালান মুছে ফেলা'
+                              : 'স্টক-ইন চালান সংশোধন'} • {request.targetId}
                     </p>
                     <p className="text-xs text-slate-500">
                       জমাদানকারী: {request.submittedBy} ({request.submittedByRole}) •{' '}

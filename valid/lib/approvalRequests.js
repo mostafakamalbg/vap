@@ -9,9 +9,12 @@ export async function createApprovalRequest({
   proposed,
   user
 }) {
+  const conflictingTypes = ['stock_in_update', 'stock_in_delete'].includes(requestType)
+    ? ['stock_in_update', 'stock_in_delete']
+    : [requestType];
   const pendingRequest = await BusinessRecord.findOne({
     type: 'approvalRequests',
-    'data.requestType': requestType,
+    'data.requestType': { $in: conflictingTypes },
     'data.targetId': targetId,
     'data.status': 'pending_super_admin_approval'
   }).select('recordId').lean();

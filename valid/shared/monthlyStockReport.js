@@ -36,6 +36,7 @@ export function calculateMonthlyStockReport({ products = [], invoices = [], stoc
     };
 
     stockInLogs.forEach((entry) => {
+      if (entry.deletedAt) return;
       if (`${entry.productId}\u0000${entry.sku}` !== key) return;
       const date = String(entry.date || '');
       const quantityUnit = entry.quantityUnit

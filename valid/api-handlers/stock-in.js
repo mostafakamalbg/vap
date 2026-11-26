@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import dbConnect from '../lib/mongodb.js';
-import { authorize } from '../lib/auth.js';
-import { BusinessRecord, Product } from '../lib/models.js';
+import { authorize, verifyPassword } from '../lib/auth.js';
+import { BusinessRecord, Product, User } from '../lib/models.js';
 import { transactionOptions, withTransactionFallback } from '../lib/transactions.js';
 import { getStockInQuantities, isValidStockInQuantities } from '../shared/quantityUnits.js';
 import { STOCK_RECONCILIATION_START_DATE } from '../shared/stockReconciliation.js';
@@ -31,7 +31,7 @@ function isValidEntry(input) {
 }
 
 export default async function handler(req, res) {
-  if (!['POST', 'PATCH'].includes(req.method)) return res.status(405).json({ error: 'Method Not Allowed' });
+  if (!['POST', 'PATCH', 'DELETE'].includes(req.method)) return res.status(405).json({ error: 'Method Not Allowed' });
   try {
     if (!await dbConnect()) return res.status(503).json({ error: 'MongoDB is not configured.' });
   } catch (error) {
@@ -41,17 +41,50 @@ export default async function handler(req, res) {
   const user = await authorize(req, res, [...ADMIN_ROLES, LOGISTIC_OFFICER_ROLE]);
   if (!user) return;
 
+  const verifyCurrentPassword = async (password) => {
+    if (typeof password !== 'string' || !password || password.length > 128) return false;
+    const credential = await User.findById(user._id).select('+passwordHash').lean();
+    return Boolean(credential && await verifyPassword(password, credential.passwordHash));
+  };
+
+  if (req.method === 'POST' && req.body?.action === 'verify-password') {
+    try {
+      if (!await verifyCurrentPassword(req.body.password)) {
+        return res.status(401).json({ error: 'সঠিক অ্যাডমিন পাসওয়ার্ড দিন।' });
+      }
+      return res.status(200).json({ verified: true });
+    } catch (error) {
+      console.error('Stock-in password verification failed:', error);
+      return res.status(500).json({ error: 'পাসওয়ার্ড যাচাই করা যায়নি।' });
+    }
+  }
+
   if (req.method === 'PATCH') {
     const id = String(req.body?.id || '').trim();
     const input = req.body?.entry;
-    if (!id || !input || typeof input !== 'object') {
+    if (!id || !input || typeof input !== 'object' || Array.isArray(input)) {
       return res.status(400).json({ error: 'সংশোধনের জন্য স্টক-ইন চালান নির্বাচন করুন।' });
     }
     try {
+      if (!await verifyCurrentPassword(req.body?.password)) {
+        return res.status(401).json({ error: 'সঠিক অ্যাডমিন পাসওয়ার্ড দিন।' });
+      }
       const current = await BusinessRecord.findOne({ type: 'stockInLogs', recordId: id })
         .select('recordId data updatedAt')
         .lean();
       if (!current) return res.status(404).json({ error: 'স্টক-ইন চালান পাওয়া যায়নি।' });
+      if (current.data?.deletedAt) {
+        return res.status(409).json({ error: 'মুছে ফেলা স্টক-ইন চালান সংশোধন করা যাবে না।' });
+      }
+      const conflictingRequest = await BusinessRecord.findOne({
+        type: 'approvalRequests',
+        'data.targetId': id,
+        'data.requestType': { $in: ['stock_in_update', 'stock_in_delete'] },
+        'data.status': 'pending_super_admin_approval'
+      }).select('recordId').lean();
+      if (conflictingRequest) {
+        return res.status(409).json({ error: 'এই চালানের আরেকটি পরিবর্তন অনুমোদনের অপেক্ষায় আছে।' });
+      }
       const editableFields = [
         'productId',
         'sku',
@@ -113,6 +146,48 @@ export default async function handler(req, res) {
       if (error.statusCode) return res.status(error.statusCode).json({ error: error.message });
       console.error('Stock-in update request failed:', error);
       return res.status(500).json({ error: 'স্টক-ইন সংশোধনের অনুরোধ জমা করা যায়নি।' });
+    }
+  }
+
+  if (req.method === 'DELETE') {
+    const id = String(req.body?.id || '').trim();
+    if (!id) return res.status(400).json({ error: 'মুছে ফেলার জন্য স্টক-ইন চালান নির্বাচন করুন।' });
+    try {
+      if (!await verifyCurrentPassword(req.body?.password)) {
+        return res.status(401).json({ error: 'সঠিক অ্যাডমিন পাসওয়ার্ড দিন।' });
+      }
+      const current = await BusinessRecord.findOne({ type: 'stockInLogs', recordId: id })
+        .select('recordId data updatedAt')
+        .lean();
+      if (!current) return res.status(404).json({ error: 'স্টক-ইন চালান পাওয়া যায়নি।' });
+      if (current.data?.deletedAt) {
+        return res.status(409).json({ error: 'স্টক-ইন চালানটি আগেই মুছে ফেলা হয়েছে।' });
+      }
+      const conflictingRequest = await BusinessRecord.findOne({
+        type: 'approvalRequests',
+        'data.targetId': id,
+        'data.requestType': { $in: ['stock_in_update', 'stock_in_delete'] },
+        'data.status': 'pending_super_admin_approval'
+      }).select('recordId').lean();
+      if (conflictingRequest) {
+        return res.status(409).json({ error: 'এই চালানের আরেকটি পরিবর্তন অনুমোদনের অপেক্ষায় আছে।' });
+      }
+      const approvalRequest = await createApprovalRequest({
+        requestType: 'stock_in_delete',
+        targetId: id,
+        original: current.data,
+        originalUpdatedAt: current.updatedAt,
+        proposed: {
+          requestedBy: String(user.name || ''),
+          requestedByRole: String(user.role || '')
+        },
+        user
+      });
+      return res.status(202).json({ pendingApproval: true, approvalRequest });
+    } catch (error) {
+      if (error.statusCode) return res.status(error.statusCode).json({ error: error.message });
+      console.error('Stock-in deletion request failed:', error);
+      return res.status(500).json({ error: 'স্টক-ইন মুছে ফেলার অনুরোধ জমা করা যায়নি।' });
     }
   }
 

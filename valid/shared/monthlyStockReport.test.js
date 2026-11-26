@@ -22,7 +22,8 @@ test('monthly stock report computes opening stock and all requested movement cat
   ];
   const stockInLogs = [
     { date: '2026-10-01', productId: 'p1', sku: 's1', cartons: 10, quantityUnit: 'কার্টুন' },
-    { date: '2026-11-01', productId: 'p1', sku: 's1', cartons: 5, quantityUnit: 'কার্টুন' }
+    { date: '2026-11-01', productId: 'p1', sku: 's1', cartons: 5, quantityUnit: 'কার্টুন' },
+    { date: '2026-10-15', productId: 'p1', sku: 's1', cartons: 99, quantityUnit: 'কার্টুন', deletedAt: '2026-10-16T00:00:00.000Z' }
   ];
 
   const rows = calculateMonthlyStockReport({
