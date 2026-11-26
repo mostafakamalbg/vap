@@ -1,12 +1,24 @@
 import { randomUUID } from 'node:crypto';
 import dbConnect from '../lib/mongodb.js';
-import { authorize, verifyPassword } from '../lib/auth.js';
+import { authorize, hasSuperAdminAccess, verifyPassword } from '../lib/auth.js';
 import { BusinessRecord, Product, User } from '../lib/models.js';
 import { transactionOptions, withTransactionFallback } from '../lib/transactions.js';
 import { getStockInQuantities, isValidStockInQuantities } from '../shared/quantityUnits.js';
 import { STOCK_RECONCILIATION_START_DATE } from '../shared/stockReconciliation.js';
-import { ADMIN_ROLES, LOGISTIC_OFFICER_ROLE } from '../shared/roles.js';
+import { getInvoiceSessionForDate } from '../shared/sessions.js';
+import {
+  ADMIN_ROLES,
+  LOGISTIC_OFFICER_ROLE,
+} from '../shared/roles.js';
 import { createApprovalRequest } from '../lib/approvalRequests.js';
+import {
+  assertStockInSnapshot,
+  getStockInRecordData,
+  loadStockInChallan,
+  saveStockInRevision
+} from '../lib/stockInMutations.js';
+import { getStockInChallanKey } from '../shared/stockInChallans.js';
+import { canEditStockInDirectly } from '../shared/stockInPermissions.js';
 
 function isValidDate(value) {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -28,6 +40,146 @@ function isValidEntry(input) {
     && Number.isSafeInteger(cartons)
     && cartons > 0
   );
+}
+
+function getChallanSharedFields(input) {
+  const fields = [
+    'date',
+    'source',
+    'batchNo',
+    'challanNo',
+    'challanNumber',
+    'invoiceNo',
+    'voucherNo',
+    'referenceId',
+    'referenceNo',
+    'referenceID',
+    'refId',
+    'mfgDate',
+    'expDate',
+    'receivedBy',
+    'note'
+  ];
+  return Object.fromEntries(fields
+    .filter((field) => Object.hasOwn(input, field))
+    .map((field) => [field, input[field]]));
+}
+
+function getStockInTargetIds(records) {
+  return [...new Set(records.flatMap((record) => [
+    record.recordId,
+    record.data?.id
+  ]).filter(Boolean))];
+}
+
+async function prepareStockInEntries(currentRecords, input, session) {
+  const rawItems = Array.isArray(input.items) ? input.items : [input];
+  if (!rawItems.length || rawItems.length > 200) {
+    const error = new Error('চালানে অন্তত একটি পণ্য এবং সর্বোচ্চ ২০০টি পণ্য দিন।');
+    error.statusCode = 400;
+    throw error;
+  }
+  const sharedFields = getChallanSharedFields(input);
+  const currentById = new Map(currentRecords.map((record) => [record.recordId, record]));
+  const selectedIds = new Set();
+  const products = new Map();
+  const revisedEntries = [];
+
+  for (const rawItem of rawItems) {
+    if (!rawItem || typeof rawItem !== 'object' || Array.isArray(rawItem)) {
+      const error = new Error('চালানের পণ্যের তথ্য সঠিক নয়।');
+      error.statusCode = 400;
+      throw error;
+    }
+    const requestedId = String(rawItem?.id || '').trim();
+    if (requestedId && (!currentById.has(requestedId) || selectedIds.has(requestedId))) {
+      const error = new Error('চালানের পণ্য তালিকা সঠিক নয়; আবার খুলে সম্পাদনা করুন।');
+      error.statusCode = 409;
+      throw error;
+    }
+    if (requestedId) selectedIds.add(requestedId);
+    const current = requestedId
+      ? currentById.get(requestedId)
+      : (rawItems.length === 1 ? currentRecords[0] : null);
+    const id = current?.recordId || `STK-IN-${randomUUID()}`;
+    const itemFields = Object.fromEntries(
+      ['productId', 'sku', 'cartons', 'quantity']
+        .filter((field) => Object.hasOwn(rawItem, field))
+        .map((field) => [field, rawItem[field]])
+    );
+    const revised = {
+      ...(current ? getStockInRecordData(current) : {}),
+      ...itemFields,
+      ...sharedFields,
+      id
+    };
+    delete revised.items;
+    revised.cartons = getCartons(revised);
+    revised.quantity = revised.cartons;
+    if (!isValidEntry(revised)) {
+      const error = new Error('স্টক-ইন তারিখ, পণ্য ও সঠিক পরিমাণ দিন।');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const productId = String(revised.productId).trim();
+    let product = products.get(productId);
+    if (!product) {
+      const query = Product.findOne({ id: productId });
+      if (session) query.session(session);
+      product = await query.lean();
+      if (!product) {
+        const error = new Error('নির্বাচিত পণ্যটি পাওয়া যায়নি।');
+        error.statusCode = 404;
+        throw error;
+      }
+      products.set(productId, product);
+    }
+    const sku = String(revised.sku).trim();
+    const variant = product.variants?.find((item) => item.sku === sku);
+    if (!variant) {
+      const error = new Error('নির্বাচিত পণ্য বা প্যাক সাইজ পাওয়া যায়নি।');
+      error.statusCode = 400;
+      throw error;
+    }
+    const packPerBox = Number(variant.packPerBox);
+    if (!Number.isSafeInteger(packPerBox) || packPerBox < 1) {
+      const error = new Error('নির্বাচিত পণ্যের প্যাক তথ্য সঠিক নয়।');
+      error.statusCode = 409;
+      throw error;
+    }
+    const quantities = getStockInQuantities({
+      ...variant,
+      productName: product.name,
+      generic: product.generic
+    }, revised.cartons);
+    if (!isValidStockInQuantities(quantities)) {
+      const error = new Error('স্টক পরিমাণ সঠিকভাবে হিসাব করা যায়নি; প্যাক ও মজুত তথ্য যাচাই করুন।');
+      error.statusCode = 400;
+      throw error;
+    }
+    revised.productId = productId;
+    revised.productName = product.name;
+    revised.sku = sku;
+    revised.quantityPieces = quantities.quantityPieces;
+    revised.quantityUnit = quantities.quantityUnit;
+    revised.packPerBox = packPerBox;
+    revised.size = variant.size || '';
+    revised.session = getInvoiceSessionForDate(revised.date);
+    revisedEntries.push(revised);
+  }
+
+  if (new Set(revisedEntries.map((entry) => entry.id)).size !== revisedEntries.length) {
+    const error = new Error('চালানের প্রতিটি পণ্যের আলাদা রেকর্ড আইডি থাকা আবশ্যক।');
+    error.statusCode = 400;
+    throw error;
+  }
+  return revisedEntries;
+}
+
+async function hasDirectStockInAccess(user) {
+  const superAdminAccess = await hasSuperAdminAccess(user);
+  return canEditStockInDirectly(user, superAdminAccess);
 }
 
 export default async function handler(req, res) {
@@ -66,79 +218,93 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'সংশোধনের জন্য স্টক-ইন চালান নির্বাচন করুন।' });
     }
     try {
-      if (!await verifyCurrentPassword(req.body?.password)) {
+      const directAccess = await hasDirectStockInAccess(user);
+      if (!directAccess && !await verifyCurrentPassword(req.body?.password)) {
         return res.status(401).json({ error: 'সঠিক অ্যাডমিন পাসওয়ার্ড দিন।' });
       }
-      const current = await BusinessRecord.findOne({ type: 'stockInLogs', recordId: id })
-        .select('recordId data updatedAt')
-        .lean();
-      if (!current) return res.status(404).json({ error: 'স্টক-ইন চালান পাওয়া যায়নি।' });
-      if (current.data?.deletedAt) {
+      const loaded = await loadStockInChallan(id);
+      if (!loaded) return res.status(404).json({ error: 'স্টক-ইন চালান পাওয়া যায়নি।' });
+      if (loaded.anchor.data?.deletedAt) {
         return res.status(409).json({ error: 'মুছে ফেলা স্টক-ইন চালান সংশোধন করা যাবে না।' });
+      }
+      const currentRecords = Array.isArray(input.items)
+        ? loaded.records
+        : loaded.records.filter((record) => record.recordId === loaded.anchor.recordId);
+      const targetId = Array.isArray(input.items)
+        ? loaded.records[0]?.recordId || loaded.anchor.recordId
+        : currentRecords[0]?.recordId || loaded.anchor.recordId;
+      const targetIds = getStockInTargetIds(loaded.records);
+      if (!currentRecords.length) {
+        return res.status(409).json({ error: 'সক্রিয় স্টক-ইন পণ্য পাওয়া যায়নি।' });
       }
       const conflictingRequest = await BusinessRecord.findOne({
         type: 'approvalRequests',
-        'data.targetId': id,
+        'data.targetId': { $in: targetIds },
         'data.requestType': { $in: ['stock_in_update', 'stock_in_delete'] },
         'data.status': 'pending_super_admin_approval'
       }).select('recordId').lean();
-      if (conflictingRequest) {
+      if (conflictingRequest && !directAccess) {
         return res.status(409).json({ error: 'এই চালানের আরেকটি পরিবর্তন অনুমোদনের অপেক্ষায় আছে।' });
       }
-      const editableFields = [
-        'productId',
-        'sku',
-        'date',
-        'cartons',
-        'quantity',
-        'source',
-        'batchNo',
-        'challanNo',
-        'mfgDate',
-        'expDate',
-        'receivedBy',
-        'note'
-      ];
-      const changes = Object.fromEntries(Object.entries(input).filter(([key]) => (
-        editableFields.includes(key)
-      )));
-      const proposed = { ...current.data, ...changes, id: current.data.id || id };
-      if (!isValidEntry(proposed)) {
-        return res.status(400).json({ error: 'স্টক-ইন তারিখ, পণ্য ও সঠিক পরিমাণ দিন।' });
+      assertStockInSnapshot(currentRecords, req.body?.originalEntries);
+      const revisedEntries = await prepareStockInEntries(currentRecords, input);
+      const identity = getStockInChallanKey(revisedEntries[0]);
+      if (revisedEntries.some((entry) => getStockInChallanKey(entry) !== identity)) {
+        return res.status(400).json({ error: 'একটি চালানের সব পণ্যের তারিখ ও চালান নম্বর একই হতে হবে।' });
       }
-      const product = await Product.findOne({ id: String(proposed.productId).trim() }).lean();
-      const variant = product?.variants?.find((item) => item.sku === String(proposed.sku).trim());
-      if (!variant) return res.status(400).json({ error: 'নির্বাচিত পণ্য বা প্যাক সাইজ পাওয়া যায়নি।' });
-      const packPerBox = Number(variant.packPerBox);
-      if (!Number.isSafeInteger(packPerBox) || packPerBox < 1) {
-        return res.status(409).json({ error: 'নির্বাচিত পণ্যের প্যাক তথ্য সঠিক নয়।' });
+      if (directAccess) {
+        let savedEntries = [];
+        await withTransactionFallback(async (session) => {
+          const current = await loadStockInChallan(id, session);
+          if (!current || current.anchor.data?.deletedAt) {
+            const error = new Error('স্টক-ইন চালানটি আর সক্রিয় নেই।');
+            error.statusCode = 409;
+            throw error;
+          }
+          const recordsToUpdate = Array.isArray(input.items)
+            ? current.records
+            : current.records.filter((record) => record.recordId === current.anchor.recordId);
+          assertStockInSnapshot(recordsToUpdate, req.body?.originalEntries);
+          savedEntries = await saveStockInRevision(recordsToUpdate, revisedEntries, {
+            deletedBy: String(user.name || ''),
+            deletedByRole: String(user.role || '')
+          }, session);
+          if (conflictingRequest) {
+            await BusinessRecord.updateMany({
+              type: 'approvalRequests',
+              'data.targetId': { $in: targetIds },
+              'data.requestType': { $in: ['stock_in_update', 'stock_in_delete'] },
+              'data.status': 'pending_super_admin_approval'
+            }, {
+              $set: {
+                'data.status': 'superseded',
+                'data.decidedBy': String(user.name || ''),
+                'data.decidedByRole': String(user.role || ''),
+                'data.decidedAt': new Date(),
+                'data.resolutionNote': 'সুপার অ্যাডমিন/MD/Chairman সরাসরি চালান সংশোধন করেছেন।'
+              }
+            }, transactionOptions(session));
+          }
+        });
+        return res.status(200).json({ pendingApproval: false, entries: savedEntries });
       }
-      const quantities = getStockInQuantities({
-        ...variant,
-        productName: product.name,
-        generic: product.generic
-      }, getCartons(proposed));
-      if (!isValidStockInQuantities(quantities)) {
-        return res.status(400).json({ error: 'স্টক পরিমাণ সঠিকভাবে হিসাব করা যায়নি; প্যাক ও মজুত তথ্য যাচাই করুন।' });
-      }
-      const revisedEntry = {
-        ...proposed,
-        productId: String(proposed.productId).trim(),
-        productName: product.name,
-        sku: String(proposed.sku).trim(),
-        cartons: getCartons(proposed),
-        quantity: getCartons(proposed),
-        quantityPieces: quantities.quantityPieces,
-        quantityUnit: quantities.quantityUnit,
-        packPerBox,
-        size: variant.size || ''
-      };
       const approvalRequest = await createApprovalRequest({
         requestType: 'stock_in_update',
-        targetId: id,
-        original: current.data,
-        originalUpdatedAt: current.updatedAt,
-        proposed: revisedEntry,
+        targetId,
+        original: currentRecords.map((record) => ({
+          id: record.recordId,
+          data: getStockInRecordData(record),
+          recordUpdatedAt: record.updatedAt
+        })),
+        originalUpdatedAt: Object.fromEntries(currentRecords.map((record) => (
+          [record.recordId, record.updatedAt]
+        ))),
+        proposed: {
+          grouped: Array.isArray(input.items),
+          entries: revisedEntries,
+          requestedBy: String(user.name || ''),
+          requestedByRole: String(user.role || '')
+        },
         user
       });
       return res.status(202).json({ pendingApproval: true, approvalRequest });
@@ -153,30 +319,68 @@ export default async function handler(req, res) {
     const id = String(req.body?.id || '').trim();
     if (!id) return res.status(400).json({ error: 'মুছে ফেলার জন্য স্টক-ইন চালান নির্বাচন করুন।' });
     try {
-      if (!await verifyCurrentPassword(req.body?.password)) {
+      const directAccess = await hasDirectStockInAccess(user);
+      if (!directAccess && !await verifyCurrentPassword(req.body?.password)) {
         return res.status(401).json({ error: 'সঠিক অ্যাডমিন পাসওয়ার্ড দিন।' });
       }
-      const current = await BusinessRecord.findOne({ type: 'stockInLogs', recordId: id })
-        .select('recordId data updatedAt')
-        .lean();
-      if (!current) return res.status(404).json({ error: 'স্টক-ইন চালান পাওয়া যায়নি।' });
-      if (current.data?.deletedAt) {
+      const loaded = await loadStockInChallan(id);
+      if (!loaded) return res.status(404).json({ error: 'স্টক-ইন চালান পাওয়া যায়নি।' });
+      if (loaded.anchor.data?.deletedAt) {
         return res.status(409).json({ error: 'স্টক-ইন চালানটি আগেই মুছে ফেলা হয়েছে।' });
       }
       const conflictingRequest = await BusinessRecord.findOne({
         type: 'approvalRequests',
-        'data.targetId': id,
+        'data.targetId': { $in: getStockInTargetIds(loaded.records) },
         'data.requestType': { $in: ['stock_in_update', 'stock_in_delete'] },
         'data.status': 'pending_super_admin_approval'
       }).select('recordId').lean();
-      if (conflictingRequest) {
+      if (conflictingRequest && !directAccess) {
         return res.status(409).json({ error: 'এই চালানের আরেকটি পরিবর্তন অনুমোদনের অপেক্ষায় আছে।' });
+      }
+      assertStockInSnapshot(loaded.records, req.body?.originalEntries);
+      if (directAccess) {
+        await withTransactionFallback(async (session) => {
+          const current = await loadStockInChallan(id, session);
+          if (!current || current.anchor.data?.deletedAt) {
+            const error = new Error('স্টক-ইন চালানটি আর সক্রিয় নেই।');
+            error.statusCode = 409;
+            throw error;
+          }
+          assertStockInSnapshot(current.records, req.body?.originalEntries);
+          await saveStockInRevision(current.records, [], {
+            deletedBy: String(user.name || ''),
+            deletedByRole: String(user.role || '')
+          }, session);
+          if (conflictingRequest) {
+            await BusinessRecord.updateMany({
+              type: 'approvalRequests',
+              'data.targetId': { $in: getStockInTargetIds(loaded.records) },
+              'data.requestType': { $in: ['stock_in_update', 'stock_in_delete'] },
+              'data.status': 'pending_super_admin_approval'
+            }, {
+              $set: {
+                'data.status': 'superseded',
+                'data.decidedBy': String(user.name || ''),
+                'data.decidedByRole': String(user.role || ''),
+                'data.decidedAt': new Date(),
+                'data.resolutionNote': 'সুপার অ্যাডমিন/MD/Chairman সরাসরি চালান নিষ্পত্তি করেছেন।'
+              }
+            }, transactionOptions(session));
+          }
+        });
+        return res.status(200).json({ pendingApproval: false, deleted: true });
       }
       const approvalRequest = await createApprovalRequest({
         requestType: 'stock_in_delete',
-        targetId: id,
-        original: current.data,
-        originalUpdatedAt: current.updatedAt,
+        targetId: loaded.records[0]?.recordId || loaded.anchor.recordId,
+        original: loaded.records.map((record) => ({
+          id: record.recordId,
+          data: getStockInRecordData(record),
+          recordUpdatedAt: record.updatedAt
+        })),
+        originalUpdatedAt: Object.fromEntries(loaded.records.map((record) => (
+          [record.recordId, record.updatedAt]
+        ))),
         proposed: {
           requestedBy: String(user.name || ''),
           requestedByRole: String(user.role || '')

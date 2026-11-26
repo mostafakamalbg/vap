@@ -21,6 +21,8 @@ import {
   getStockPackageCount
 } from '../../../shared/quantityUnits';
 import { sortProductsByCode } from '../../../shared/productSorting';
+import { getStockInChallanNumber, groupStockInEntries } from '../../../shared/stockInChallans';
+import { canEditStockInDirectly } from '../../../shared/stockInPermissions';
 
 const MINIMUM_STOCK_LEVEL = 20;
 
@@ -70,13 +72,17 @@ const createEmptyStockInForm = () => ({
   note: ''
 });
 
-export default function StockManagement() {
+export default function StockManagement({
+  initialTab = 'inventory',
+  initialRefreshError = ''
+}) {
   const {
     products,
     stockInLogs,
     addStockIn,
     updateStockIn,
     deleteStockIn,
+    refreshSharedRecords,
     addNewProduct,
     addProductVariant,
     currentUser
@@ -84,10 +90,11 @@ export default function StockManagement() {
   const canManageProducts = isAdminRole(currentUser?.role)
     || currentUser?.role === LOGISTIC_OFFICER_ROLE;
   const canReceiveStock = canManageProducts || currentUser?.role === LOGISTIC_OFFICER_ROLE;
+  const canEditStockInDirectlyUser = canEditStockInDirectly(currentUser);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('ALL');
-  const [activeTab, setActiveTab] = useState('inventory'); // 'inventory', 'stock-in', 'new-product'
+  const [activeTab, setActiveTab] = useState(initialTab);
 
   const [stockInItems, setStockInItems] = useState(() => getStockInRows(products));
   const [activeStockInRow, setActiveStockInRow] = useState(null);
@@ -163,20 +170,24 @@ export default function StockManagement() {
     if (!product || !variant) return total;
     return total + count;
   }, 0);
-  const stockInHistory = [...stockInLogs]
-    .sort((left, right) => (
-      String(right.date || '').localeCompare(String(left.date || ''))
-      || String(right.id || '').localeCompare(String(left.id || ''))
-    ))
-    .filter((entry) => [
-      entry.id,
-      entry.productName,
-      entry.size,
-      entry.batchNo,
-      entry.challanNo,
-      entry.source,
-      entry.receivedBy
-    ].some((value) => String(value || '').toLowerCase().includes(stockInHistorySearch.trim().toLowerCase())));
+  const stockInChallanGroups = groupStockInEntries(stockInLogs).filter((group) => {
+    const search = stockInHistorySearch.trim().toLowerCase();
+    if (!search) return true;
+    return [
+      group.displayChallanNo,
+      group.date,
+      group.session,
+      group.batchNo,
+      group.source,
+      group.receivedBy,
+      ...group.entries.flatMap((entry) => [
+        entry.id,
+        entry.productName,
+        entry.size,
+        entry.sku
+      ])
+    ].some((value) => String(value || '').toLowerCase().includes(search));
+  });
 
   const requestStockInPassword = async (promptText) => {
     const password = window.prompt(promptText);
@@ -196,39 +207,63 @@ export default function StockManagement() {
     }
   };
 
-  const openStockInEdit = async (entry) => {
-    const password = await requestStockInPassword('স্টক-ইন চালান সংশোধন করতে আপনার অ্যাডমিন পাসওয়ার্ড দিন।');
-    if (!password) return;
+  const refreshStockInRecords = async () => {
+    const results = await Promise.allSettled([
+      refreshSharedRecords('products'),
+      refreshSharedRecords('stockInLogs')
+    ]);
+    const failed = results.find((result) => result.status === 'rejected');
+    return failed ? failed.reason?.message || 'কিছু ডেটা রিফ্রেশ হয়নি।' : '';
+  };
+
+  const openStockInEdit = async (group) => {
+    const password = canEditStockInDirectlyUser
+      ? ''
+      : await requestStockInPassword('স্টক-ইন চালান সংশোধন করতে আপনার অ্যাডমিন পাসওয়ার্ড দিন।');
+    if (!canEditStockInDirectlyUser && !password) return;
+    const representative = group.activeEntries[0];
     setStockInActionPassword(password);
     setEditingStockIn({
-      original: entry,
-      productId: entry.productId || '',
-      sku: entry.sku || '',
-      date: entry.date || '',
-      cartons: String(entry.cartons ?? entry.quantity ?? ''),
-      source: entry.source || '',
-      batchNo: entry.batchNo || '',
-      challanNo: entry.challanNo || '',
-      mfgDate: entry.mfgDate || '',
-      expDate: entry.expDate || '',
-      receivedBy: entry.receivedBy || '',
-      note: entry.note || ''
+      anchorId: representative.id,
+      originalEntries: group.activeEntries,
+      date: representative.date || group.date || '',
+      source: representative.source || group.source || '',
+      batchNo: representative.batchNo || group.batchNo || '',
+      challanNo: getStockInChallanNumber(representative) || group.challanNo || '',
+      mfgDate: representative.mfgDate || '',
+      expDate: representative.expDate || '',
+      receivedBy: representative.receivedBy || group.receivedBy || '',
+      note: representative.note || '',
+      items: group.activeEntries.map((entry) => ({
+        id: entry.id,
+        productId: entry.productId || '',
+        sku: entry.sku || '',
+        cartons: String(entry.cartons ?? entry.quantity ?? '')
+      }))
     });
     setStockInEditError('');
   };
 
-  const handleStockInDelete = async (entry) => {
-    if (!window.confirm(`স্টক-ইন চালান ${entry.id} মুছে ফেলার অনুরোধ করবেন? সুপার অ্যাডমিন অনুমোদনের আগে মূল রেকর্ড ও স্টক অপরিবর্তিত থাকবে।`)) return;
-    const password = await requestStockInPassword('স্টক-ইন চালান মুছতে আপনার অ্যাডমিন পাসওয়ার্ড দিন।');
-    if (!password) return;
+  const handleStockInDelete = async (group) => {
+    const representative = group.activeEntries[0];
+    const actionText = canEditStockInDirectlyUser
+      ? 'এই চালানের সব পণ্য সফট-ডিলিট করে সংশ্লিষ্ট স্টক সমন্বয় করবেন? মূল রেকর্ড সংরক্ষিত থাকবে।'
+      : 'এই চালানের সব পণ্যের মুছে ফেলার অনুরোধ করবেন? সুপার অ্যাডমিন অনুমোদনের আগে মূল রেকর্ড ও স্টক অপরিবর্তিত থাকবে।';
+    if (!window.confirm(`${group.displayChallanNo} • ${actionText}`)) return;
+    const password = canEditStockInDirectlyUser
+      ? ''
+      : await requestStockInPassword('স্টক-ইন চালান মুছতে আপনার অ্যাডমিন পাসওয়ার্ড দিন।');
+    if (!canEditStockInDirectlyUser && !password) return;
     setStockInActionPassword(password);
     try {
-      const result = await deleteStockIn(entry.id, password);
+      const result = await deleteStockIn(representative.id, password, group.activeEntries);
+      const refreshError = result.pendingApproval ? '' : await refreshStockInRecords();
       setStockInSuccess({
-        productLines: 1,
-        packages: Number(entry.cartons ?? entry.quantity) || 0,
+        productLines: group.activeEntries.length,
+        packages: group.activeCartons,
         pendingApproval: Boolean(result.pendingApproval),
-        action: 'delete'
+        action: 'delete',
+        refreshError
       });
     } catch (error) {
       window.alert(error.message || 'স্টক-ইন মুছে ফেলার অনুরোধ জমা করা যায়নি।');
@@ -239,26 +274,37 @@ export default function StockManagement() {
 
   const handleStockInEditSubmit = async (event) => {
     event.preventDefault();
-    if (!editingStockIn || !Number.isSafeInteger(Number(editingStockIn.cartons))
-      || Number(editingStockIn.cartons) < 1) {
-      setStockInEditError('সঠিক স্টক-ইন প্যাকেজ সংখ্যা দিন।');
+    if (!editingStockIn || !editingStockIn.items.length || editingStockIn.items.some((item) => (
+      !Number.isSafeInteger(Number(item.cartons)) || Number(item.cartons) < 1
+    ))) {
+      setStockInEditError('চালানে অন্তত একটি পণ্য এবং প্রতিটি পণ্যের সঠিক প্যাকেজ সংখ্যা দিন।');
       return;
     }
     setStockInEditBusy(true);
     setStockInEditError('');
     try {
-      const { original, ...entry } = editingStockIn;
-      const result = await updateStockIn(original.id, {
-        ...entry,
-        cartons: Number(entry.cartons)
-      }, stockInActionPassword);
+      const {
+        anchorId,
+        originalEntries,
+        items,
+        ...challan
+      } = editingStockIn;
+      const result = await updateStockIn(anchorId, {
+        ...challan,
+        items: items.map((item) => ({
+          ...item,
+          cartons: Number(item.cartons)
+        }))
+      }, stockInActionPassword, originalEntries);
+      const refreshError = result.pendingApproval ? '' : await refreshStockInRecords();
       setEditingStockIn(null);
       setStockInActionPassword('');
       setStockInSuccess({
-        productLines: 1,
-        packages: Number(entry.cartons),
+        productLines: items.length,
+        packages: items.reduce((sum, item) => sum + Number(item.cartons), 0),
         pendingApproval: Boolean(result.pendingApproval),
-        action: 'update'
+        action: 'update',
+        refreshError
       });
     } catch (error) {
       setStockInEditError(error.message || 'স্টক-ইন সংশোধনের অনুরোধ জমা করা যায়নি।');
@@ -392,6 +438,35 @@ export default function StockManagement() {
     setActiveTab('inventory');
   };
 
+  const updateStockInEditItem = (index, changes) => {
+    setEditingStockIn((previous) => ({
+      ...previous,
+      items: previous.items.map((item, itemIndex) => (
+        itemIndex === index ? { ...item, ...changes } : item
+      ))
+    }));
+  };
+
+  const addStockInEditItem = () => {
+    const firstProduct = sortProductsByCode(products)[0];
+    const firstVariant = firstProduct?.variants?.[0];
+    setEditingStockIn((previous) => ({
+      ...previous,
+      items: [...previous.items, {
+        productId: firstProduct?.id || '',
+        sku: firstVariant?.sku || '',
+        cartons: '1'
+      }]
+    }));
+  };
+
+  const removeStockInEditItem = (index) => {
+    setEditingStockIn((previous) => ({
+      ...previous,
+      items: previous.items.filter((_, itemIndex) => itemIndex !== index)
+    }));
+  };
+
   return (
     <div className="py-6 px-4 max-w-7xl mx-auto space-y-6">
       {/* Header */}
@@ -420,6 +495,19 @@ export default function StockManagement() {
           >
             বর্তমান স্টক তালিকা
           </button>
+
+          {canReceiveStock && (
+            <button
+              onClick={() => setActiveTab('stock-in-history')}
+              className={`flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-lg transition ${
+                activeTab === 'stock-in-history'
+                  ? 'bg-emerald-700 text-white shadow'
+                  : 'bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100'
+              }`}
+            >
+              স্টক ইন চালান / ইনভয়েস হিস্ট্রি
+            </button>
+          )}
 
           {canReceiveStock && (
             <button
@@ -455,6 +543,12 @@ export default function StockManagement() {
         <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 p-4 rounded-xl flex items-center gap-2">
           <CheckCircle className="w-5 h-5 text-emerald-600" />
           <span className="font-semibold text-sm">{statusMsg}</span>
+        </div>
+      )}
+
+      {initialRefreshError && (
+        <div role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-800">
+          {initialRefreshError}
         </div>
       )}
 
@@ -925,16 +1019,25 @@ export default function StockManagement() {
                         ? stockInSuccess.action === 'delete'
                           ? 'মুছে ফেলার অনুরোধ অনুমোদনের অপেক্ষায়'
                           : 'সংশোধন অনুমোদনের অপেক্ষায়'
-                        : 'স্টক ইন সফলভাবে সংরক্ষিত হয়েছে'}
+                        : stockInSuccess.action === 'delete'
+                          ? 'চালান সফট-ডিলিট সম্পন্ন হয়েছে'
+                          : 'চালান সংশোধন সংরক্ষিত হয়েছে'}
                     </h3>
                     <p className="mt-2 text-sm text-slate-600">
                       {stockInSuccess.pendingApproval
                         ? 'সুপার অ্যাডমিন অনুমোদনের আগে মূল চালান ও মজুত অপরিবর্তিত থাকবে।'
-                        : `${stockInSuccess.productLines.toLocaleString('bn-BD')}টি প্যাক সাইজের এন্ট্রি সংরক্ষণ হয়েছে।`}
+                        : stockInSuccess.action === 'delete'
+                          ? `${stockInSuccess.productLines.toLocaleString('bn-BD')}টি পণ্য সফট-ডিলিট হয়েছে; রেকর্ড সংরক্ষিত আছে।`
+                          : `${stockInSuccess.productLines.toLocaleString('bn-BD')}টি পণ্য চালানে সংরক্ষণ হয়েছে।`}
                     </p>
                     {!stockInSuccess.pendingApproval && (
                       <p className="mt-2 text-sm font-semibold text-emerald-800">
-                        {stockInSuccess.packages.toLocaleString('bn-BD')}টি প্যাকেজ (পিস বাদে) যোগ হয়েছে।
+                        চালানের মোট {stockInSuccess.packages.toLocaleString('bn-BD')}টি প্যাকেজ।
+                      </p>
+                    )}
+                    {stockInSuccess.refreshError && (
+                      <p role="alert" className="mt-2 text-xs font-semibold text-amber-700">
+                        সংরক্ষণ সম্পন্ন হয়েছে, তবে তালিকা রিফ্রেশ হয়নি: {stockInSuccess.refreshError}
                       </p>
                     )}
                   </div>
@@ -946,82 +1049,109 @@ export default function StockManagement() {
             </div>
           )}
 
-          {/* Stock-In Invoice History */}
-          <div className="mt-8 pt-6 border-t border-slate-200">
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h3 className="text-sm font-bold text-slate-800">স্টক-ইন ইনভয়েস হিস্ট্রি</h3>
-                <p className="mt-1 text-xs text-slate-500">মোট {stockInLogs.length.toLocaleString('bn-BD')}টি চালান</p>
-              </div>
-              <label className="relative w-full sm:max-w-xs">
-                <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-                <input
-                  type="search"
-                  value={stockInHistorySearch}
-                  onChange={(event) => setStockInHistorySearch(event.target.value)}
-                  placeholder="চালান, পণ্য, ব্যাচ বা উৎস খুঁজুন"
-                  className="w-full rounded-lg border border-slate-300 py-2 pl-9 pr-3 text-xs"
-                />
-              </label>
-            </div>
-            <div className="border border-slate-200 rounded-lg overflow-x-auto">
-              <table className="w-full min-w-[980px] text-left text-xs">
-                <thead className="bg-slate-100 text-slate-700 font-semibold">
-                  <tr>
-                    <th className="py-2.5 px-3">চালান আইডি</th>
-                    <th className="py-2.5 px-3">তারিখ</th>
-                    <th className="py-2.5 px-3">পণ্য</th>
-                    <th className="py-2.5 px-3">প্যাক সাইজ</th>
-                    <th className="py-2.5 px-3 text-center">প্যাকেজ</th>
-                    <th className="py-2.5 px-3">ব্যাচ নং</th>
-                    <th className="py-2.5 px-3">চালান নম্বর</th>
-                    <th className="py-2.5 px-3">উৎস</th>
-                    <th className="py-2.5 px-3">রিসিভার</th>
-                    <th className="py-2.5 px-3">অবস্থা</th>
-                    {canReceiveStock && <th className="py-2.5 px-3">অ্যাকশন</th>}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-200">
-                  {stockInHistory.map((log) => (
-                    <tr key={log.id} className={`hover:bg-slate-50 ${log.deletedAt ? 'bg-slate-50 text-slate-400' : ''}`}>
-                      <td className="py-2 px-3 font-mono">{log.id}</td>
-                      <td className="py-2 px-3 font-mono">{log.date}</td>
-                      <td className="py-2 px-3 font-medium text-slate-800">{log.productName}</td>
-                      <td className="py-2 px-3">{log.size}</td>
-                      <td className="py-2 px-3 text-center font-semibold">{Number(log.cartons ?? log.quantity) > 0 ? `${Number(log.cartons ?? log.quantity).toLocaleString('bn-BD')} ${getPackageQuantityUnit(log)}` : '-'}</td>
-                      <td className="py-2 px-3 font-mono text-slate-500">{log.batchNo || '-'}</td>
-                      <td className="py-2 px-3 font-mono text-slate-500">{log.challanNo || '-'}</td>
-                      <td className="py-2 px-3 text-slate-600">{log.source}</td>
-                      <td className="py-2 px-3 text-slate-500">{log.receivedBy}</td>
-                      <td className="py-2 px-3">{log.deletedAt ? 'অনুমোদিতভাবে মুছে ফেলা' : 'সক্রিয়'}</td>
-                      {canReceiveStock && (
-                        <td className="py-2 px-3">
-                          {!log.deletedAt && (
-                            <div className="flex items-center gap-1">
-                              <button type="button" onClick={() => openStockInEdit(log)} className="rounded border border-amber-200 bg-amber-50 px-2 py-1 font-semibold text-amber-800">
-                                সংশোধন
-                              </button>
-                              <button type="button" onClick={() => handleStockInDelete(log)} className="inline-flex items-center gap-1 rounded border border-rose-200 bg-rose-50 px-2 py-1 font-semibold text-rose-700">
-                                <Trash2 className="h-3 w-3" /> মুছুন
-                              </button>
-                            </div>
-                          )}
-                        </td>
-                      )}
-                    </tr>
-                  ))}
-                  {stockInHistory.length === 0 && (
-                    <tr>
-                      <td colSpan={canReceiveStock ? 11 : 10} className="py-8 text-center text-slate-500">
-                        {stockInHistorySearch ? 'অনুসন্ধানের সঙ্গে মেলে এমন চালান নেই।' : 'কোনো স্টক-ইন চালান নেই।'}
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
         </div>
+      )}
+
+      {canReceiveStock && activeTab === 'stock-in-history' && (
+        <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-bold text-slate-800">স্টক ইন চালান / ইনভয়েস হিস্ট্রি</h2>
+              <p className="mt-1 text-xs text-slate-500">
+                মোট {stockInChallanGroups.length.toLocaleString('bn-BD')}টি চালান
+              </p>
+            </div>
+            <label className="relative w-full sm:max-w-xs">
+              <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+              <input
+                type="search"
+                value={stockInHistorySearch}
+                onChange={(event) => setStockInHistorySearch(event.target.value)}
+                placeholder="চালান, পণ্য, ব্যাচ বা উৎস খুঁজুন"
+                className="w-full rounded-lg border border-slate-300 py-2 pl-9 pr-3 text-xs"
+              />
+            </label>
+          </div>
+          <div className="overflow-x-auto rounded-lg border border-slate-200">
+            <table className="w-full min-w-[820px] text-left text-xs">
+              <thead className="bg-slate-100 font-semibold text-slate-700">
+                <tr>
+                  <th className="px-3 py-2.5">চালান নম্বর</th>
+                  <th className="px-3 py-2.5">তারিখ</th>
+                  <th className="px-3 py-2.5">সেশন</th>
+                  <th className="px-3 py-2.5">পণ্যসমূহ</th>
+                  <th className="px-3 py-2.5 text-center">মোট প্যাকেজ</th>
+                  <th className="px-3 py-2.5">অবস্থা</th>
+                  {canReceiveStock && <th className="px-3 py-2.5">অ্যাকশন</th>}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200">
+                {stockInChallanGroups.map((group) => (
+                  <tr key={group.key} className="align-top hover:bg-slate-50">
+                    <td className="px-3 py-3 font-mono font-bold text-slate-800">
+                      {group.displayChallanNo}
+                      {group.batchNo && <p className="mt-1 text-[10px] font-normal text-slate-500">ব্যাচ: {group.batchNo}</p>}
+                    </td>
+                    <td className="px-3 py-3 font-mono">{group.date || '—'}</td>
+                    <td className="px-3 py-3">{group.session || '—'}</td>
+                    <td className="px-3 py-3">
+                      <details>
+                        <summary className="cursor-pointer font-semibold text-emerald-800">
+                          {group.totalProducts.toLocaleString('bn-BD')}টি পণ্য
+                        </summary>
+                        <ul className="mt-2 space-y-1 text-[11px] text-slate-600">
+                          {group.entries.map((entry) => (
+                            <li key={entry.id} className={entry.deletedAt ? 'text-slate-400 line-through' : ''}>
+                              {entry.productName || entry.productId} • {entry.size || entry.sku} • {Number(entry.cartons ?? entry.quantity) || 0} {getPackageQuantityUnit(entry)}
+                              {entry.deletedAt ? ' (সফট-ডিলিট)' : ''}
+                            </li>
+                          ))}
+                        </ul>
+                      </details>
+                    </td>
+                    <td className="px-3 py-3 text-center font-semibold">
+                      {group.totalCartons.toLocaleString('bn-BD')}
+                    </td>
+                    <td className="px-3 py-3">
+                      {group.status === 'deleted'
+                        ? 'সফট-ডিলিট'
+                        : group.status === 'partial' ? 'আংশিক সক্রিয়' : 'সক্রিয়'}
+                    </td>
+                    {canReceiveStock && (
+                      <td className="px-3 py-3">
+                        {group.activeEntries.length > 0 && (
+                          <div className="flex flex-wrap items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => openStockInEdit(group)}
+                              className="rounded border border-amber-200 bg-amber-50 px-2 py-1 font-semibold text-amber-800"
+                            >
+                              এডিট / সংশোধন
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleStockInDelete(group)}
+                              className="inline-flex items-center gap-1 rounded border border-rose-200 bg-rose-50 px-2 py-1 font-semibold text-rose-700"
+                            >
+                              <Trash2 className="h-3 w-3" /> মুছুন
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                    )}
+                  </tr>
+                ))}
+                {stockInChallanGroups.length === 0 && (
+                  <tr>
+                    <td colSpan={canReceiveStock ? 7 : 6} className="py-8 text-center text-slate-500">
+                      {stockInHistorySearch ? 'অনুসন্ধানের সঙ্গে মেলে এমন চালান নেই।' : 'কোনো স্টক-ইন চালান নেই।'}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
       )}
 
       {/* TAB 3: Add Brand New Product to Catalog */}
@@ -1187,60 +1317,93 @@ export default function StockManagement() {
       )}
       {editingStockIn && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/60 p-4">
-          <form onSubmit={handleStockInEditSubmit} className="w-full max-w-2xl space-y-4 rounded-xl bg-white p-5 shadow-2xl">
+          <form onSubmit={handleStockInEditSubmit} className="max-h-[92vh] w-full max-w-5xl space-y-4 overflow-y-auto rounded-xl bg-white p-5 shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-200 pb-3">
               <div>
-                <h3 className="font-black text-slate-900">স্টক-ইন চালান সংশোধন</h3>
-                <p className="text-xs text-slate-500">{editingStockIn.original.id} • অনুমোদনের আগে মজুত অপরিবর্তিত থাকবে</p>
+                <h3 className="font-black text-slate-900">পূর্ণ চালান / ইনভয়েস সংশোধন</h3>
+                <p className="text-xs text-slate-500">
+                  {editingStockIn.challanNo || editingStockIn.anchorId} • {editingStockIn.items.length}টি পণ্য
+                  {canEditStockInDirectlyUser ? ' • সংরক্ষণ করলে সরাসরি স্টক সমন্বয় হবে' : ' • অনুমোদনের আগে স্টক অপরিবর্তিত থাকবে'}
+                </p>
               </div>
               <button type="button" onClick={() => { setEditingStockIn(null); setStockInActionPassword(''); }} aria-label="বন্ধ করুন" className="rounded p-1 text-slate-500 hover:bg-slate-100">×</button>
             </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="text-xs font-semibold text-slate-600 sm:col-span-2">পণ্য ও প্যাক সাইজ
-                <select required value={`${editingStockIn.productId}::${editingStockIn.sku}`} onChange={(event) => {
-                  const [productId, sku] = event.target.value.split('::');
-                  setEditingStockIn((previous) => ({ ...previous, productId, sku }));
-                }} className="mt-1 w-full rounded border border-slate-300 p-2">
-                  {sortProductsByCode(products).flatMap((product) => (product.variants || []).map((variant) => (
-                    <option key={`${product.id}::${variant.sku}`} value={`${product.id}::${variant.sku}`}>
-                      {product.name} • {variant.size} • {variant.sku}
-                    </option>
-                  )))}
-                </select>
-              </label>
-              <label className="text-xs font-semibold text-slate-600">তারিখ
-                <input required type="date" value={editingStockIn.date} onChange={(event) => setEditingStockIn((previous) => ({ ...previous, date: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 p-2" />
-              </label>
-              <label className="text-xs font-semibold text-slate-600">কার্টুন / প্যাকেজ
-                <input required type="number" min="1" step="1" value={editingStockIn.cartons} onChange={(event) => setEditingStockIn((previous) => ({ ...previous, cartons: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 p-2" />
-              </label>
-              <label className="text-xs font-semibold text-slate-600">ব্যাচ / চালান নম্বর
-                <input value={editingStockIn.batchNo} onChange={(event) => setEditingStockIn((previous) => ({ ...previous, batchNo: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 p-2" />
+            <section className="grid gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 sm:grid-cols-2 lg:grid-cols-3">
+              <label className="text-xs font-semibold text-slate-600">চালানের তারিখ
+                <input required type="date" value={editingStockIn.date} onChange={(event) => setEditingStockIn((previous) => ({ ...previous, date: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 bg-white p-2" />
               </label>
               <label className="text-xs font-semibold text-slate-600">চালান নম্বর
-                <input value={editingStockIn.challanNo} onChange={(event) => setEditingStockIn((previous) => ({ ...previous, challanNo: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 p-2" />
+                <input required value={editingStockIn.challanNo} onChange={(event) => setEditingStockIn((previous) => ({ ...previous, challanNo: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 bg-white p-2" />
+              </label>
+              <label className="text-xs font-semibold text-slate-600">ব্যাচ নম্বর
+                <input value={editingStockIn.batchNo} onChange={(event) => setEditingStockIn((previous) => ({ ...previous, batchNo: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 bg-white p-2" />
               </label>
               <label className="text-xs font-semibold text-slate-600">উৎস
-                <input value={editingStockIn.source} onChange={(event) => setEditingStockIn((previous) => ({ ...previous, source: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 p-2" />
+                <input value={editingStockIn.source} onChange={(event) => setEditingStockIn((previous) => ({ ...previous, source: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 bg-white p-2" />
               </label>
               <label className="text-xs font-semibold text-slate-600">উৎপাদন তারিখ
-                <input type="date" value={editingStockIn.mfgDate} onChange={(event) => setEditingStockIn((previous) => ({ ...previous, mfgDate: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 p-2" />
+                <input type="date" value={editingStockIn.mfgDate} onChange={(event) => setEditingStockIn((previous) => ({ ...previous, mfgDate: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 bg-white p-2" />
               </label>
               <label className="text-xs font-semibold text-slate-600">মেয়াদ শেষ
-                <input type="date" value={editingStockIn.expDate} onChange={(event) => setEditingStockIn((previous) => ({ ...previous, expDate: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 p-2" />
+                <input type="date" value={editingStockIn.expDate} onChange={(event) => setEditingStockIn((previous) => ({ ...previous, expDate: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 bg-white p-2" />
               </label>
               <label className="text-xs font-semibold text-slate-600">রিসিভ করেছেন
-                <input value={editingStockIn.receivedBy} onChange={(event) => setEditingStockIn((previous) => ({ ...previous, receivedBy: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 p-2" />
+                <input value={editingStockIn.receivedBy} onChange={(event) => setEditingStockIn((previous) => ({ ...previous, receivedBy: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 bg-white p-2" />
               </label>
               <label className="text-xs font-semibold text-slate-600 sm:col-span-2">নোট
-                <input value={editingStockIn.note} onChange={(event) => setEditingStockIn((previous) => ({ ...previous, note: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 p-2" />
+                <input value={editingStockIn.note} onChange={(event) => setEditingStockIn((previous) => ({ ...previous, note: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 bg-white p-2" />
               </label>
-            </div>
+            </section>
+            <section className="space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h4 className="text-sm font-bold text-slate-800">চালানের পণ্যসমূহ</h4>
+                <button type="button" onClick={addStockInEditItem} className="inline-flex items-center gap-1 rounded border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-800">
+                  <PlusCircle className="h-4 w-4" /> পণ্য যোগ করুন
+                </button>
+              </div>
+              <div className="space-y-2">
+                {editingStockIn.items.map((item, index) => {
+                  const selectedProduct = products.find((product) => product.id === item.productId);
+                  const selectedVariant = selectedProduct?.variants?.find((variant) => variant.sku === item.sku);
+                  return (
+                    <div key={item.id || `new-${index}`} className="grid items-end gap-2 rounded-lg border border-slate-200 p-3 sm:grid-cols-[minmax(0,1fr)_140px_90px_40px]">
+                      <label className="text-xs font-semibold text-slate-600">পণ্য ও প্যাক সাইজ
+                        <select
+                          required
+                          value={`${item.productId}::${item.sku}`}
+                          onChange={(event) => {
+                            const [productId, sku] = event.target.value.split('::');
+                            updateStockInEditItem(index, { productId, sku });
+                          }}
+                          className="mt-1 w-full rounded border border-slate-300 bg-white p-2"
+                        >
+                          <option value="::">পণ্য নির্বাচন করুন</option>
+                          {sortProductsByCode(products).flatMap((product) => (product.variants || []).map((variant) => (
+                            <option key={`${product.id}::${variant.sku}`} value={`${product.id}::${variant.sku}`}>
+                              {product.name} • {variant.size} • {variant.sku}
+                            </option>
+                          )))}
+                        </select>
+                      </label>
+                      <p className="pb-2 text-xs text-slate-500">
+                        {selectedVariant ? `${selectedVariant.size} • ${getPackageQuantityUnit({ ...selectedVariant, productName: selectedProduct.name, generic: selectedProduct.generic })}` : 'প্যাক সাইজ'}
+                      </p>
+                      <label className="text-xs font-semibold text-slate-600">পরিমাণ
+                        <input required type="number" min="1" step="1" value={item.cartons} onChange={(event) => updateStockInEditItem(index, { cartons: event.target.value })} className="mt-1 w-full rounded border border-slate-300 p-2" />
+                      </label>
+                      <button type="button" disabled={editingStockIn.items.length <= 1} onClick={() => removeStockInEditItem(index)} aria-label="পণ্য সরান" className="mb-1 rounded p-2 text-rose-700 hover:bg-rose-50 disabled:opacity-30">
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
             {stockInEditError && <p role="alert" className="rounded bg-rose-50 p-2 text-xs font-semibold text-rose-700">{stockInEditError}</p>}
             <div className="flex justify-end gap-2 border-t border-slate-200 pt-3">
               <button type="button" onClick={() => { setEditingStockIn(null); setStockInActionPassword(''); }} className="rounded border border-slate-300 px-3 py-2 text-xs font-bold text-slate-600">বাতিল</button>
               <button disabled={stockInEditBusy} className="rounded bg-emerald-700 px-4 py-2 text-xs font-bold text-white disabled:opacity-50">
-                {stockInEditBusy ? 'জমা হচ্ছে…' : 'অনুমোদনের জন্য জমা দিন'}
+                {stockInEditBusy ? 'জমা হচ্ছে…' : canEditStockInDirectlyUser ? 'চালান সংরক্ষণ করুন' : 'অনুমোদনের জন্য জমা দিন'}
               </button>
             </div>
           </form>

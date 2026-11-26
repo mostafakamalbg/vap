@@ -46,8 +46,14 @@ function AppContent() {
   const [invoiceToPrintId, setInvoiceToPrintId] = useState('');
   const [invoiceFormKey, setInvoiceFormKey] = useState(0);
   const [initialProductCategory, setInitialProductCategory] = useState('ALL');
+  const [stockInHistoryOnOpen, setStockInHistoryOnOpen] = useState(false);
+  const [stockInHistoryRefreshError, setStockInHistoryRefreshError] = useState('');
 
   const handleNavigate = (tab, category = 'ALL') => {
+    if (tab === 'inventory') {
+      setStockInHistoryOnOpen(false);
+      setStockInHistoryRefreshError('');
+    }
     const publicTabs = ['website-home', 'website-products', 'website-about', 'dealer-access'];
     const authTabs = ['admin-login', 'officer-login', 'officer-register'];
     if (publicTabs.includes(tab) || authTabs.includes(tab)) {
@@ -156,6 +162,10 @@ function AppContent() {
       return <AdminAccess onInvoiceCreated={(invoice) => {
         setInvoiceToPrintId(invoice.id);
         setActiveTab('invoice-list');
+      }} onStockInApproved={(refreshError) => {
+        setStockInHistoryOnOpen(true);
+        setStockInHistoryRefreshError(refreshError);
+        setActiveTab('inventory');
       }} />;
     }
     if (activeTab === 'new-invoice') {
@@ -182,7 +192,14 @@ function AppContent() {
         />
       );
     }
-    if (activeTab === 'inventory') return <StockManagement />;
+    if (activeTab === 'inventory') {
+      return (
+        <StockManagement
+          initialTab={stockInHistoryOnOpen ? 'stock-in-history' : 'inventory'}
+          initialRefreshError={stockInHistoryRefreshError}
+        />
+      );
+    }
     if (activeTab === 'damage-returns') return <DamageReturns />;
     if (activeTab === 'dealer-ledger') return <DealerLedger />;
     if (activeTab === 'officer-tracking') return <OfficerPerformance />;

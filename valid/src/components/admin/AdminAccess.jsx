@@ -20,7 +20,7 @@ async function requestJson(url, options) {
   return result;
 }
 
-export default function AdminAccess({ onInvoiceCreated }) {
+export default function AdminAccess({ onInvoiceCreated, onStockInApproved }) {
   const { products, refreshSharedRecords, currentUser } = useAgro();
   const isSuperAdmin = currentUser?.role === SUPER_ADMIN_ROLE || currentUser?.isSuperAdmin;
   const canManageUsers = isAdminRole(currentUser?.role);
@@ -203,9 +203,25 @@ export default function AdminAccess({ onInvoiceCreated }) {
         body: JSON.stringify({ id: request.id, decision, reason })
       });
       if (decision === 'approved') {
-        await Promise.all(['products', 'invoices', 'payments', 'stockInLogs'].map(
+        const isStockInRequest = ['stock_in_update', 'stock_in_delete'].includes(request.requestType);
+        const recordTypes = isStockInRequest
+          ? ['products', 'stockInLogs']
+          : ['products', 'invoices', 'payments', 'stockInLogs'];
+        const refreshResults = await Promise.allSettled(recordTypes.map(
           (type) => refreshSharedRecords(type)
         ));
+        const refreshFailed = refreshResults.some((result) => result.status === 'rejected');
+        setMessage('পরিবর্তন অনুমোদিত ও সংরক্ষিত হয়েছে।');
+        await refresh();
+        if (refreshFailed) {
+          setError('অনুমোদন সংরক্ষিত হয়েছে, তবে কিছু ডেটা রিফ্রেশ হয়নি। তালিকা আবার খুলে রিফ্রেশ করুন।');
+        }
+        if (isStockInRequest) {
+          onStockInApproved?.(refreshFailed
+            ? 'অনুমোদন সংরক্ষিত হয়েছে, তবে কিছু ডেটা রিফ্রেশ হয়নি।'
+            : '');
+        }
+        return;
       }
       setMessage(decision === 'approved' ? 'পরিবর্তন অনুমোদিত ও সংরক্ষিত হয়েছে।' : 'অনুরোধ প্রত্যাখ্যান করা হয়েছে।');
       await refresh();

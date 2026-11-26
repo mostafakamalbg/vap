@@ -774,26 +774,26 @@ export function AgroProvider({ children }) {
     }));
   };
 
-  const updateStockIn = async (id, entry, password) => {
+  const updateStockIn = async (id, entry, password, originalEntries) => {
     if (!isDataWriterRole(currentUser?.role)) {
       throw new Error('স্টক-ইন সম্পাদনার অনুমতি নেই।');
     }
     const response = await fetch('/api/stock-in', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, entry, password })
+      body: JSON.stringify({ id, entry, password, originalEntries })
     });
     return readJsonResponse(response);
   };
 
-  const deleteStockIn = async (id, password) => {
+  const deleteStockIn = async (id, password, originalEntries) => {
     if (!isDataWriterRole(currentUser?.role)) {
       throw new Error('স্টক-ইন মুছে ফেলার অনুমতি নেই।');
     }
     const response = await fetch('/api/stock-in', {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, password })
+      body: JSON.stringify({ id, password, originalEntries })
     });
     return readJsonResponse(response);
   };

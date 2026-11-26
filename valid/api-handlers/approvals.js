@@ -1,20 +1,20 @@
 import dbConnect from '../lib/mongodb.js';
-import { BusinessRecord, Invoice, Payment, Product } from '../lib/models.js';
+import { BusinessRecord, Invoice, Payment } from '../lib/models.js';
 import { authorize, hasSuperAdminAccess } from '../lib/auth.js';
 import {
   applyInvoiceStockChanges,
   syncInvoicePayment
 } from './invoices.js';
 import {
-  getPackageQuantityUnit,
-  getStockInPieceQuantity
-} from '../shared/quantityUnits.js';
-import { STOCK_RECONCILIATION_START_DATE } from '../shared/stockReconciliation.js';
-import {
   transactionCreateOptions,
   transactionOptions,
   withTransactionFallback
 } from '../lib/transactions.js';
+import {
+  assertStockInSnapshot,
+  loadStockInChallan,
+  saveStockInRevision
+} from '../lib/stockInMutations.js';
 
 function fail(statusCode, message) {
   const error = new Error(message);
@@ -35,75 +35,6 @@ function revisionMatches(current, original, originalUpdatedAt) {
     return value;
   };
   return JSON.stringify(normalize(current?.data || current)) === JSON.stringify(normalize(original));
-}
-
-function stockContribution(entry, variant) {
-  if (!entry || String(entry.date || '') < STOCK_RECONCILIATION_START_DATE) {
-    return { pieces: 0, packages: 0 };
-  }
-  const pieces = getStockInPieceQuantity(entry, Number(variant.packPerBox) || 1);
-  const quantityUnit = String(entry.quantityUnit || getPackageQuantityUnit(entry));
-  const packages = quantityUnit === 'কার্টুন'
-    ? Number(entry.cartons ?? entry.quantity) || 0
-    : pieces;
-  return { pieces, packages };
-}
-
-async function applyStockInRevision(original, proposed, session) {
-  const entries = [original, proposed].filter((entry) => (
-    entry && entry.date >= STOCK_RECONCILIATION_START_DATE
-  ));
-  const changes = new Map();
-  for (const entry of entries) {
-    const key = `${entry.productId}::${entry.sku}`;
-    const change = changes.get(key) || {
-      productId: entry.productId,
-      sku: entry.sku,
-      pieces: 0,
-      packages: 0
-    };
-    const productQuery = Product.findOne({ id: String(entry.productId) });
-    if (session) productQuery.session(session);
-    const product = await productQuery;
-    const variant = product?.variants?.find((item) => item.sku === entry.sku);
-    if (!variant) fail(409, 'স্টক-ইন পণ্যের প্যাক সাইজ আর পাওয়া যাচ্ছে না।');
-    if (entry === proposed && Number(entry.packPerBox) !== Number(variant.packPerBox)) {
-      fail(409, 'অনুরোধের পর পণ্যের প্যাক তথ্য পরিবর্তিত হয়েছে; নতুন করে সংশোধন জমা দিন।');
-    }
-    const contribution = stockContribution(entry, variant);
-    const multiplier = entry === proposed ? 1 : -1;
-    change.pieces += contribution.pieces * multiplier;
-    change.packages += contribution.packages * multiplier;
-    changes.set(key, change);
-  }
-
-  for (const change of changes.values()) {
-    const productQuery = Product.findOne({ id: change.productId });
-    if (session) productQuery.session(session);
-    const product = await productQuery;
-    if (!product) fail(409, 'স্টক-ইন পণ্যটি আর পাওয়া যাচ্ছে না।');
-    let foundVariant = false;
-    product.variants = (product.variants || []).map((variant) => {
-      if (variant.sku !== change.sku) return variant;
-      foundVariant = true;
-      const packPerBox = Number(variant.packPerBox) || 1;
-      const currentPieces = variant.stock == null
-        ? (Number(variant.stockCartons) || 0) * packPerBox
-        : Number(variant.stock) || 0;
-      const currentPackages = variant.stockCartons == null
-        ? Math.floor(currentPieces / packPerBox)
-        : Number(variant.stockCartons) || 0;
-      const stock = currentPieces + change.pieces;
-      const stockCartons = currentPackages + change.packages;
-      if (stock < 0 || stockCartons < 0) {
-        fail(409, 'বর্তমান বিক্রয়/স্টক সমন্বয়ের কারণে সংশোধিত পরিমাণে মজুত ঋণাত্মক হবে।');
-      }
-      return { ...variant, stock, stockCartons };
-    });
-    if (!foundVariant) fail(409, 'স্টক-ইন পণ্যের প্যাক সাইজ আর পাওয়া যাচ্ছে না।');
-    product.markModified('variants');
-    await product.save(transactionOptions(session));
-  }
 }
 
 async function applyRequest(request, session) {
@@ -178,47 +109,61 @@ async function applyRequest(request, session) {
   }
 
   if (requestType === 'stock_in_update') {
-    const filter = { type: 'stockInLogs', recordId: targetId };
-    if (originalUpdatedAt) filter.updatedAt = originalUpdatedAt;
-    const currentQuery = BusinessRecord.findOne(filter);
-    if (session) currentQuery.session(session);
-    const current = await currentQuery.lean();
-    if (!current || current.data?.deletedAt || !revisionMatches(current, original, originalUpdatedAt)) {
+    const loaded = await loadStockInChallan(targetId, session);
+    if (!loaded || loaded.anchor.data?.deletedAt) {
       fail(409, 'অনুরোধ জমা হওয়ার পর স্টক-ইন চালান পরিবর্তিত হয়েছে; নতুন করে সম্পাদনা করুন।');
     }
-    await applyStockInRevision(current.data, proposed, session);
-    const saved = await BusinessRecord.findOneAndUpdate(
-      filter,
-      { $set: { data: proposed } },
-      { ...options, new: true }
-    ).lean();
-    if (!saved) fail(409, 'স্টক-ইন চালানটি আর হালনাগাদ করা যায়নি।');
+    let currentRecords = loaded.records;
+    let expectedSnapshots = original;
+    let proposedEntries = proposed?.entries;
+    const groupedRequest = proposed?.grouped === true
+      || (proposed?.grouped == null && Array.isArray(original) && original.length === loaded.records.length);
+    if (!groupedRequest) {
+      currentRecords = loaded.records.filter((record) => record.recordId === loaded.anchor.recordId);
+      if (!Array.isArray(original)) {
+        expectedSnapshots = [{
+          id: loaded.anchor.recordId,
+          data: original,
+          recordUpdatedAt: originalUpdatedAt
+        }];
+        proposedEntries = [{ ...proposed, id: loaded.anchor.recordId }];
+      } else {
+        proposedEntries = (proposedEntries || []).map((entry) => (
+          { ...entry, id: loaded.anchor.recordId }
+        ));
+      }
+    }
+    if (!Array.isArray(proposedEntries) || !proposedEntries.length) {
+      fail(400, 'স্টক-ইন চালানের প্রস্তাবিত পণ্য তালিকা সঠিক নয়।');
+    }
+    assertStockInSnapshot(currentRecords, expectedSnapshots);
+    await saveStockInRevision(currentRecords, proposedEntries, {
+      deletedBy: String(proposed?.requestedBy || request.submittedBy || ''),
+      deletedByRole: String(proposed?.requestedByRole || request.submittedByRole || '')
+    }, session);
     return;
   }
 
   if (requestType === 'stock_in_delete') {
-    const filter = { type: 'stockInLogs', recordId: targetId };
-    if (originalUpdatedAt) filter.updatedAt = originalUpdatedAt;
-    const currentQuery = BusinessRecord.findOne(filter);
-    if (session) currentQuery.session(session);
-    const current = await currentQuery.lean();
-    if (!current || current.data?.deletedAt || !revisionMatches(current, original, originalUpdatedAt)) {
+    const loaded = await loadStockInChallan(targetId, session);
+    if (!loaded || loaded.anchor.data?.deletedAt) {
       fail(409, 'অনুরোধ জমা হওয়ার পর স্টক-ইন চালান পরিবর্তিত হয়েছে; নতুন করে পর্যালোচনা করুন।');
     }
-
-    await applyStockInRevision(current.data, null, session);
-    const saved = await BusinessRecord.findOneAndUpdate(
-      filter,
-      {
-        $set: {
-          'data.deletedAt': new Date(),
-          'data.deletedBy': String(proposed?.requestedBy || ''),
-          'data.deletedByRole': String(proposed?.requestedByRole || '')
-        }
-      },
-      { ...options, new: true }
-    ).lean();
-    if (!saved) fail(409, 'স্টক-ইন চালানটি আর মুছে ফেলার জন্য হালনাগাদ করা যায়নি।');
+    let currentRecords = loaded.records;
+    let expectedSnapshots = original;
+    if (!Array.isArray(original)) {
+      currentRecords = loaded.records.filter((record) => record.recordId === loaded.anchor.recordId);
+      expectedSnapshots = [{
+        id: loaded.anchor.recordId,
+        data: original,
+        recordUpdatedAt: originalUpdatedAt
+      }];
+    }
+    assertStockInSnapshot(currentRecords, expectedSnapshots);
+    await saveStockInRevision(currentRecords, [], {
+      deletedBy: String(proposed?.requestedBy || request.submittedBy || ''),
+      deletedByRole: String(proposed?.requestedByRole || request.submittedByRole || '')
+    }, session);
     return;
   }
 

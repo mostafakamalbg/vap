@@ -219,7 +219,15 @@ export default async function handler(req, res) {
         recordsQuery.sort({ 'data.date': -1, createdAt: -1 });
       }
       const records = await recordsQuery.lean();
-      return res.status(200).json(records.map((record) => record.data));
+      return res.status(200).json(records.map((record) => (
+        type === 'stockInLogs'
+          ? {
+            ...record.data,
+            id: record.data?.id || record.recordId,
+            recordUpdatedAt: record.updatedAt
+          }
+          : record.data
+      )));
     }
 
     const records = req.body;
