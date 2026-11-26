@@ -6,6 +6,7 @@ import {
 import { STOCK_RECONCILIATION_START_DATE } from '../shared/stockReconciliation.js';
 import { getStockInChallanKey } from '../shared/stockInChallans.js';
 import { calculateStockInRevisionDeltas } from '../shared/stockInRevisions.js';
+import { normalizeProductDisplayNames } from '../shared/productNames.js';
 
 function fail(statusCode, message) {
   const error = new Error(message);
@@ -59,6 +60,12 @@ function normalizeValue(value) {
   return value;
 }
 
+function withoutRecordVersion(value) {
+  const data = { ...value };
+  delete data.recordUpdatedAt;
+  return normalizeProductDisplayNames(data);
+}
+
 export function assertStockInSnapshot(currentRecords, snapshots) {
   if (!Array.isArray(snapshots)) return;
   if (snapshots.length !== currentRecords.length) {
@@ -70,15 +77,11 @@ export function assertStockInSnapshot(currentRecords, snapshots) {
     const current = currentById.get(snapshotId);
     if (!current) fail(409, 'চালানটি খোলার পর পরিবর্তিত হয়েছে; নতুন করে সম্পাদনা করুন।');
 
-    if (snapshot.recordUpdatedAt) {
-      if (new Date(snapshot.recordUpdatedAt).valueOf() !== new Date(current.updatedAt).valueOf()) {
-        fail(409, 'চালানটি খোলার পর পরিবর্তিত হয়েছে; নতুন করে সম্পাদনা করুন।');
-      }
-      continue;
-    }
-
     const expected = snapshot.data || snapshot;
-    if (JSON.stringify(normalizeValue(recordData(current))) !== JSON.stringify(normalizeValue(expected))) {
+    if (
+      JSON.stringify(normalizeValue(withoutRecordVersion(recordData(current))))
+      !== JSON.stringify(normalizeValue(withoutRecordVersion(expected)))
+    ) {
       fail(409, 'চালানটি খোলার পর পরিবর্তিত হয়েছে; নতুন করে সম্পাদনা করুন।');
     }
   }

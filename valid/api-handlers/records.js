@@ -286,7 +286,10 @@ export default async function handler(req, res) {
       for (const [index, record] of records.entries()) {
         const recordId = getRecordId(record, index);
         const values = Object.fromEntries(Object.entries(record)
-          .filter(([key]) => key !== '_id')
+          .filter(([key]) => (
+            key !== '_id'
+            && !(type === 'stockInLogs' && key === 'recordUpdatedAt')
+          ))
           .map(([key, value]) => [`data.${key}`, value]));
         await BusinessRecord.updateOne(
           { type, recordId },

@@ -483,7 +483,6 @@ export function AgroProvider({ children }) {
     syncRecords('products', products);
     syncRecords('officers', officers);
     syncRecords('dealers', dealers);
-    syncRecords('stockInLogs', stockInLogs);
     syncRecords('damageLogs', damageLogs);
     if (isAdminRole(currentUser?.role)) syncRecords('salesAgreements', salesAgreements);
   }, [
@@ -492,7 +491,6 @@ export function AgroProvider({ children }) {
     products,
     officers,
     dealers,
-    stockInLogs,
     damageLogs,
     salesAgreements
   ]);
@@ -1094,11 +1092,9 @@ export function AgroProvider({ children }) {
     if (confirmationText !== 'RECALCULATE') {
       throw new Error('স্টক পুনর্গণনা নিশ্চিত করতে RECALCULATE লিখুন।');
     }
-    await Promise.all(['products', 'stockInLogs'].map((type) => (
-      syncQueueRef.current[type] || Promise.resolve()
-    )));
-    if (['products', 'stockInLogs'].some((type) => syncErrorsRef.current.has(type))) {
-      throw new Error('সার্ভারে পণ্য বা স্টক-ইন রেকর্ড সিঙ্ক হয়নি; সিঙ্ক সফল হওয়ার পর পুনর্গণনা করুন।');
+    await (syncQueueRef.current.products || Promise.resolve());
+    if (syncErrorsRef.current.has('products')) {
+      throw new Error('সার্ভারে পণ্য ডেটা সিঙ্ক হয়নি; সিঙ্ক সফল হওয়ার পর পুনর্গণনা করুন।');
     }
     const response = await fetch('/api/backup', {
       method: 'POST',
