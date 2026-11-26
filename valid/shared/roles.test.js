@@ -6,6 +6,7 @@ import {
   SUPER_ADMIN_ROLE,
   GENERAL_ADMIN_ROLE,
   LOGISTIC_OFFICER_ROLE,
+  DATA_WRITE_ROLES,
   RSM_ROLE,
   ASM_ROLE,
   SO_ROLE,
@@ -45,4 +46,13 @@ test('new role types preserve admin and reporting authorization categories', () 
     assert.equal(matchesExpectedRole('officer', role), true);
   }
   assert.equal(matchesExpectedRole('officer', LOGISTIC_OFFICER_ROLE), true);
+});
+
+test('business-write access excludes hierarchy and dealer roles', () => {
+  assert.ok(DATA_WRITE_ROLES.includes(SUPER_ADMIN_ROLE));
+  assert.ok(DATA_WRITE_ROLES.includes(ADMIN_ROLE));
+  assert.ok(DATA_WRITE_ROLES.includes(LOGISTIC_OFFICER_ROLE));
+  for (const role of [RSM_ROLE, ASM_ROLE, SO_ROLE, 'officer', 'Dealer']) {
+    assert.equal(DATA_WRITE_ROLES.includes(role), false);
+  }
 });

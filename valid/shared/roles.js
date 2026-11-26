@@ -22,6 +22,10 @@ export const ADMIN_ROLE_VALUES = Object.freeze([
   ...ADMIN_ROLES,
   LEGACY_ADMIN_ROLE
 ]);
+export const DATA_WRITE_ROLES = Object.freeze([
+  ...ADMIN_ROLE_VALUES,
+  LOGISTIC_OFFICER_ROLE
+]);
 export const HIERARCHY_ROLE_VALUES = Object.freeze([
   RSM_ROLE,
   ASM_ROLE,
@@ -60,6 +64,10 @@ export function isSalesOfficerRole(role) {
 
 export function isCoreAdminRole(role) {
   return [SUPER_ADMIN_ROLE, ADMIN_ROLE, LEGACY_ADMIN_ROLE].includes(role);
+}
+
+export function isDataWriterRole(role) {
+  return DATA_WRITE_ROLES.includes(role);
 }
 
 export function isSuperAdminRole(role) {

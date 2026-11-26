@@ -32,6 +32,7 @@ import { normalizeProductDisplayNames } from '../../shared/productNames';
 import {
   DEALER_ROLE,
   isAdminRole,
+  isDataWriterRole,
   LOGISTIC_OFFICER_ROLE,
   SUPER_ADMIN_ROLE
 } from '../../shared/roles';
@@ -395,7 +396,7 @@ export function AgroProvider({ children }) {
       if (!cancelled) setCloudReady(true);
       return () => { cancelled = true; };
     }
-    if (!isAdminRole(currentUser.role)) {
+    if (!isDataWriterRole(currentUser?.role)) {
       Object.values(setters).forEach((setter) => setter([]));
     }
 
@@ -463,7 +464,7 @@ export function AgroProvider({ children }) {
   }, [currentUser]);
 
   useEffect(() => {
-    if (!isAdminRole(currentUser?.role) || !cloudReady) return;
+    if (!isDataWriterRole(currentUser?.role) || !cloudReady) return;
     const syncRecords = (type, records) => {
       const previousSync = syncQueueRef.current[type] || Promise.resolve();
       const sync = previousSync.catch(() => {}).then(async () => {
@@ -484,7 +485,7 @@ export function AgroProvider({ children }) {
     syncRecords('dealers', dealers);
     syncRecords('stockInLogs', stockInLogs);
     syncRecords('damageLogs', damageLogs);
-    syncRecords('salesAgreements', salesAgreements);
+    if (isAdminRole(currentUser?.role)) syncRecords('salesAgreements', salesAgreements);
   }, [
     currentUser,
     cloudReady,
@@ -593,6 +594,9 @@ export function AgroProvider({ children }) {
 
   // Create new Invoice with strict duplicate prevention, type tracking and stock update
   const createInvoice = async (newInvoice) => {
+    if (!isDataWriterRole(currentUser?.role)) {
+      throw new Error('ইনভয়েস তৈরির অনুমতি নেই।');
+    }
     let finalId = newInvoice.id;
     if (finalId && invoices.some((inv) => inv.id === finalId)) {
       throw new Error('এই ইনভয়েস নম্বরটি আগে থেকেই আছে। নতুন ইনভয়েস নম্বর ব্যবহার করুন।');
@@ -733,6 +737,9 @@ export function AgroProvider({ children }) {
 
   // Stock In (ডিস্ট্রিবিউশন অফিসে মালামাল গ্রহণ)
   const addStockIn = async (stockEntries) => {
+    if (!isDataWriterRole(currentUser?.role)) {
+      throw new Error('স্টক-ইন সংরক্ষণের অনুমতি নেই।');
+    }
     const response = await fetch('/api/stock-in', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -768,6 +775,9 @@ export function AgroProvider({ children }) {
   };
 
   const updateStockIn = async (id, entry) => {
+    if (!isDataWriterRole(currentUser?.role)) {
+      throw new Error('স্টক-ইন সম্পাদনার অনুমতি নেই।');
+    }
     const response = await fetch('/api/stock-in', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -778,6 +788,9 @@ export function AgroProvider({ children }) {
 
   // Record Damage / Return Log
   const recordDamageReturn = async (damageEntry) => {
+    if (!isDataWriterRole(currentUser?.role)) {
+      throw new Error('ডেমেজ বা ফেরত সংরক্ষণের অনুমতি নেই।');
+    }
     const response = await fetch('/api/damage-returns', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -797,6 +810,9 @@ export function AgroProvider({ children }) {
 
   // Record Payment
   const addDealerPayment = async (paymentData) => {
+    if (!isDataWriterRole(currentUser?.role)) {
+      throw new Error('পেমেন্ট সংরক্ষণের অনুমতি নেই।');
+    }
     const inputPayments = (Array.isArray(paymentData) ? paymentData : [paymentData]).map((payment) => ({
       ...payment,
       id: payment.id || `PAY-${globalThis.crypto.randomUUID()}`,
@@ -817,6 +833,9 @@ export function AgroProvider({ children }) {
   };
 
   const updatePayment = async (payment) => {
+    if (!isDataWriterRole(currentUser?.role)) {
+      throw new Error('পেমেন্ট সম্পাদনার অনুমতি নেই।');
+    }
     const response = await fetch('/api/payments', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -831,6 +850,9 @@ export function AgroProvider({ children }) {
   };
 
   const saveSalesAgreement = (agreement) => {
+    if (!isAdminRole(currentUser?.role)) {
+      throw new Error('সেলস চুক্তি সংরক্ষণের অনুমতি নেই।');
+    }
     const savedAgreement = {
       ...agreement,
       id: agreement.id || `AGR-${globalThis.crypto.randomUUID()}`
@@ -845,11 +867,17 @@ export function AgroProvider({ children }) {
   };
 
   const deleteSalesAgreement = (agreementId) => {
+    if (!isAdminRole(currentUser?.role)) {
+      throw new Error('সেলস চুক্তি মুছার অনুমতি নেই।');
+    }
     setSalesAgreements((previous) => previous.filter((entry) => entry.id !== agreementId));
   };
 
   // Add New Dealer with nationwide single continuous serial code 1, 2, 3...
   const addNewDealer = (dealerData) => {
+    if (!isDataWriterRole(currentUser?.role)) {
+      throw new Error('ডিলার নিবন্ধনের অনুমতি নেই।');
+    }
     const nextCode = getNextDealerCode(dealers);
     const serial = Number(nextCode.match(/\d+$/)?.[0]);
 
@@ -864,6 +892,9 @@ export function AgroProvider({ children }) {
 
   // Add New Officer
   const addNewOfficer = (officerData) => {
+    if (!isAdminRole(currentUser?.role)) {
+      throw new Error('অফিসার নিবন্ধনের অনুমতি নেই।');
+    }
     const code = normalizeOfficerCode(officerData.code, officerData.designation);
     if (!/^(SO|TSO|ASM|RSM)-\d{2,}$/.test(code)) {
       throw new Error('অফিসার কোডের সঠিক ফরম্যাট দিন।');
@@ -882,6 +913,9 @@ export function AgroProvider({ children }) {
 
   // Add Brand New Product to Catalog
   const addNewProduct = (productData) => {
+    if (!isDataWriterRole(currentUser?.role)) {
+      throw new Error('পণ্য নিবন্ধনের অনুমতি নেই।');
+    }
     const newProd = {
       ...productData,
       id: `prod-${(products.length + 1).toString().padStart(2, '0')}`
@@ -891,6 +925,9 @@ export function AgroProvider({ children }) {
 
   // Add variant to existing product
   const addProductVariant = (productId, variantData) => {
+    if (!isDataWriterRole(currentUser?.role)) {
+      throw new Error('পণ্যের প্যাক সাইজ যোগ করার অনুমতি নেই।');
+    }
     setProducts((prev) =>
       prev.map((p) => {
         if (p.id !== productId) return p;

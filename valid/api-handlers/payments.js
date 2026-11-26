@@ -54,7 +54,7 @@ export default async function handler(req, res) {
   const user = await authorize(
     req,
     res,
-    req.method === 'PATCH' ? [...ADMIN_ROLES, LOGISTIC_OFFICER_ROLE] : ADMIN_ROLES
+    [...ADMIN_ROLES, LOGISTIC_OFFICER_ROLE]
   );
   if (!user) return;
   if (req.method !== 'POST') {

@@ -57,3 +57,30 @@ test('monthly stock report computes opening stock and all requested movement cat
     netStock: 28
   });
 });
+
+test('monthly stock report follows inventory product and variant order', () => {
+  const rows = calculateMonthlyStockReport({
+    products: [
+      {
+        id: 'prod-10',
+        code: '10',
+        name: 'Ten',
+        variants: [{ sku: 'second' }, { sku: 'first' }]
+      },
+      {
+        id: 'prod-2',
+        code: '2',
+        name: 'Two',
+        variants: [{ sku: 'large' }, { sku: 'small' }]
+      }
+    ],
+    range: { start: '2026-10-01', end: '2026-11-01' }
+  });
+
+  assert.deepEqual(rows.map(({ productId, sku }) => [productId, sku]), [
+    ['prod-2', 'large'],
+    ['prod-2', 'small'],
+    ['prod-10', 'second'],
+    ['prod-10', 'first']
+  ]);
+});

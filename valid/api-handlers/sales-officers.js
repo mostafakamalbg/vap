@@ -11,10 +11,11 @@ import {
 } from '../shared/officerSalesTargets.js';
 import { parseReportMonth, parseSessionDateRange } from '../shared/reportDateFilters.js';
 import { normalizeSessionText } from '../shared/sessions.js';
-import { ADMIN_ROLES, isAdminRole } from '../shared/roles.js';
+import { ADMIN_ROLES, isAdminRole, LOGISTIC_OFFICER_ROLE } from '../shared/roles.js';
 import { HIERARCHY_ROLE_VALUES } from '../shared/roles.js';
 import { resolveHierarchyScope } from '../lib/hierarchy.js';
 import { buildOfficerOwnerFilter, matchesOfficerScope } from '../shared/hierarchy.js';
+import { mergeOfficerRecords } from '../shared/officerIdentity.js';
 
 const numericFields = [
   'salesTargetJulyDec2026',
@@ -137,7 +138,11 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
   if (!await dbConnect()) return res.status(503).json({ error: 'MongoDB is not configured.' });
-  const user = await authorize(req, res, [...ADMIN_ROLES, ...HIERARCHY_ROLE_VALUES]);
+  const user = await authorize(
+    req,
+    res,
+    [...ADMIN_ROLES, ...HIERARCHY_ROLE_VALUES, LOGISTIC_OFFICER_ROLE]
+  );
   if (!user) return;
 
   try {
@@ -178,43 +183,22 @@ export default async function handler(req, res) {
         && matchesOfficerScope(payment, scope)
       ));
       const payments = [...typedPayments, ...legacyPayments];
-      const summaries = new Map();
-      const addSummary = (record) => {
-        const officerId = String(record.officerId || record.id || '');
-        const officerCode = normalizeOfficerCode(
-          record.officerCode || record.code,
-          record.designation
-        );
-        const officerName = String(record.officerName || record.name || '').trim();
-        if (!matchesOfficerScope({ officerId, officerCode, officerName }, scope)) return;
-        const key = officerCode || officerId || officerName;
-        if (!key) return;
-        const previous = summaries.get(key);
-        summaries.set(key, previous ? {
-          ...record,
-          ...previous,
-          officerId: previous.officerId || officerId,
-          officerCode: previous.officerCode || officerCode,
-          officerName: previous.officerName || officerName,
-          mobileNo: previous.mobileNo || record.mobileNo || record.phone || ''
-        } : {
-          ...record,
-          officerId,
-          officerCode,
-          officerName,
-          mobileNo: record.mobileNo || record.phone || ''
-        });
-      };
-      storedRecords.forEach(addSummary);
-      officerRecords.forEach((entry) => addSummary(entry.data || {}));
-      scope.users.forEach((entry) => addSummary({
-        officerId: entry.officerId,
-        officerCode: entry.officerCode,
-        officerName: entry.name,
-        mobileNo: entry.phone
-      }));
+      const summaries = mergeOfficerRecords([
+        ...storedRecords,
+        ...officerRecords.map((entry) => entry.data || {}),
+        ...scope.users.map((entry) => ({
+          officerId: entry.officerId,
+          officerCode: entry.officerCode,
+          officerName: entry.name,
+          mobileNo: entry.phone
+        }))
+      ]).filter((record) => matchesOfficerScope({
+        officerId: record.officerId || record.id,
+        officerCode: record.officerCode || record.code,
+        officerName: record.officerName || record.name
+      }, scope));
 
-      return [...summaries.values()].map((record, index) => {
+      return summaries.map((record, index) => {
         const officerCode = normalizeOfficerCode(record.officerCode);
         const matchesOfficer = (entry) => (
           (record.officerId && entry.officerId === record.officerId)
@@ -239,7 +223,7 @@ export default async function handler(req, res) {
       });
     }
 
-    if (!isAdminRole(user.role)) {
+    if (!isAdminRole(user.role) && user.role !== LOGISTIC_OFFICER_ROLE) {
       return res.status(403).json({ error: 'টার্গেট পরিবর্তনের অনুমতি নেই।' });
     }
 

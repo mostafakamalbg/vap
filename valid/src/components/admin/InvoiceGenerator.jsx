@@ -92,7 +92,8 @@ export default function InvoiceGenerator({
     dealers,
     getDealerSummary
   } = useAgro();
-  const canAdminister = isAdminRole(currentUser?.role);
+  const canAdminister = isAdminRole(currentUser?.role)
+    || currentUser?.role === LOGISTIC_OFFICER_ROLE;
   const canEditInvoice = isAdminRole(currentUser?.role)
     || currentUser?.role === LOGISTIC_OFFICER_ROLE;
   const [form, setForm] = useState(() => ({

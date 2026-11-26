@@ -3,6 +3,7 @@ import {
   ASM_ROLE,
   RSM_ROLE,
   isAdminRole,
+  isDataWriterRole,
   isSalesOfficerRole,
   SO_ROLE
 } from './roles.js';
@@ -39,7 +40,7 @@ export function getHierarchyUsers(user, users) {
 }
 
 export function createHierarchyScope(user, users) {
-  const global = isAdminRole(user?.role);
+  const global = isDataWriterRole(user?.role);
   const visibleUsers = global ? [] : getHierarchyUsers(user, users);
   const officerIds = new Set();
   const officerCodes = new Set();

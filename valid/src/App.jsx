@@ -75,7 +75,9 @@ function AppContent() {
         'invoice-list',
         'new-invoice',
         'dealer-ledger',
-        'damage-returns'
+        'damage-returns',
+        'monthly-sales-reports',
+        'dashboard-reports'
       ].includes(tab) ? tab : 'inventory');
     } else if (currentUser?.role === DEALER_ROLE) {
       setActiveTab(tab === 'dealer-ledger-portal' ? tab : 'dealer-ledger-portal');

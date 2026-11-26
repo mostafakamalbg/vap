@@ -2,9 +2,9 @@ import { randomUUID } from 'node:crypto';
 import dbConnect from '../lib/mongodb.js';
 import { Dealer, DealerSalesTarget } from '../lib/models.js';
 import { authorize } from '../lib/auth.js';
-import { parseSessionDateRange } from '../shared/reportDateFilters.js';
+import { parseSessionDateRange, sessionsMatch } from '../shared/reportDateFilters.js';
 import { normalizeSessionText } from '../shared/sessions.js';
-import { ADMIN_ROLES, isAdminRole } from '../shared/roles.js';
+import { ADMIN_ROLES, isAdminRole, LOGISTIC_OFFICER_ROLE } from '../shared/roles.js';
 import { HIERARCHY_ROLE_VALUES } from '../shared/roles.js';
 import { resolveHierarchyScope } from '../lib/hierarchy.js';
 import { normalizeOfficerCode } from '../shared/codes.js';
@@ -24,7 +24,9 @@ export default async function handler(req, res) {
   const user = await authorize(
     req,
     res,
-    req.method === 'GET' ? [...ADMIN_ROLES, ...HIERARCHY_ROLE_VALUES] : ADMIN_ROLES
+    req.method === 'GET'
+      ? [...ADMIN_ROLES, ...HIERARCHY_ROLE_VALUES, LOGISTIC_OFFICER_ROLE]
+      : [...ADMIN_ROLES, LOGISTIC_OFFICER_ROLE]
   );
   if (!user) return;
 
@@ -56,6 +58,9 @@ export default async function handler(req, res) {
     }
   }
 
+  if (!isAdminRole(user.role) && user.role !== LOGISTIC_OFFICER_ROLE) {
+    return res.status(403).json({ error: 'ডিলার টার্গেট পরিবর্তনের অনুমতি নেই।' });
+  }
   const body = req.body || {};
   const dealerId = String(body.dealerId || '').trim();
   const targetDate = String(body.date || '');
@@ -72,9 +77,10 @@ export default async function handler(req, res) {
   try {
     const dealer = await Dealer.findOne({ id: dealerId }).select('id code shopName').lean();
     if (!dealer) return res.status(404).json({ error: 'নির্বাচিত ডিলার পাওয়া যায়নি।' });
-    const existing = await DealerSalesTarget.findOne({ dealerId: dealer.id, session })
-      .select('id')
+    const existingTargets = await DealerSalesTarget.find({ dealerId: dealer.id })
+      .select('id session')
       .lean();
+    const existing = existingTargets.find((target) => sessionsMatch(target.session, session));
     if (existing) {
       return res.status(409).json({ error: 'এই ডিলারের সেশনের টার্গেট অলরেডি ইমপোর্ট করা আছে।' });
     }

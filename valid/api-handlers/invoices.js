@@ -5,7 +5,7 @@ import { normalizePaymentMethod } from '../shared/paymentMethods.js';
 import { getInvoiceStockChanges } from '../shared/invoiceStock.js';
 import { getItemCartons } from '../shared/invoiceCartons.js';
 import { calculateInvoiceTotals, roundCurrency } from '../shared/invoiceTotals.js';
-import { dateRangeCondition, invoiceSessionCondition, parseReportMonth } from '../shared/reportDateFilters.js';
+import { dateRangeCondition, sessionPrimaryCondition, parseReportMonth } from '../shared/reportDateFilters.js';
 import { STOCK_RECONCILIATION_START_DATE } from '../shared/stockReconciliation.js';
 import { transactionCreateOptions, transactionOptions, withTransactionFallback } from '../lib/transactions.js';
 import { normalizeSessionText } from '../shared/sessions.js';
@@ -19,6 +19,8 @@ import {
 import { resolveHierarchyScope } from '../lib/hierarchy.js';
 import { buildOfficerOwnerFilter } from '../shared/hierarchy.js';
 import { createApprovalRequest } from '../lib/approvalRequests.js';
+import { sortProductsByCode } from '../shared/productSorting.js';
+import { sortInvoiceItems } from '../shared/invoiceSorting.js';
 
 const isValidDate = (value) => {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -291,7 +293,7 @@ export default async function handler(req, res) {
         ? [...ADMIN_ROLES, ...HIERARCHY_ROLE_VALUES, LOGISTIC_OFFICER_ROLE]
         : req.method === 'PATCH'
           ? [...ADMIN_ROLES, LOGISTIC_OFFICER_ROLE]
-          : ADMIN_ROLES
+          : [...ADMIN_ROLES, ...(req.method === 'POST' ? [LOGISTIC_OFFICER_ROLE] : [])]
     );
     if (!user) return;
     if (req.method === 'DELETE' || (req.method === 'PATCH' && !isAdminRole(user.role)
@@ -310,7 +312,7 @@ export default async function handler(req, res) {
       if (req.query?.session != null) {
         const session = String(req.query.session).trim();
         if (!session || session.length > 100) return res.status(400).json({ error: 'সঠিক সেশন নির্বাচন করুন।' });
-        filters.push(invoiceSessionCondition(session));
+        filters.push(sessionPrimaryCondition(session));
       }
       if (req.query?.month != null) {
         const range = parseReportMonth(req.query.month);
@@ -323,7 +325,16 @@ export default async function handler(req, res) {
         filters.push({ date });
       }
       const filter = filters.length > 1 ? { $and: filters } : filters[0] || {};
-      return res.status(200).json(await Invoice.find(filter).sort({ date: -1, createdAt: -1 }).lean());
+      const [invoices, products] = await Promise.all([
+        Invoice.find(filter).sort({ date: -1, createdAt: -1 }).lean(),
+        Product.find({}).lean()
+      ]);
+      const orderedProducts = sortProductsByCode(products);
+      return res.status(200).json(invoices.map((invoice) => ({
+        ...invoice,
+        items: sortInvoiceItems(invoice.items, orderedProducts),
+        returnAdjustments: sortInvoiceItems(invoice.returnAdjustments, orderedProducts)
+      })));
     }
 
     if (req.method === 'DELETE') {
@@ -413,6 +424,9 @@ export default async function handler(req, res) {
       dealerAddress: dealer?.address || dealer?.businessAddress || input.dealerAddress || '',
       dealerPhone: dealer?.phone || dealer?.mobile || dealer?.phoneNumber || input.dealerPhone || ''
     });
+    const productCatalog = sortProductsByCode(await Product.find({}).lean());
+    values.items = sortInvoiceItems(values.items, productCatalog);
+    values.returnAdjustments = sortInvoiceItems(values.returnAdjustments, productCatalog);
     if (req.method === 'PATCH' && !await hasSuperAdminAccess(user)) {
       const existingInvoice = await Invoice.findOne({ id: values.id }).lean();
       if (!existingInvoice) return res.status(404).json({ error: 'ইনভয়েস পাওয়া যায়নি।' });

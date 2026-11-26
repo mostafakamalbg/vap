@@ -1,3 +1,5 @@
+import { sortProductItemsByInventory } from './productSorting.js';
+
 function normalizeDigits(value) {
   return String(value).replace(/[০-৯]/g, (digit) => (
     String('০১২৩৪৫৬৭৮৯'.indexOf(digit))
@@ -56,6 +58,10 @@ export function compareInvoiceItemsByIdAndSize(left, right) {
   );
 }
 
-export function sortInvoiceItems(items = []) {
-  return [...items].sort(compareInvoiceItemsByIdAndSize);
+export function sortInvoiceItems(items = [], products = []) {
+  return sortProductItemsByInventory(
+    items,
+    products,
+    compareInvoiceItemsByIdAndSize
+  );
 }

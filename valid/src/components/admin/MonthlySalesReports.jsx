@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Save, Trash2 } from 'lucide-react';
 import { useAgro } from '../../context/AgroContext';
+import { isAdminRole, LOGISTIC_OFFICER_ROLE } from '../../../shared/roles';
 import {
   getInvoiceSessionForDate,
   INVOICE_SESSIONS,
@@ -73,7 +74,9 @@ function ReportField({ label, value, onChange, type = 'text', required = false, 
 }
 
 export default function MonthlySalesReports() {
-  const { officers, invoices = [], payments = [], dealers = [] } = useAgro();
+  const { currentUser, officers, invoices = [], payments = [], dealers = [] } = useAgro();
+  const canEditReports = isAdminRole(currentUser?.role)
+    || currentUser?.role === LOGISTIC_OFFICER_ROLE;
   const [reports, setReports] = useState([]);
   const [allReports, setAllReports] = useState([]);
   const [reportDraft, setReportDraft] = useState(createReportDraft);
@@ -152,9 +155,13 @@ export default function MonthlySalesReports() {
         && reportDraft.personName && record.officerName === reportDraft.personName)
     );
     const partyMap = new Map();
+    const seenInvoiceIds = new Set();
     invoices.filter((invoice) => (
       String(invoice.date || '').startsWith(monthPrefix) && officerMatches(invoice)
     )).forEach((invoice) => {
+      const invoiceId = String(invoice.id || invoice.invoiceNo || '');
+      if (invoiceId && seenInvoiceIds.has(invoiceId)) return;
+      if (invoiceId) seenInvoiceIds.add(invoiceId);
       const dealerId = String(invoice.dealerId || '');
       const dealerCode = String(invoice.dealerCode || '');
       const dealerName = String(invoice.dealerName || dealers.find((dealer) => dealer.id === dealerId)?.shopName || 'নাম নেই');
@@ -169,6 +176,7 @@ export default function MonthlySalesReports() {
       else party.sales += roundCurrency(getInvoiceSalesAmount(invoice));
       partyMap.set(key, party);
     });
+    const seenPaymentIds = new Set();
     payments.filter((payment) => (
       String(payment.date || '').startsWith(monthPrefix)
       && officerMatches(payment)
@@ -176,6 +184,9 @@ export default function MonthlySalesReports() {
       && !payment.sourceInvoiceId
       && !/(?:invoice|চালান)\s*#/i.test(String(payment.reference || ''))
     )).forEach((payment) => {
+      const paymentId = String(payment.id || '');
+      if (paymentId && seenPaymentIds.has(paymentId)) return;
+      if (paymentId) seenPaymentIds.add(paymentId);
       const dealerId = String(payment.dealerId || '');
       const dealerName = String(payment.dealerName || 'নাম নেই');
       const key = dealerId || dealerName;
@@ -278,7 +289,7 @@ export default function MonthlySalesReports() {
                 {availableMonths.map((month) => <option key={month} value={month}>{month}</option>)}
               </select>
             </label>
-            <button type="button" onClick={() => { setReportDraft(createReportDraft()); setSelectedReportId(''); setError(''); setMessage(''); }} className="rounded-lg border border-emerald-700 px-3 py-2 text-xs font-bold text-emerald-800">নতুন রিপোর্ট</button>
+            {canEditReports && <button type="button" onClick={() => { setReportDraft(createReportDraft()); setSelectedReportId(''); setError(''); setMessage(''); }} className="rounded-lg border border-emerald-700 px-3 py-2 text-xs font-bold text-emerald-800">নতুন রিপোর্ট</button>}
           </div>
         </div>
 
@@ -292,7 +303,7 @@ export default function MonthlySalesReports() {
           </select>
         </label>
 
-        <form onSubmit={saveReport} className="space-y-5">
+        {canEditReports ? <form onSubmit={saveReport} className="space-y-5">
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <label className="block text-xs font-semibold text-slate-600">অফিসার
               <select value={reportDraft.officerId || ''} onChange={(event) => {
@@ -358,7 +369,28 @@ export default function MonthlySalesReports() {
               <button type="submit" disabled={busy} className="inline-flex items-center gap-2 rounded-lg bg-emerald-700 px-5 py-2 text-sm font-bold text-white disabled:opacity-50"><Save className="h-4 w-4" />{busy ? 'সংরক্ষণ হচ্ছে…' : 'রিপোর্ট সংরক্ষণ'}</button>
             </div>
           </div>
-        </form>
+        </form> : selectedReport ? (
+          <div className="overflow-x-auto border-t border-slate-100 pt-4">
+            <h3 className="mb-2 font-bold text-slate-800">{selectedReport.personName} • {selectedReport.monthOfReport} • {selectedReport.reportingDate} • {selectedReport.session}</h3>
+            <table className="w-full min-w-[700px] text-xs">
+              <thead className="bg-slate-50"><tr>
+                {['পার্টি', 'বিক্রয়', 'রিটার্ন', 'নিট বিক্রয়', 'বকেয়া'].map((column) => <th key={column} className="px-3 py-2 text-right">{column}</th>)}
+              </tr></thead>
+              <tbody className="divide-y divide-slate-100">
+                {(Array.isArray(selectedReport.parties) ? selectedReport.parties : []).map((party, index) => {
+                  const totals = partyTotals(party);
+                  return <tr key={`${party.nameOfTheParty}-${index}`}>
+                    <td className="px-3 py-2">{party.nameOfTheParty || '—'}</td>
+                    <td className="px-3 py-2 text-right">{amount(party.presentMonth?.sales)}</td>
+                    <td className="px-3 py-2 text-right">{amount(party.presentMonth?.return)}</td>
+                    <td className="px-3 py-2 text-right">{amount(totals.netSales)}</td>
+                    <td className="px-3 py-2 text-right">{amount(totals.dues)}</td>
+                  </tr>;
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : <p className="border-t border-slate-100 pt-4 text-sm text-slate-500">রিপোর্ট দেখতে একটি সংরক্ষিত রিপোর্ট নির্বাচন করুন।</p>}
 
         {selectedReport && (
           <div className="border-t border-slate-100 pt-4">

@@ -167,6 +167,7 @@ export default function InvoiceList({ onNewInvoiceClick, initialInvoiceId = '' }
   )).reduce((sum, invoice) => sum + getInvoiceSalesAmount(invoice), 0);
   const totalReturnAmount = listedInvoices.filter((invoice) => invoice.invoiceType === 'dealer_return')
     .reduce((sum, invoice) => sum + getInvoiceSalesAmount(invoice), 0);
+  const totalNetSales = totalRegularAmount - totalReturnAmount;
   const totalPackages = listedInvoices.reduce((sum, invoice) => sum + getInvoicePackageCount(invoice), 0);
   const totalDue = listedInvoices
     .filter((invoice) => !['dealer_return', 'factory_damage', 'depot_factory_return'].includes(invoice.invoiceType))
@@ -234,17 +235,20 @@ export default function InvoiceList({ onNewInvoiceClick, initialInvoiceId = '' }
           <button type="button" onClick={printInvoiceList} className="rounded-lg border border-slate-300 px-4 py-2 font-semibold text-slate-700">
             <Printer className="mr-2 inline h-4 w-4" /> প্রিন্ট তালিকা
           </button>
-          <button type="button" onClick={onNewInvoiceClick} className="rounded-lg bg-emerald-700 px-4 py-2 font-semibold text-white">
-            <FilePlus2 className="mr-2 inline h-4 w-4" /> নতুন ইনভয়েস
-          </button>
+          {canEditSales && (
+            <button type="button" onClick={onNewInvoiceClick} className="rounded-lg bg-emerald-700 px-4 py-2 font-semibold text-white">
+              <FilePlus2 className="mr-2 inline h-4 w-4" /> নতুন ইনভয়েস
+            </button>
+          )}
         </div>
       </div>
 
-      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
         {[
           ['মোট ইনভয়েস (চালান সংখ্যা)', listedInvoices.length],
           ['মোট রেগুলার ইনভয়েস (৳)', `৳${toBnCurrency(totalRegularAmount)}`],
           ['মোট ফেরত ইনভয়েস (৳)', `৳${toBnCurrency(totalReturnAmount)}`],
+          ['নিট সেলস', `৳${toBnCurrency(totalNetSales)}`],
           ['মোট প্যাকেজ', totalPackages],
           ['বকেয়া', `৳${toBnCurrency(totalDue)}`]
         ].map(([label, value]) => (
@@ -285,7 +289,7 @@ export default function InvoiceList({ onNewInvoiceClick, initialInvoiceId = '' }
           <thead className="bg-slate-100 text-slate-600">
             <tr>
               <th className="p-2">ইনভয়েস / তারিখ</th><th className="p-2">সেশন</th><th className="p-2">ডিলার</th>
-              <th className="p-2">অফিসার</th><th className="p-2 text-right">মোট প্যাকেজ</th><th className="p-2 text-right">রেগুলার ইনভয়েস মূল্য (৳)</th><th className="p-2 text-right">ফেরত ইনভয়েস মূল্য (৳)</th><th className="p-2 text-right">চালানের মূল্য (৳)</th><th className="p-2 text-right">চালানের বকেয়া (৳)</th><th className="no-print p-2">কাজ</th>
+              <th className="p-2">অফিসার</th><th className="p-2 text-right">রেগুলার ইনভয়েস মূল্য (৳)</th><th className="p-2 text-right">মোট ফেরত ইনভয়েস (৳)</th><th className="p-2 text-right">নিট সেলস</th><th className="p-2 text-right">মোট প্যাকেজ</th><th className="p-2 text-right">চালানের মূল্য (৳)</th><th className="p-2 text-right">চালানের বকেয়া (৳)</th><th className="no-print p-2">কাজ</th>
             </tr>
           </thead>
           <tbody>
@@ -308,13 +312,18 @@ export default function InvoiceList({ onNewInvoiceClick, initialInvoiceId = '' }
                 <td className="p-2 font-semibold text-emerald-800">{invoice.session || 'সেশন নির্ধারিত নয়'}</td>
                 <td className="p-2">{invoice.dealerName || invoice.dealerId}</td>
                 <td className="p-2">{invoice.officerName || invoice.officerId}</td>
+                <td className="p-2 text-right">{isRegularInvoice ? `৳${toBnCurrency(getInvoiceSalesAmount(invoice))}` : '—'}</td>
+                <td className="p-2 text-right text-rose-700">{isReturnInvoice ? `৳${toBnCurrency(getInvoiceSalesAmount(invoice))}` : '—'}</td>
+                <td className="p-2 text-right font-semibold">{isRegularInvoice
+                  ? `৳${toBnCurrency(getInvoiceSalesAmount(invoice))}`
+                  : isReturnInvoice
+                    ? `− ৳${toBnCurrency(Math.abs(getInvoiceSalesAmount(invoice)))}`
+                    : '—'}</td>
                 <td className="p-2 text-right">
                   {isDamage
                     ? quantity
                     : `${toBn(quantity)}${retailPieces ? ` (${toBn(retailPieces)} পিস)` : ''}`}
                 </td>
-                <td className="p-2 text-right">{isRegularInvoice ? `৳${toBnCurrency(getInvoiceSalesAmount(invoice))}` : '—'}</td>
-                <td className="p-2 text-right text-rose-700">{isReturnInvoice ? `৳${toBnCurrency(getInvoiceSalesAmount(invoice))}` : '—'}</td>
                 <td className="p-2 text-right">৳{toBnCurrency(isDamage ? record.totalDamageValue : invoice.totalAmount ?? invoice.grandTotal)}</td>
                 <td className="p-2 text-right text-rose-700">৳{toBnCurrency(isDamage || isReturnInvoice ? 0 : Math.max(0, getInvoiceSalesAmount(invoice) - (Number(invoice.paidAmount) || 0)))}</td>
                 <td className="no-print p-2">
@@ -327,7 +336,7 @@ export default function InvoiceList({ onNewInvoiceClick, initialInvoiceId = '' }
               </tr>
               {editingInvoiceId === invoice.id && !isDamage && (
                 <tr className="border-t border-blue-100 bg-blue-50/40">
-                  <td colSpan="10" className="p-3 sm:p-5">
+                  <td colSpan="11" className="p-3 sm:p-5">
                     <InvoiceGenerator
                       key={`inline-${invoice.id}`}
                       editInvoiceData={invoice}
@@ -339,7 +348,7 @@ export default function InvoiceList({ onNewInvoiceClick, initialInvoiceId = '' }
               </React.Fragment>
               );
             })}
-            {!filteredRecords.length && <tr><td colSpan="10" className="p-8 text-center text-slate-500">{filterLoading ? 'ইনভয়েস লোড হচ্ছে…' : 'কোনো ইনভয়েস পাওয়া যায়নি।'}</td></tr>}
+            {!filteredRecords.length && <tr><td colSpan="11" className="p-8 text-center text-slate-500">{filterLoading ? 'ইনভয়েস লোড হচ্ছে…' : 'কোনো ইনভয়েস পাওয়া যায়নি।'}</td></tr>}
           </tbody>
         </table>
       </div>

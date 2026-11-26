@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { paymentPipeline } from './dashboard-reports.js';
+import { getPeriodRange, paymentPipeline } from './dashboard-reports.js';
 
 test('payment summary pipeline resolves categories from legacy payment fields', () => {
   const pipeline = paymentPipeline({ date: { $gte: '2026-07-01' } });
@@ -45,4 +45,12 @@ test('payment aggregation keeps both session filters and hierarchy owner scope',
   const pipelineMatch = paymentPipeline(match)[0].$match;
   assert.ok(pipelineMatch.$and.includes(match.$and[0]));
   assert.ok(pipelineMatch.$and.includes(match.$and[1]));
+});
+
+test('dashboard reports accept inclusive date bounds for date ranges', () => {
+  assert.deepEqual(
+    getPeriodRange('date-range', '', '', '', '2025-01-01', '2025-01-01'),
+    { start: '2025-01-01', end: '2025-01-02' }
+  );
+  assert.equal(getPeriodRange('date-range', '', '', '', '2025-02-01', '2025-01-31'), null);
 });

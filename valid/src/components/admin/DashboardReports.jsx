@@ -8,12 +8,18 @@ import {
 } from '../../../shared/sessions';
 import { useAgro } from '../../context/AgroContext';
 import { readJsonResponse } from '../../utils/api';
-import { isAdminRole, RSM_ROLE, ASM_ROLE } from '../../../shared/roles';
+import {
+  isAdminRole,
+  LOGISTIC_OFFICER_ROLE,
+  RSM_ROLE,
+  ASM_ROLE
+} from '../../../shared/roles';
 
 const currentMonth = new Date().toISOString().slice(0, 7);
 const currentYear = String(new Date().getFullYear());
 const amount = (value) => `৳${Math.round(Number(value) || 0).toLocaleString('en-US')}`;
 const number = (value) => Math.round(Number(value) || 0).toLocaleString('en-US');
+const numeric = (value) => Number.isFinite(Number(value)) ? Number(value) : 0;
 
 async function requestReport(query) {
   return readJsonResponse(await fetch(`/api/dashboard-reports?${query}`, { cache: 'no-store' }));
@@ -50,6 +56,8 @@ export default function DashboardReports() {
   const [value, setValue] = useState(() => getInvoiceSessionForDate(new Date().toISOString().slice(0, 10)));
   const [startSession, setStartSession] = useState(() => getInvoiceSessionForDate(new Date().toISOString().slice(0, 10)));
   const [endSession, setEndSession] = useState(() => getInvoiceSessionForDate(new Date().toISOString().slice(0, 10)));
+  const [startDate, setStartDate] = useState(`${currentYear}-01-01`);
+  const [endDate, setEndDate] = useState(new Date().toISOString().slice(0, 10));
   const [selectedOfficer, setSelectedOfficer] = useState('');
   const [report, setReport] = useState({ officers: [] });
   const [loading, setLoading] = useState(true);
@@ -62,9 +70,13 @@ export default function DashboardReports() {
       params.set('startSession', startSession);
       params.set('endSession', endSession);
     }
+    if (period === 'date-range') {
+      params.set('startDate', startDate);
+      params.set('endDate', endDate);
+    }
     if (selectedOfficer) params.set('officer', selectedOfficer);
     return params.toString();
-  }, [endSession, period, selectedOfficer, startSession, value]);
+  }, [endDate, endSession, period, selectedOfficer, startDate, startSession, value]);
 
   useEffect(() => {
     let cancelled = false;
@@ -72,7 +84,10 @@ export default function DashboardReports() {
       try {
         const result = await requestReport(query);
         if (cancelled) return;
-        setReport(result);
+        if (!result || !Array.isArray(result.officers)) {
+          throw new Error('লাইভ রিপোর্টের তথ্য সঠিকভাবে পাওয়া যায়নি।');
+        }
+        setReport({ ...result, officers: result.officers.filter((officer) => officer && typeof officer === 'object') });
         setError('');
       } catch (requestError) {
         if (!cancelled) setError(requestError.message);
@@ -89,48 +104,50 @@ export default function DashboardReports() {
     };
   }, [query, refreshIndex]);
 
-  const officers = report.officers || [];
+  const officers = Array.isArray(report?.officers) ? report.officers : [];
   const canSelectOfficer = isAdminRole(currentUser?.role)
+    || currentUser?.role === LOGISTIC_OFFICER_ROLE
     || [RSM_ROLE, ASM_ROLE].includes(currentUser?.role);
   const selected = officers.find((officer) => (
     officer.officerId === selectedOfficer || officer.officerCode === selectedOfficer
   )) || officers[0];
-  const selectedPartyTotals = (selected?.parties || []).reduce((sum, party) => ({
-    previousDue: sum.previousDue + party.previousDue,
-    sales: sum.sales + party.sales,
-    returns: sum.returns + party.returns,
-    netSales: sum.netSales + party.netSales,
-    salary: sum.salary + party.salary,
-    officePayment: sum.officePayment + party.officePayment,
-    totalExpenses: sum.totalExpenses + party.officePayment + party.salary + party.fare + party.lc,
-    fare: sum.fare + party.fare,
-    lc: sum.lc + party.lc,
-    invoicePaid: sum.invoicePaid + party.invoicePaid,
-    collection: sum.collection + party.collection,
-    totalCollection: sum.totalCollection + party.totalCollection,
-    actualReceived: sum.actualReceived + party.actualReceived,
-    previousPlusNetSales: sum.previousPlusNetSales + party.previousPlusNetSales,
-    dues: sum.dues + party.dues,
-    ledgerDues: sum.ledgerDues + party.ledgerDues
+  const selectedParties = Array.isArray(selected?.parties) ? selected.parties : [];
+  const selectedPartyTotals = selectedParties.reduce((sum, party) => ({
+    previousDue: sum.previousDue + numeric(party.previousDue),
+    sales: sum.sales + numeric(party.sales),
+    returns: sum.returns + numeric(party.returns),
+    netSales: sum.netSales + numeric(party.netSales),
+    salary: sum.salary + numeric(party.salary),
+    officePayment: sum.officePayment + numeric(party.officePayment),
+    totalExpenses: sum.totalExpenses + numeric(party.officePayment) + numeric(party.salary) + numeric(party.fare) + numeric(party.lc),
+    fare: sum.fare + numeric(party.fare),
+    lc: sum.lc + numeric(party.lc),
+    invoicePaid: sum.invoicePaid + numeric(party.invoicePaid),
+    collection: sum.collection + numeric(party.collection),
+    totalCollection: sum.totalCollection + numeric(party.totalCollection),
+    actualReceived: sum.actualReceived + numeric(party.actualReceived),
+    previousPlusNetSales: sum.previousPlusNetSales + numeric(party.previousPlusNetSales),
+    dues: sum.dues + numeric(party.dues),
+    ledgerDues: sum.ledgerDues + numeric(party.ledgerDues)
   }), {
     previousDue: 0, sales: 0, returns: 0, netSales: 0, salary: 0, officePayment: 0,
     totalExpenses: 0, fare: 0, lc: 0, invoicePaid: 0, collection: 0, totalCollection: 0,
     actualReceived: 0, previousPlusNetSales: 0, dues: 0, ledgerDues: 0
   });
   const totals = officers.reduce((sum, officer) => ({
-    target: sum.target + (period === 'year' ? officer.yearlyTarget : officer.sessionTarget),
-    lastDue: sum.lastDue + officer.lastDue,
-    sales: sum.sales + officer.salesAmount,
-    returns: sum.returns + officer.returnAmount,
-    previousPlusNetSales: sum.previousPlusNetSales + officer.previousPlusNetSales,
-    officePayment: sum.officePayment + officer.paymentAndExpense.officePayment,
-    expenses: sum.expenses + officer.totalExpenses,
-    fare: sum.fare + officer.paymentAndExpense.fare,
-    salary: sum.salary + officer.paymentAndExpense.salary,
-    lc: sum.lc + officer.paymentAndExpense.lc,
-    received: sum.received + officer.totalReceivedAmount,
-    dues: sum.dues + officer.totalAmountDues,
-    salesDues: sum.salesDues + officer.totalSalesDues
+    target: sum.target + numeric(period === 'year' ? officer.yearlyTarget : officer.sessionTarget),
+    lastDue: sum.lastDue + numeric(officer.lastDue),
+    sales: sum.sales + numeric(officer.salesAmount),
+    returns: sum.returns + numeric(officer.returnAmount),
+    previousPlusNetSales: sum.previousPlusNetSales + numeric(officer.previousPlusNetSales),
+    officePayment: sum.officePayment + numeric(officer.paymentAndExpense?.officePayment),
+    expenses: sum.expenses + numeric(officer.totalExpenses),
+    fare: sum.fare + numeric(officer.paymentAndExpense?.fare),
+    salary: sum.salary + numeric(officer.paymentAndExpense?.salary),
+    lc: sum.lc + numeric(officer.paymentAndExpense?.lc),
+    received: sum.received + numeric(officer.totalReceivedAmount),
+    dues: sum.dues + numeric(officer.totalAmountDues),
+    salesDues: sum.salesDues + numeric(officer.totalSalesDues)
   }), {
     target: 0, lastDue: 0, sales: 0, returns: 0, previousPlusNetSales: 0,
     officePayment: 0, expenses: 0, fare: 0, salary: 0, lc: 0, received: 0, dues: 0,
@@ -138,6 +155,8 @@ export default function DashboardReports() {
   });
   const periodLabel = period === 'session-range'
     ? `${startSession} থেকে ${endSession}`
+    : period === 'date-range'
+      ? `${startDate} থেকে ${endDate}`
     : period === 'month'
     ? new Date(`${value}-01T00:00:00`).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
     : period === 'year' ? value : value;
@@ -147,6 +166,11 @@ export default function DashboardReports() {
     if (nextPeriod === 'month') setValue(currentMonth);
     else if (nextPeriod === 'year') setValue(currentYear);
     else if (nextPeriod === 'session-range') setValue(startSession);
+    else if (nextPeriod === 'date-range') {
+      setStartDate(`${currentYear}-01-01`);
+      setEndDate(new Date().toISOString().slice(0, 10));
+      setValue(currentYear);
+    }
     else setValue(getInvoiceSessionForDate(new Date().toISOString().slice(0, 10)));
     setSelectedOfficer('');
   };
@@ -182,10 +206,11 @@ export default function DashboardReports() {
             <option value="session">সেশন অনুযায়ী</option>
             <option value="year">বার্ষিক</option>
             <option value="session-range">এত সেশন থেকে এত সেশন</option>
+            <option value="date-range">তারিখের সীমা</option>
           </select>
         </label>
         <label className="text-xs font-bold text-slate-600">
-          {period === 'month' ? 'মাস' : period === 'year' ? 'বছর' : period === 'session-range' ? 'শুরুর সেশন → শেষ সেশন' : 'সেশন'}
+          {period === 'month' ? 'মাস' : period === 'year' ? 'বছর' : period === 'session-range' ? 'শুরুর সেশন → শেষ সেশন' : period === 'date-range' ? 'শুরুর তারিখ → শেষ তারিখ' : 'সেশন'}
           {period === 'session-range' ? (
             <div className="mt-1 grid grid-cols-2 gap-2">
               <select value={startSession} onChange={(event) => setStartSession(event.target.value)} className="w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-xs">
@@ -194,6 +219,11 @@ export default function DashboardReports() {
               <select value={endSession} onChange={(event) => setEndSession(event.target.value)} className="w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-xs">
                 {sortSessionsNewestFirst(INVOICE_SESSIONS.filter(isCurrentSession)).map((session) => <option key={session} value={session}>{session}</option>)}
               </select>
+            </div>
+          ) : period === 'date-range' ? (
+            <div className="mt-1 grid grid-cols-2 gap-2">
+              <input type="date" value={startDate} max={endDate} onChange={(event) => setStartDate(event.target.value)} className="w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-xs" />
+              <input type="date" value={endDate} min={startDate} onChange={(event) => setEndDate(event.target.value)} className="w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-xs" />
             </div>
           ) : period === 'month' ? (
             <input type="month" min="2025-07" value={value} onChange={(event) => setValue(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" />
@@ -328,7 +358,7 @@ export default function DashboardReports() {
                   {['SL', 'ডিলারের নাম', 'Previous Dues', 'Sales Amount (Tk)', 'Return Goods (Tk)', 'Actual Sales (Tk)', 'Salary', 'অফিস পেমেন্ট', 'Fare', 'L/C', 'Received (Amount Tk)', 'Dues'].map((header) => <th key={header} className="px-2 py-1">{header}</th>)}
                 </tr></thead>
                 <tbody className="divide-y divide-slate-100">
-                  {selected.parties.map((party) => (
+                  {selectedParties.map((party) => (
                     <tr key={party.dealerId || `${party.dealerName}-${party.mobileNo}`} className="odd:bg-white even:bg-slate-50">
                       <td className="px-2 py-1">{party.slNo}</td><td className="px-2 py-1 text-left">{party.dealerName || '—'}</td>
                       <td className="px-2 py-1">{amount(party.previousDue)}</td><td className="px-2 py-1">{amount(party.sales)}</td>
@@ -352,7 +382,7 @@ export default function DashboardReports() {
                     <td className="px-2 py-1">{amount(selectedPartyTotals.actualReceived)}</td>
                     <td className="px-2 py-1">{amount(selectedPartyTotals.dues)}</td>
                   </tr>
-                  {!selected.parties.length && <tr><td colSpan="12" className="px-4 py-8 text-center text-slate-500">কোনো পার্টি লেনদেন পাওয়া যায়নি।</td></tr>}
+                  {!selectedParties.length && <tr><td colSpan="12" className="px-4 py-8 text-center text-slate-500">কোনো পার্টি লেনদেন পাওয়া যায়নি।</td></tr>}
                 </tbody>
               </table>
             </TableFrame>
@@ -373,7 +403,7 @@ export default function DashboardReports() {
                   <tr>{['Sales', 'Return', 'Net Sales', 'Salary', 'অফিস পেমেন্ট', 'Collection', 'Fare', 'L/C', 'Total Expenses', 'Total Collection', 'Dues'].map((header) => <th key={header} className="border border-black px-2 py-1">{header}</th>)}</tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {selected.parties.map((party) => (
+                  {selectedParties.map((party) => (
                     <tr key={party.dealerId || `${party.dealerName}-${party.mobileNo}`} className="odd:bg-white even:bg-slate-50">
                       <td className="border border-black px-2 py-1">{party.slNo}</td><td className="border border-black px-2 py-1 text-left font-semibold">{party.dealerName}</td>
                       <td className="border border-black px-2 py-1">{amount(party.previousDue)}</td><td className="border border-black px-2 py-1">{amount(party.sales)}</td>
@@ -403,7 +433,7 @@ export default function DashboardReports() {
                     <td className="border border-black px-2 py-1">{amount(selectedPartyTotals.totalCollection + selectedPartyTotals.invoicePaid)}</td>
                     <td className="border border-black px-2 py-1">{amount(selectedPartyTotals.ledgerDues - selectedPartyTotals.invoicePaid)}</td>
                   </tr>
-                  {!selected.parties.length && <tr><td colSpan="15" className="px-4 py-8 text-center text-slate-500">কোনো পার্টি লেনদেন পাওয়া যায়নি।</td></tr>}
+                  {!selectedParties.length && <tr><td colSpan="15" className="px-4 py-8 text-center text-slate-500">কোনো পার্টি লেনদেন পাওয়া যায়নি।</td></tr>}
                 </tbody>
               </table>
             </TableFrame>

@@ -60,7 +60,7 @@ function getProductDescription(item) {
 }
 
 export default function InvoicePrintHeader({ invoice }) {
-  const { dealers } = useAgro();
+  const { dealers, products } = useAgro();
   if (!invoice) return null;
 
   const invoiceDealerCode = formatDealerCode(invoice.dealerCode || invoice.dealerId);
@@ -68,8 +68,8 @@ export default function InvoicePrintHeader({ invoice }) {
     entry.id === invoice.dealerId
     || formatDealerCode(entry.code || entry.id) === invoiceDealerCode
   ));
-  const items = sortInvoiceItems(invoice.items);
-  const returns = sortInvoiceItems(invoice.returnAdjustments);
+  const items = sortInvoiceItems(invoice.items, products);
+  const returns = sortInvoiceItems(invoice.returnAdjustments, products);
   const itemTotals = items.reduce((totals, item) => {
     const values = getItemValues(item);
     totals.cartons += values.cartons;

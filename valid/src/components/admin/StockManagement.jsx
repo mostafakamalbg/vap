@@ -79,7 +79,8 @@ export default function StockManagement() {
     addProductVariant,
     currentUser
   } = useAgro();
-  const canManageProducts = isAdminRole(currentUser?.role);
+  const canManageProducts = isAdminRole(currentUser?.role)
+    || currentUser?.role === LOGISTIC_OFFICER_ROLE;
   const canReceiveStock = canManageProducts || currentUser?.role === LOGISTIC_OFFICER_ROLE;
 
   const [searchTerm, setSearchTerm] = useState('');
@@ -1103,7 +1104,7 @@ export default function StockManagement() {
                   const [productId, sku] = event.target.value.split('::');
                   setEditingStockIn((previous) => ({ ...previous, productId, sku }));
                 }} className="mt-1 w-full rounded border border-slate-300 p-2">
-                  {products.flatMap((product) => (product.variants || []).map((variant) => (
+                  {sortProductsByCode(products).flatMap((product) => (product.variants || []).map((variant) => (
                     <option key={`${product.id}::${variant.sku}`} value={`${product.id}::${variant.sku}`}>
                       {product.name} • {variant.size} • {variant.sku}
                     </option>

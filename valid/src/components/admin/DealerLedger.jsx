@@ -128,6 +128,7 @@ export default function DealerLedger() {
   const canSetPreviousDue = currentUser?.role === SUPER_ADMIN_ROLE || currentUser?.isSuperAdmin;
   const canManageLedger = isAdminRole(currentUser?.role);
   const canEditPayments = canManageLedger || currentUser?.role === LOGISTIC_OFFICER_ROLE;
+  const canAddDealer = canManageLedger || currentUser?.role === LOGISTIC_OFFICER_ROLE;
 
   const [searchTerm, setSearchTerm] = useState('');
   const [showAddDealerModal, setShowAddDealerModal] = useState(false);
@@ -203,6 +204,7 @@ export default function DealerLedger() {
   // Totals
   const totalSalesToDealers = dealerSummaries.reduce((acc, curr) => acc + (curr?.totalPurchases || 0), 0);
   const totalReturnCredits = dealerSummaries.reduce((acc, curr) => acc + (curr?.totalReturnCredits || 0), 0);
+  const totalNetSales = totalSalesToDealers - totalReturnCredits;
   const totalPaidByDealers = dealerSummaries.reduce((acc, curr) => acc + (curr?.totalPaid || 0), 0);
   const totalOutstandingDue = dealerSummaries.reduce((acc, curr) => acc + (curr?.currentDue || 0), 0);
   const totalLastSessionDue = dealerSummaries.reduce((acc, curr) => acc + (curr?.lastSessionDue || 0), 0);
@@ -501,8 +503,7 @@ export default function DealerLedger() {
               </form>
             </div>
           )}
-          {canManageLedger && (
-            <>
+          {canAddDealer && (
               <button
                 onClick={() => setShowAddDealerModal(true)}
                 className="no-print flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 px-3.5 py-2 rounded-lg text-xs font-bold transition"
@@ -510,7 +511,8 @@ export default function DealerLedger() {
                 <PlusCircle className="w-4 h-4" />
                 <span>নতুন ডিলার নিবন্ধন</span>
               </button>
-
+          )}
+          {canEditPayments && (
               <button
                 onClick={() => handleOpenPayment(dealers[0]?.id)}
                 className="no-print flex items-center gap-1.5 bg-emerald-700 hover:bg-emerald-800 text-white px-4 py-2 rounded-lg text-xs font-bold shadow transition"
@@ -518,7 +520,6 @@ export default function DealerLedger() {
                 <CreditCard className="w-4 h-4" />
                 <span>টাকা জমা নিন (Payment)</span>
               </button>
-            </>
           )}
           <button
             type="button"
@@ -586,7 +587,7 @@ export default function DealerLedger() {
         </div>
       </div>
       <p className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-xs font-semibold text-slate-700 dealer-ledger-equation">
-        মোট ইনভয়েস বিক্রি ৳{totalSalesToDealers.toLocaleString()} + Last Session Due ৳{totalLastSessionDue.toLocaleString()} − ফেরত ৳{totalReturnCredits.toLocaleString()} = আদায়/ব্যয় সমন্বয় ৳{totalPaidByDealers.toLocaleString()} + নিট বকেয়া ৳{totalOutstandingDue.toLocaleString()} • ডেমেজ মূল্য লেজার থেকে বাদ নয়
+        মোট ইনভয়েস বিক্রি ৳{totalSalesToDealers.toLocaleString()} − ফেরত ৳{totalReturnCredits.toLocaleString()} = নিট সেলস ৳{totalNetSales.toLocaleString()} • Last Session Due ৳{totalLastSessionDue.toLocaleString()} + নিট সেলস − আদায়/ব্যয় সমন্বয় ৳{totalPaidByDealers.toLocaleString()} = নিট বকেয়া ৳{totalOutstandingDue.toLocaleString()} • ডেমেজ মূল্য লেজার থেকে বাদ নয়
       </p>
 
       {/* Dealers Table Card */}
@@ -614,6 +615,7 @@ export default function DealerLedger() {
                 <th className="py-3 px-3">দায়িত্বপ্রাপ্ত অফিসার</th>
                 <th className="py-3 px-3 text-right">মোট ক্রয় (৳)</th>
                 <th className="py-3 px-3 text-right">মোট ফেরত (৳)</th>
+                <th className="py-3 px-3 text-right">নিট সেলস</th>
                 <th className="py-3 px-3 text-right">মোট পরিশোধ (৳)</th>
                 <th className="py-3 px-3 text-right">বকেয়া / পাওনা (৳)</th>
                 <th className="no-print py-3 px-3 text-center">অ্যাকশন</th>
@@ -656,6 +658,10 @@ export default function DealerLedger() {
                       ৳{d.totalReturnCredits.toLocaleString()}
                     </td>
 
+                    <td className="py-3 px-3 text-right font-mono font-bold text-slate-800">
+                      ৳{(Number(d.totalPurchases) - Number(d.totalReturnCredits)).toLocaleString()}
+                    </td>
+
                     <td className="py-3 px-3 text-right font-mono font-bold text-emerald-700">
                       ৳{d.totalPaid.toLocaleString()}
                     </td>
@@ -677,7 +683,7 @@ export default function DealerLedger() {
 
                     <td className="no-print py-3 px-3 text-center">
                       <div className="flex items-center justify-center gap-1.5">
-                        {canManageLedger && (
+                        {canEditPayments && (
                           <button
                             onClick={() => handleOpenPayment(d.id)}
                             title="টাকা জমা নিন"

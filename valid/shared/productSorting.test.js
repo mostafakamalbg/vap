@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { compareProductsByCode, normalizeProductCode, sortProductsByCode } from './productSorting.js';
+import {
+  compareProductsByCode,
+  normalizeProductCode,
+  sortProductsByCode,
+  sortProductItemsByInventory
+} from './productSorting.js';
 
 test('product codes sort naturally without losing numeric values', () => {
   assert.deepEqual(
@@ -27,4 +32,27 @@ test('product code comparison is deterministic for missing and legacy codes', ()
     { id: 'P-10', name: 'Ten' }
   ) < 0, true);
   assert.equal(normalizeProductCode({ code: ' 003 ' }), '003');
+});
+
+test('product items follow inventory product and variant order', () => {
+  const products = [
+    { id: 'p-10', code: '10', variants: [{ sku: 'large' }, { sku: 'small' }] },
+    { id: 'p-2', code: '2', variants: [{ sku: 'first' }, { sku: 'second' }] }
+  ];
+  const items = [
+    { productId: 'p-10', sku: 'small' },
+    { productId: 'p-2', sku: 'second' },
+    { productId: 'p-10', sku: 'large' },
+    { productId: 'p-2', sku: 'first' }
+  ];
+
+  assert.deepEqual(
+    sortProductItemsByInventory(items, products).map(({ productId, sku }) => [productId, sku]),
+    [
+      ['p-2', 'first'],
+      ['p-2', 'second'],
+      ['p-10', 'large'],
+      ['p-10', 'small']
+    ]
+  );
 });

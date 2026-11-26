@@ -6,7 +6,7 @@ import { getDealersWithOfficerCodes } from '../lib/dealerAssignments.js';
 import { normalizeDealerAssignment, normalizeOfficerCode } from '../shared/codes.js';
 import { normalizeSessionText } from '../shared/sessions.js';
 import { parseSessionDateRange } from '../shared/reportDateFilters.js';
-import { ADMIN_ROLES, isAdminRole } from '../shared/roles.js';
+import { ADMIN_ROLES, LOGISTIC_OFFICER_ROLE, isAdminRole } from '../shared/roles.js';
 import { HIERARCHY_ROLE_VALUES } from '../shared/roles.js';
 import { resolveHierarchyScope } from '../lib/hierarchy.js';
 
@@ -15,9 +15,9 @@ export default async function handler(req, res) {
     return res.status(405).json({ message: 'Method Not Allowed' });
   }
   if (!await dbConnect()) return res.status(503).json({ error: 'MongoDB is not configured.' });
-  const user = await authorize(req, res, [...ADMIN_ROLES, ...HIERARCHY_ROLE_VALUES]);
+  const user = await authorize(req, res, [...ADMIN_ROLES, ...HIERARCHY_ROLE_VALUES, LOGISTIC_OFFICER_ROLE]);
   if (!user) return;
-  if (req.method === 'POST' && !isAdminRole(user.role)) {
+  if (req.method === 'POST' && !isAdminRole(user.role) && user.role !== LOGISTIC_OFFICER_ROLE) {
     return res.status(403).json({ error: 'এই কাজের অনুমতি নেই।' });
   }
   if (req.method === 'PATCH' && !await hasSuperAdminAccess(user)) {

@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { invoiceSessionCondition, parseReportMonth, parseSessionDateRange } from './reportDateFilters.js';
+import {
+  invoiceSessionCondition,
+  parseReportMonth,
+  parseSessionDateRange,
+  sessionPrimaryCondition,
+  sessionsMatch
+} from './reportDateFilters.js';
 
 test('parses report month labels and ISO month filters', () => {
   assert.deepEqual(parseReportMonth('October/26'), {
@@ -30,4 +36,32 @@ test('maps English and Bengali sessions to date ranges', () => {
       { date: { $gte: '2027-01-01', $lt: '2027-07-01' } }
     ]
   });
+});
+
+test('session-priority filters only use the date range for legacy session values', () => {
+  assert.deepEqual(sessionPrimaryCondition('January-June 2027'), {
+    $or: [
+      {
+        session: {
+          $in: [
+            'January-June 2027',
+            'জানুয়ারি - জুন 2027',
+            'January - June 2027'
+          ]
+        }
+      },
+      {
+        $and: [
+          { session: { $in: ['', null, 'সেশন নির্ধারিত নয়'] } },
+          { date: { $gte: '2027-01-01', $lt: '2027-07-01' } }
+        ]
+      }
+    ]
+  });
+});
+
+test('matches equivalent English and Bengali session labels', () => {
+  assert.equal(sessionsMatch('January-June 2027', 'জানুয়ারি - জুন ২০২৭'), true);
+  assert.equal(sessionsMatch('July-December 2026', 'জুলাই - ডিসেম্বর ২০২৬'), true);
+  assert.equal(sessionsMatch('January-June 2027', 'July-December 2027'), false);
 });

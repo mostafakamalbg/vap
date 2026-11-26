@@ -111,3 +111,14 @@ test('period filtering does not mix months or sessions', () => {
     date: '2027-01-03'
   }), [records[1]]);
 });
+
+test('an explicit session takes precedence over a conflicting transaction date', () => {
+  const records = [
+    { date: '2027-01-03', session: 'জুলাই - ডিসেম্বর 2026' },
+    { date: '2026-10-12', session: 'জানুয়ারি - জুন 2027' }
+  ];
+
+  assert.deepEqual(filterOfficerRecordsByPeriod(records, {
+    session: 'জুলাই - ডিসেম্বর 2026'
+  }), [records[0]]);
+});

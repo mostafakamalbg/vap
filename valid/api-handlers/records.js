@@ -7,7 +7,13 @@ import {
   normalizeOfficerCode
 } from '../shared/codes.js';
 import { getDealersWithOfficerCodes } from '../lib/dealerAssignments.js';
-import { dateRangeCondition, parseReportMonth, parseSessionDateRange } from '../shared/reportDateFilters.js';
+import {
+  dateRangeCondition,
+  parseReportMonth,
+  parseSessionDateRange,
+  sessionPrimaryCondition,
+  sessionsMatch
+} from '../shared/reportDateFilters.js';
 import {
   normalizePaymentMethod,
   normalizePaymentType,
@@ -25,6 +31,7 @@ import {
   buildOfficerOwnerFilter,
   matchesOfficerScope
 } from '../shared/hierarchy.js';
+import { sortProductsByCode } from '../shared/productSorting.js';
 
 const recordTypes = new Set([
   'products',
@@ -61,7 +68,7 @@ export default async function handler(req, res) {
     req,
     res,
     req.method === 'PUT'
-      ? ADMIN_ROLES
+      ? [...ADMIN_ROLES, LOGISTIC_OFFICER_ROLE]
       : [...ADMIN_ROLES, ...HIERARCHY_ROLE_VALUES, LOGISTIC_OFFICER_ROLE]
   );
   if (!user) return;
@@ -113,15 +120,7 @@ export default async function handler(req, res) {
         if (req.query?.session != null) {
           const range = parseSessionDateRange(req.query.session);
           if (!range) return res.status(400).json({ error: 'সঠিক সেশন নির্বাচন করুন।' });
-          conditions.push({
-            $or: [
-              dateRangeCondition('date', range),
-              {
-                date: { $in: ['', null] },
-                session: normalizeSessionText(req.query.session)
-              }
-            ]
-          });
+          conditions.push(sessionPrimaryCondition(req.query.session));
         }
         if (req.query?.month != null) {
           const range = parseReportMonth(req.query.month);
@@ -151,9 +150,9 @@ export default async function handler(req, res) {
             && String(payment.date || '') < monthRange.end)) return false;
           if (sessionRange) {
             const paymentDate = String(payment.date || '');
-            const matchesSession = paymentDate
-              ? paymentDate >= sessionRange.start && paymentDate < sessionRange.end
-              : normalizeSessionText(payment.session) === normalizeSessionText(req.query.session);
+            const matchesSession = payment.session
+              ? sessionsMatch(payment.session, req.query.session)
+              : paymentDate >= sessionRange.start && paymentDate < sessionRange.end;
             if (!matchesSession) return false;
           }
           return true;
@@ -169,7 +168,8 @@ export default async function handler(req, res) {
         const query = Model.find(filter);
         if (type === 'invoices') query.sort({ createdAt: -1 });
         if (type === 'products') query.sort({ id: 1 });
-        return res.status(200).json(await query.lean());
+        const records = await query.lean();
+        return res.status(200).json(type === 'products' ? sortProductsByCode(records) : records);
       }
       let filter = { type };
       if (!isAdminRole(user.role)) {

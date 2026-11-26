@@ -93,3 +93,22 @@ test('historical officer-owned due includes a dealer that has since been reassig
     month: '2026-10'
   }).get('DLR-03').amount, 250);
 });
+
+test('explicit session labels take priority over conflicting previous-due dates', () => {
+  const dealer = {
+    id: 'DLR-04',
+    previousDueHistory: [{
+      date: '2026-10-05',
+      session: 'জানুয়ারি - জুন ২০২৭',
+      amount: 350,
+      officerId: 'OFF-SO-01'
+    }]
+  };
+
+  assert.equal(getOfficerPreviousDueByDealer([dealer], officer, {
+    session: 'January-June 2027'
+  }).get('DLR-04').amount, 350);
+  assert.equal(getOfficerPreviousDueByDealer([dealer], officer, {
+    session: 'July-December 2026'
+  }).size, 0);
+});

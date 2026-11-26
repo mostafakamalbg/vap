@@ -13,14 +13,19 @@ import {
 } from '../../../shared/officerSalesTargets';
 import { getOfficerPreviousDueByDealer, dealerHasOfficerPreviousDue } from '../../../shared/officerLedger';
 import { normalizeOfficerCode } from '../../../shared/codes';
-import { parseReportMonth, parseSessionDateRange } from '../../../shared/reportDateFilters';
+import { mergeOfficerRecords } from '../../../shared/officerIdentity';
+import {
+  parseReportMonth,
+  parseSessionDateRange,
+  sessionsMatch
+} from '../../../shared/reportDateFilters';
 import {
   getInvoiceSessionForDate,
   INVOICE_SESSIONS,
   getBangladeshBusinessDate,
   normalizeSessionText
 } from '../../../shared/sessions';
-import { isAdminRole } from '../../../shared/roles';
+import { isAdminRole, LOGISTIC_OFFICER_ROLE } from '../../../shared/roles';
 import { readJsonResponse } from '../../utils/api';
 
 const today = getBangladeshBusinessDate();
@@ -52,10 +57,16 @@ function isInPeriod(date, range) {
 }
 
 function isPaymentInPeriod(payment, filter, range) {
-  return isInPeriod(payment.date, range)
-    || (filter.type === 'session'
-      && !payment.date
-      && normalizeSessionText(payment.session) === normalizeSessionText(filter.value));
+  return isRecordInPeriod(payment, filter, range);
+}
+
+function isRecordInPeriod(record, filter, range) {
+  if (filter.type === 'session') {
+    return record.session
+      ? sessionsMatch(record.session, filter.value)
+      : isInPeriod(record.date, range);
+  }
+  return isInPeriod(record.date, range);
 }
 
 function createFilter() {
@@ -129,7 +140,7 @@ function targetSessionsForPeriod(record, filter, range) {
   return [...targets].filter((session) => {
     const target = getOfficerSalesTarget(record, session);
     if (target == null || !Number.isFinite(Number(target))) return false;
-    if (filter.type === 'session') return session === filter.value;
+    if (filter.type === 'session') return sessionsMatch(session, filter.value);
     const targetDate = record.salesTargetDates?.[session];
     if (targetDate) return isInPeriod(targetDate, range);
     if (filter.type === 'year') return session.includes(filter.value);
@@ -202,6 +213,8 @@ export default function MonthlyTargetReports() {
     products,
     stockInLogs
   } = useAgro();
+  const canManageTargets = isAdminRole(currentUser?.role)
+    || currentUser?.role === LOGISTIC_OFFICER_ROLE;
   const [activeReport, setActiveReport] = useState('officer');
   const [officerTargets, setOfficerTargets] = useState([]);
   const [dealerTargets, setDealerTargets] = useState([]);
@@ -258,18 +271,12 @@ export default function MonthlyTargetReports() {
   const officerReport = useMemo(() => {
     const range = periodRange(officerFilter);
     if (!range) return { rows: [], totals: null };
-    const uniqueOfficers = new Map();
-    officers.forEach((officer) => {
-      const key = normalizeOfficerCode(officer.code, officer.designation)
-        || String(officer.id || officer.officerId || '')
-        || String(officer.name || '').trim();
-      if (key && !uniqueOfficers.has(key)) uniqueOfficers.set(key, officer);
-    });
-    const rows = [...uniqueOfficers.values()].map((officer) => {
+    const uniqueOfficers = mergeOfficerRecords(officers);
+    const rows = uniqueOfficers.map((officer) => {
       const saved = officerTargets.find((record) => officerMatches(record, officer)) || {};
       const target = getTargetValue({ ...officer, ...saved }, officerFilter, range);
       const officerInvoices = invoices.filter((invoice) => (
-        isInPeriod(invoice.date, range) && officerMatches({
+        isRecordInPeriod(invoice, officerFilter, range) && officerMatches({
           officerId: invoice.officerId,
           officerCode: invoice.officerCode,
           officerName: invoice.officerName
@@ -324,34 +331,63 @@ export default function MonthlyTargetReports() {
   const dealerReport = useMemo(() => {
     const range = periodRange(dealerFilter);
     if (!range) return { rows: [], totals: null };
-    const groupedTargets = new Map();
-    dealerTargets.filter((target) => isInPeriod(target.targetDate, range)
-      && (dealerFilter.type !== 'session' || target.session === dealerFilter.value))
-      .forEach((target) => {
-        const key = `${String(target.dealerId || target.dealerCode || target.dealerName || '')}|${String(target.session || '')}`;
-        const previous = groupedTargets.get(key);
-        if (!previous || String(target.targetDate || '').localeCompare(String(previous.targetDate || '')) >= 0) {
-          groupedTargets.set(key, target);
-        }
+    const dealerRows = new Map(dealers.map((dealer) => [
+      String(dealer.id || dealer.code || dealer.shopName),
+      dealer
+    ]));
+    const dealerAliases = new Map();
+    dealers.forEach((dealer) => {
+      const key = String(dealer.id || dealer.code || dealer.shopName);
+      [dealer.id, dealer.code, dealer.shopName].filter(Boolean).forEach((alias) => {
+        dealerAliases.set(String(alias), key);
       });
-    const rows = [...groupedTargets.values()].map((target) => {
-        const dealer = dealers.find((entry) => entry.id === target.dealerId);
+    });
+    const groupedTargets = new Map();
+    dealerTargets.filter((target) => (
+      dealerFilter.type === 'session'
+        ? sessionsMatch(target.session, dealerFilter.value)
+        : isInPeriod(target.targetDate, range)
+    )).forEach((target) => {
+      const alias = String(target.dealerId || target.dealerCode || target.dealerName || '');
+      const key = dealerAliases.get(alias) || alias;
+      if (!key) return;
+      const sessionsForDealer = groupedTargets.get(key) || new Map();
+      const sessionKey = parseSessionDateRange(target.session)?.start
+        || normalizeSessionText(target.session)
+        || String(target.targetDate || '');
+      const previous = sessionsForDealer.get(sessionKey);
+      if (!previous || String(target.targetDate || '').localeCompare(String(previous.targetDate || '')) >= 0) {
+        sessionsForDealer.set(sessionKey, target);
+      }
+      groupedTargets.set(key, sessionsForDealer);
+    });
+    dealerTargets.forEach((target) => {
+      const alias = String(target.dealerId || target.dealerCode || target.dealerName || '');
+      const key = dealerAliases.get(alias) || alias;
+      if (key && !dealerRows.has(key)) dealerRows.set(key, null);
+    });
+    const rows = [...dealerRows.entries()].map(([key, dealer]) => {
+        const targetRecords = [...(groupedTargets.get(key)?.values() || [])];
+        const target = targetRecords[0] || {};
+        const dealerId = String(dealer?.id || target.dealerId || '');
+        const dealerCode = String(dealer?.code || target.dealerCode || '');
+        const dealerName = String(dealer?.shopName || target.dealerName || '');
         const isDealerInvoice = (invoice) => (
-          invoice.dealerId === target.dealerId
-          || invoice.dealerCode === target.dealerCode
+          invoice.dealerId === dealerId
+          || invoice.dealerCode === dealerCode
         );
         const isSalesInvoice = (invoice) => (
           !['dealer_return', 'factory_damage', 'depot_factory_return'].includes(invoice.invoiceType)
         );
         const dealerInvoices = invoices.filter((invoice) => (
-          isInPeriod(invoice.date, range)
+          isRecordInPeriod(invoice, dealerFilter, range)
           && isDealerInvoice(invoice)
         ));
         const dealerPayments = payments.filter((payment) => (
           isPaymentInPeriod(payment, dealerFilter, range)
-          && (payment.dealerId === target.dealerId
-            || payment.dealerCode === target.dealerCode
-            || payment.dealerName === target.dealerName)
+          && (payment.dealerId === dealerId
+            || payment.dealerCode === dealerCode
+            || payment.dealerName === dealerName)
           && isDealerCollection(payment)
           && !payment.sourceInvoiceId
           && !/(?:invoice|চালান)\s*#/i.test(String(payment.reference || ''))
@@ -365,25 +401,33 @@ export default function MonthlyTargetReports() {
         const received = invoiceReceived + dealerPayments.reduce((sum, payment) => sum + (Number(payment.amount) || 0), 0);
         const previousDue = dealer?.previousDueHistory?.filter((entry) => (
           dealerFilter.type === 'session'
-            ? entry.session === dealerFilter.value || isInPeriod(entry.date, range)
+            ? entry.session
+              ? sessionsMatch(entry.session, dealerFilter.value)
+              : isInPeriod(entry.date, range)
             : isInPeriod(entry.date, range)
         )).sort((left, right) => String(right.date || '').localeCompare(String(left.date || '')))[0]?.amount
           ?? dealer?.lastSessionDue
           ?? dealer?.openingDue
           ?? 0;
+        const targetAmount = targetRecords.reduce(
+          (sum, record) => sum + (Number(record.targetAmount) || 0),
+          0
+        );
         const netSales = sales - returns;
         const paymentBase = Math.max(0, Number(previousDue) + netSales);
         return {
           ...target,
-          dealerName: dealer?.shopName || target.dealerName,
-          target: Number(target.targetAmount) || 0,
+          id: dealerId || key,
+          dealerId,
+          dealerName,
+          target: targetAmount,
           sales,
           returns,
           netSales,
           received,
           paymentDue: Number(previousDue) + netSales - received,
-          salesPercentage: target.targetAmount > 0
-            ? Math.round(netSales / target.targetAmount * 100)
+          salesPercentage: targetAmount > 0
+            ? Math.round(netSales / targetAmount * 100)
             : 0,
           paymentPercentage: paymentBase > 0 ? Math.round(received / paymentBase * 100) : 0
         };
@@ -413,7 +457,9 @@ export default function MonthlyTargetReports() {
     }
   }, [invoices, products, stockFilter, stockInLogs]);
 
-  const selectedOfficer = officers.find((entry) => entry.id === officerDraft.officerId);
+  const selectedOfficer = mergeOfficerRecords(officers).find((entry) => (
+    String(entry.id || entry.officerId || '') === String(officerDraft.officerId)
+  ));
   const selectedOfficerTarget = officerTargets.find((entry) => (
     selectedOfficer && officerMatches(entry, selectedOfficer)
   )) || {};
@@ -425,7 +471,7 @@ export default function MonthlyTargetReports() {
     officerDraft.session
   ));
   const dealerTargetLocked = Boolean(dealerDraft.dealerId && dealerTargets.some((target) => (
-    target.dealerId === dealerDraft.dealerId && target.session === dealerDraft.session
+    target.dealerId === dealerDraft.dealerId && sessionsMatch(target.session, dealerDraft.session)
   )));
 
   const submitOfficerTarget = async (event) => {
@@ -539,7 +585,7 @@ export default function MonthlyTargetReports() {
             </div>
             <button type="button" onClick={() => window.print()} className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold"><Printer className="h-4 w-4" /> প্রিন্ট</button>
           </div>
-          <form onSubmit={submitOfficerTarget} className="no-print grid gap-3 rounded-lg bg-slate-50 p-4 sm:grid-cols-2 lg:grid-cols-5">
+          {canManageTargets && <form onSubmit={submitOfficerTarget} className="no-print grid gap-3 rounded-lg bg-slate-50 p-4 sm:grid-cols-2 lg:grid-cols-5">
             <label className="text-xs font-semibold text-slate-600">তারিখ
               <input required type="date" value={officerDraft.date} onChange={(event) => setOfficerDraft((draft) => ({
                 ...draft,
@@ -566,10 +612,10 @@ export default function MonthlyTargetReports() {
               <input required disabled={officerTargetLocked} min="0" step="1" type="number" value={officerDraft.targetAmount} onChange={(event) => setOfficerDraft((draft) => ({ ...draft, targetAmount: event.target.value }))} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 disabled:bg-slate-100" />
               {officerTargetLocked && <span className="mt-1 block text-rose-700">অলরেডি ইমপোর্ট করা আছে</span>}
             </label>
-            <button disabled={busy || officerTargetLocked || !isAdminRole(currentUser?.role)} type="submit" className="self-end inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-700 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">
+            <button disabled={busy || officerTargetLocked} type="submit" className="self-end inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-700 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">
               <Save className="h-4 w-4" /> {busy ? 'সংরক্ষণ হচ্ছে…' : 'টার্গেট সংরক্ষণ'}
             </button>
-          </form>
+          </form>}
           <PeriodFilter value={officerFilter} onChange={setOfficerFilter} years={years} months={[]} sessions={sessions} />
           <FilteredReportTable>
             <table className="w-full min-w-[1450px] text-left text-xs monthly-stock-table">
@@ -619,7 +665,7 @@ export default function MonthlyTargetReports() {
             <div><h2 className="font-black text-slate-900">ডিলার টার্গেট</h2><p className="text-xs text-slate-500">প্রতি ডিলার ও সেশনে একবারই টার্গেট সেট করা যাবে।</p></div>
             <button type="button" onClick={() => window.print()} className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold"><Printer className="h-4 w-4" /> প্রিন্ট</button>
           </div>
-          <form onSubmit={submitDealerTarget} className="no-print grid gap-3 rounded-lg bg-slate-50 p-4 sm:grid-cols-2 lg:grid-cols-5">
+          {canManageTargets && <form onSubmit={submitDealerTarget} className="no-print grid gap-3 rounded-lg bg-slate-50 p-4 sm:grid-cols-2 lg:grid-cols-5">
             <label className="text-xs font-semibold text-slate-600">তারিখ
               <input required type="date" value={dealerDraft.date} onChange={(event) => setDealerDraft((draft) => ({
                 ...draft,
@@ -646,10 +692,10 @@ export default function MonthlyTargetReports() {
               <input required disabled={dealerTargetLocked} min="0" step="1" type="number" value={dealerDraft.targetAmount} onChange={(event) => setDealerDraft((draft) => ({ ...draft, targetAmount: event.target.value }))} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 disabled:bg-slate-100" />
               {dealerTargetLocked && <span className="mt-1 block text-rose-700">অলরেডি ইমপোর্ট করা আছে</span>}
             </label>
-            <button disabled={busy || dealerTargetLocked || !isAdminRole(currentUser?.role)} type="submit" className="self-end inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-700 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">
+            <button disabled={busy || dealerTargetLocked} type="submit" className="self-end inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-700 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">
               <Save className="h-4 w-4" /> {busy ? 'সংরক্ষণ হচ্ছে…' : 'টার্গেট সংরক্ষণ'}
             </button>
-          </form>
+          </form>}
           <PeriodFilter value={dealerFilter} onChange={setDealerFilter} years={years} months={[]} sessions={sessions} />
           <FilteredReportTable>
             <table className="w-full min-w-[1100px] text-left text-xs monthly-stock-table">

@@ -3,8 +3,8 @@ import dbConnect from '../lib/mongodb.js';
 import { MonthlySalesCollection } from '../lib/models.js';
 import { authorize } from '../lib/auth.js';
 import { normalizeMonthlySalesReport, validateMonthlySalesReport } from '../shared/salesReports.js';
-import { invoiceSessionCondition } from '../shared/reportDateFilters.js';
-import { ADMIN_ROLES, isAdminRole } from '../shared/roles.js';
+import { sessionPrimaryCondition } from '../shared/reportDateFilters.js';
+import { ADMIN_ROLES, isAdminRole, LOGISTIC_OFFICER_ROLE } from '../shared/roles.js';
 import { HIERARCHY_ROLE_VALUES } from '../shared/roles.js';
 import { resolveHierarchyScope } from '../lib/hierarchy.js';
 import { buildOfficerOwnerFilter } from '../shared/hierarchy.js';
@@ -31,7 +31,11 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
   if (!await dbConnect()) return res.status(503).json({ error: 'MongoDB is not configured.' });
-  const user = await authorize(req, res, [...ADMIN_ROLES, ...HIERARCHY_ROLE_VALUES]);
+  const user = await authorize(req, res, [
+    ...ADMIN_ROLES,
+    ...HIERARCHY_ROLE_VALUES,
+    LOGISTIC_OFFICER_ROLE
+  ]);
   if (!user) return;
 
   try {
@@ -43,7 +47,7 @@ export default async function handler(req, res) {
       } else if (req.query?.date) {
         filters.push(getMonthFilter(req.query.date));
       } else if (req.query?.session) {
-        filters.push(invoiceSessionCondition(String(req.query.session), 'reportingDate'));
+        filters.push(sessionPrimaryCondition(String(req.query.session), 'reportingDate'));
       }
       if (!scope.global) filters.push(buildOfficerOwnerFilter(scope));
       const query = filters.length ? { $and: filters } : {};
@@ -57,7 +61,7 @@ export default async function handler(req, res) {
       })));
     }
 
-    if (!isAdminRole(user.role)) {
+    if (!isAdminRole(user.role) && user.role !== LOGISTIC_OFFICER_ROLE) {
       return res.status(403).json({ error: 'এই রিপোর্ট পরিবর্তনের অনুমতি নেই।' });
     }
 

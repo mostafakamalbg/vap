@@ -1,6 +1,5 @@
 import { isDealerAssignedToOfficer, normalizeOfficerCode } from './codes.js';
-import { parseSessionDateRange } from './reportDateFilters.js';
-import { normalizeSessionText } from './sessions.js';
+import { parseSessionDateRange, sessionsMatch } from './reportDateFilters.js';
 
 function getDueEntries(dealer) {
   if (Array.isArray(dealer?.previousDueHistory) && dealer.previousDueHistory.length) {
@@ -46,14 +45,15 @@ function matchesPeriod(entry, { session = 'ALL', month = 'ALL', date = 'ALL' } =
 
   if (session !== 'ALL') {
     const selectedRange = parseSessionDateRange(session);
-    if (selectedRange && entryDate) {
+    if (entry.session && entry.session !== 'সেশন নির্ধারিত নয়') {
+      if (!sessionsMatch(entry.session, session)) return false;
+    } else if (selectedRange && entryDate) {
       if (entryDate < selectedRange.start || entryDate >= selectedRange.end) return false;
     } else {
       const entryRange = parseSessionDateRange(entry.session);
       if (selectedRange && entryRange) {
         if (selectedRange.start !== entryRange.start || selectedRange.end !== entryRange.end) return false;
-      } else if (normalizeSessionText(entry.session).toLowerCase()
-        !== normalizeSessionText(session).toLowerCase()) {
+      } else if (!sessionsMatch(entry.session, session)) {
         return false;
       }
     }

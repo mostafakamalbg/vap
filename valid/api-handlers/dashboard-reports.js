@@ -10,12 +10,19 @@ import {
   PAYMENT_TYPES,
   resolvePaymentRecordType
 } from '../shared/paymentMethods.js';
-import { dateRangeCondition, parseReportMonth, parseSessionDateRange } from '../shared/reportDateFilters.js';
+import {
+  dateRangeCondition,
+  parseReportMonth,
+  parseSessionDateRange,
+  sessionPrimaryCondition,
+  sessionsMatch
+} from '../shared/reportDateFilters.js';
 import { getInvoiceSessionForDate, INVOICE_SESSIONS, normalizeSessionText } from '../shared/sessions.js';
-import { ADMIN_ROLES } from '../shared/roles.js';
+import { ADMIN_ROLES, LOGISTIC_OFFICER_ROLE } from '../shared/roles.js';
 import { HIERARCHY_ROLE_VALUES } from '../shared/roles.js';
 import { resolveHierarchyScope } from '../lib/hierarchy.js';
 import { buildOfficerOwnerFilter, matchesOfficerScope } from '../shared/hierarchy.js';
+import { mergeOfficerRecords } from '../shared/officerIdentity.js';
 
 const DAMAGE_TYPES = ['factory_damage', 'depot_factory_return'];
 const RECEIPT_TYPES = new Set(['dealer_collection']);
@@ -26,7 +33,7 @@ const EXPENSE_FIELDS = {
   lc_commission: 'lc'
 };
 
-function getPeriodRange(period, value, startSession, endSession) {
+export function getPeriodRange(period, value, startSession, endSession, startDate, endDate) {
   if (period === 'month') return parseReportMonth(value);
   if (period === 'session') return parseSessionDateRange(value);
   if (period === 'session-range') {
@@ -35,6 +42,15 @@ function getPeriodRange(period, value, startSession, endSession) {
     if (!start || !endRange) return null;
     if (start >= endRange.end) return null;
     return { start, end: endRange.end };
+  }
+  if (period === 'date-range') {
+    const validDate = (date) => /^\d{4}-\d{2}-\d{2}$/.test(date)
+      && !Number.isNaN(new Date(`${date}T00:00:00.000Z`).valueOf())
+      && new Date(`${date}T00:00:00.000Z`).toISOString().slice(0, 10) === date;
+    if (!validDate(startDate) || !validDate(endDate) || startDate > endDate) return null;
+    const nextDay = new Date(`${endDate}T00:00:00.000Z`);
+    nextDay.setUTCDate(nextDay.getUTCDate() + 1);
+    return { start: startDate, end: nextDay.toISOString().slice(0, 10) };
   }
   if (period === 'year' && /^20\d{2}$/.test(value)) {
     return { start: `${value}-01-01`, end: `${Number(value) + 1}-01-01` };
@@ -283,10 +299,21 @@ function officerMatches(row, officer) {
 function addPaymentRows(groups, rows, { period, periodValue, periodRange, beforePeriod, scope }) {
   rows.forEach((payment) => {
     const date = String(payment.date || '');
-    if (date) {
+    const explicitSession = normalizeSessionText(payment.session);
+    if (period === 'session') {
+      if (beforePeriod && sessionsMatch(explicitSession, periodValue)) return;
+      if (!beforePeriod && explicitSession) {
+        if (!sessionsMatch(explicitSession, periodValue)) return;
+      } else if (date && (beforePeriod
+        ? date >= periodRange.start
+        : date < periodRange.start || date >= periodRange.end)) {
+        return;
+      } else if (!date && (!explicitSession || beforePeriod)) {
+        return;
+      }
+    } else if (date) {
       if (beforePeriod ? date >= periodRange.start : date < periodRange.start || date >= periodRange.end) return;
-    } else if (period !== 'session' || beforePeriod
-      || normalizeSessionText(payment.session) !== normalizeSessionText(periodValue)) return;
+    } else return;
     if (!matchesOfficerScope(payment, scope)) return;
     if (payment.sourceInvoiceId || /(?:invoice|চালান)\s*#/i.test(String(payment.reference || ''))) return;
     const owner = {
@@ -328,7 +355,11 @@ export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method Not Allowed' });
   if (!await dbConnect()) return res.status(503).json({ error: 'MongoDB is not configured.' });
   res.setHeader('Cache-Control', 'no-store, max-age=0');
-  const user = await authorize(req, res, [...ADMIN_ROLES, ...HIERARCHY_ROLE_VALUES]);
+  const user = await authorize(
+    req,
+    res,
+    [...ADMIN_ROLES, ...HIERARCHY_ROLE_VALUES, LOGISTIC_OFFICER_ROLE]
+  );
   if (!user) return;
 
   const period = String(req.query?.period || 'session');
@@ -337,26 +368,22 @@ export default async function handler(req, res) {
     period,
     value,
     String(req.query?.startSession || ''),
-    String(req.query?.endSession || '')
+    String(req.query?.endSession || ''),
+    String(req.query?.startDate || ''),
+    String(req.query?.endDate || '')
   );
   if (!periodRange) return res.status(400).json({ error: 'রিপোর্টের সময়সীমা সঠিক নয়।' });
 
   try {
     const scope = await resolveHierarchyScope(user);
     const ownerMatch = buildOfficerOwnerFilter(scope);
-    const periodMatch = { date: dateRangeCondition('date', periodRange).date, ...ownerMatch };
+    const periodMatch = period === 'session'
+      ? { $and: [sessionPrimaryCondition(value), ownerMatch] }
+      : { ...dateRangeCondition('date', periodRange), ...ownerMatch };
     const periodPaymentMatch = period === 'session'
       ? {
           $and: [
-            {
-              $or: [
-                dateRangeCondition('date', periodRange),
-                {
-                  date: { $in: ['', null] },
-                  session: normalizeSessionText(value)
-                }
-              ]
-            },
+            sessionPrimaryCondition(value),
             ownerMatch
           ]
         }
@@ -376,34 +403,10 @@ export default async function handler(req, res) {
       BusinessRecord.find({ type: 'payments' }).select('data').lean()
     ]);
 
-    const rosterByCode = new Map();
-    const roster = [];
-    [...officerRecords.map((record) => record.data).filter(Boolean), ...salesOfficerRecords].forEach((record) => {
-      const code = normalizeOfficerCode(record.code || record.officerCode);
-      const id = String(record.id || record.officerId || '');
-      const key = code || id || String(record.name || record.officerName || '');
-      if (!key) return;
-      const existing = rosterByCode.get(key);
-      if (existing) Object.assign(existing, record, {
-        id: existing.id || id,
-        code: existing.code || code,
-        name: existing.name || record.name || record.officerName
-      });
-      else {
-        const officer = {
-          ...record,
-          id,
-          code,
-          name: record.name || record.officerName || '',
-          phone: record.phone || record.mobileNo || ''
-        };
-        rosterByCode.set(key, officer);
-        roster.push(officer);
-      }
-    });
-    scope.users.forEach((entry) => {
-      if (!entry.officerId && !entry.officerCode && !entry.name) return;
-      const officer = {
+    const roster = mergeOfficerRecords([
+      ...officerRecords.map((record) => record.data),
+      ...salesOfficerRecords,
+      ...scope.users.map((entry) => ({
         id: String(entry.officerId || ''),
         officerId: String(entry.officerId || ''),
         code: normalizeOfficerCode(entry.officerCode),
@@ -411,19 +414,8 @@ export default async function handler(req, res) {
         name: entry.name || '',
         phone: entry.phone || '',
         territory: entry.territory || ''
-      };
-      const key = officer.code || officer.id || officer.name;
-      const previous = rosterByCode.get(key);
-      if (previous) Object.assign(previous, officer, {
-        id: previous.id || officer.id,
-        code: previous.code || officer.code,
-        name: previous.name || officer.name
-      });
-      else {
-        rosterByCode.set(key, officer);
-        roster.push(officer);
-      }
-    });
+      }))
+    ]);
 
     const typedPaymentIds = new Set(typedPayments.map((payment) => String(payment.id)));
     const typedInvoiceSources = new Set(typedPayments.map((payment) => String(payment.sourceInvoiceId || '')).filter(Boolean));
@@ -577,8 +569,8 @@ export default async function handler(req, res) {
         ? value
         : period === 'month'
           ? getInvoiceSessionForDate(`${value}-01`)
-          : `জানুয়ারি - জুন ${value}`;
-      const sessionTarget = period === 'session-range'
+          : period === 'year' ? `জানুয়ারি - জুন ${value}` : '';
+      const sessionTarget = period === 'session-range' || period === 'date-range'
         ? INVOICE_SESSIONS.filter((entry) => {
             const range = parseSessionDateRange(entry);
             return Boolean(range && range.start >= periodRange.start && range.end <= periodRange.end);

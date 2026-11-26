@@ -45,6 +45,22 @@ export function parseSessionDateRange(value) {
   return null;
 }
 
+export function sessionsMatch(left, right) {
+  const leftRange = parseSessionDateRange(left);
+  const rightRange = parseSessionDateRange(right);
+  if (leftRange && rightRange) {
+    return leftRange.start === rightRange.start && leftRange.end === rightRange.end;
+  }
+  const normalize = (value) => String(value || '')
+    .replace(/[০-৯]/g, (digit) => String('০১২৩৪৫৬৭৮৯'.indexOf(digit)))
+    .replace(/[‐‑‒–—−]/g, '-')
+    .replace(/\s*-\s*/g, ' - ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+  return normalize(left) === normalize(right);
+}
+
 export function dateRangeCondition(field, range) {
   return range ? { [field]: { $gte: range.start, $lt: range.end } } : null;
 }
@@ -62,6 +78,31 @@ export function invoiceSessionCondition(value, dateField = 'date') {
       { session },
       { session: canonical },
       dateRangeCondition(dateField, range)
+    ]
+  };
+}
+
+export function sessionPrimaryCondition(value, dateField = 'date') {
+  const session = String(value || '').trim();
+  const range = parseSessionDateRange(session);
+  if (!range) return { session };
+  const year = range.start.slice(0, 4);
+  const firstHalf = range.start.endsWith('-01-01');
+  const canonical = firstHalf
+    ? `জানুয়ারি - জুন ${year}`
+    : `জুলাই - ডিসেম্বর ${year}`;
+  const english = firstHalf
+    ? [`January-June ${year}`, `January - June ${year}`]
+    : [`July-December ${year}`, `July - December ${year}`];
+  return {
+    $or: [
+      { session: { $in: [...new Set([session, canonical, ...english])] } },
+      {
+        $and: [
+          { session: { $in: ['', null, 'সেশন নির্ধারিত নয়'] } },
+          dateRangeCondition(dateField, range)
+        ]
+      }
     ]
   };
 }

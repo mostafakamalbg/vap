@@ -19,6 +19,7 @@ import {
 import { HIERARCHY_ROLE_VALUES } from '../shared/roles.js';
 import { resolveHierarchyScope } from '../lib/hierarchy.js';
 import { buildOfficerOwnerFilter } from '../shared/hierarchy.js';
+import { sortProductsByCode, sortProductItemsByInventory } from '../shared/productSorting.js';
 
 const invoiceIdPattern = /^VAP-(\d{4})-(\d+)$/;
 
@@ -47,6 +48,7 @@ async function loadOrderItems(requestedItems, session = null) {
   }
 
   const items = [];
+  const loadedProducts = new Map();
   for (const requested of requestedItems) {
     const cartons = Number(requested?.cartons);
     if (!requested?.productId || !requested?.sku || !Number.isSafeInteger(cartons) || cartons < 1) {
@@ -63,6 +65,7 @@ async function loadOrderItems(requestedItems, session = null) {
       error.statusCode = 400;
       throw error;
     }
+    loadedProducts.set(product.id, product);
     items.push({
       productId: product.id,
       productName: product.name,
@@ -74,7 +77,7 @@ async function loadOrderItems(requestedItems, session = null) {
       commission: Number(variant.commission) || 0
     });
   }
-  return items;
+  return sortProductItemsByInventory(items, [...loadedProducts.values()]);
 }
 
 async function getAssignedDealer(user, dealerId) {
@@ -111,7 +114,15 @@ export default async function handler(req, res) {
       const filter = user.role === LOGISTIC_OFFICER_ROLE
         ? {}
         : buildOfficerOwnerFilter(scope);
-      return res.status(200).json(await Order.find(filter).sort({ createdAt: -1 }).lean());
+      const [orders, products] = await Promise.all([
+        Order.find(filter).sort({ createdAt: -1 }).lean(),
+        Product.find({}).lean()
+      ]);
+      const orderedProducts = sortProductsByCode(products);
+      return res.status(200).json(orders.map((order) => ({
+        ...order,
+        items: sortProductItemsByInventory(order.items, orderedProducts)
+      })));
     }
 
     if (req.method === 'POST') {

@@ -81,7 +81,9 @@ export default function Navbar({ activeTab, setActiveTab }) {
             { id: 'invoice-list', label: t('nav.invoiceHistory'), icon: FileText },
             { id: 'inventory', label: t('nav.stock'), icon: Package },
             { id: 'dealer-ledger', label: t('nav.dealerLedger'), icon: Users },
-            { id: 'damage-returns', label: 'ফ্যাক্টরি রিটার্ন / ডেমেজ গ্রহণ', icon: RotateCw }
+            { id: 'damage-returns', label: 'ফ্যাক্টরি রিটার্ন / ডেমেজ গ্রহণ', icon: RotateCw },
+            { id: 'monthly-sales-reports', label: 'মাসিক টার্গেট রিপোর্ট', icon: FileText },
+            { id: 'dashboard-reports', label: 'লাইভ ড্যাশবোর্ড রিপোর্ট', icon: FileText }
           ]
         : [OFFICER_ROLE, SO_ROLE].includes(currentUser?.role)
       ? [...publicItems, { id: 'officer-dashboard', label: t('nav.officerDashboard'), icon: UserCheck }]

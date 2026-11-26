@@ -1,6 +1,6 @@
 import { getInvoiceSalesAmount, roundCurrency } from './invoiceTotals.js';
 import { getInvoiceSessionForDate, normalizeSessionText } from './sessions.js';
-import { parseSessionDateRange } from './reportDateFilters.js';
+import { parseSessionDateRange, sessionsMatch } from './reportDateFilters.js';
 import { getPaymentRecordTypeValue, resolvePaymentRecordType } from './paymentMethods.js';
 
 const SALES_EXCLUDED = new Set(['dealer_return', 'factory_damage', 'depot_factory_return']);
@@ -21,10 +21,10 @@ function inPeriod(record, { session = 'ALL', month = 'ALL', date = 'ALL' } = {})
   const sessionRange = session === 'ALL' ? null : parseSessionDateRange(session);
   const recordDate = String(record.date || '');
   const matchesSession = session === 'ALL'
-    || (sessionRange
-      ? recordDate
+    || (record.session
+      ? sessionsMatch(record.session, session)
+      : sessionRange
         ? recordDate >= sessionRange.start && recordDate < sessionRange.end
-        : normalizeSessionText(record.session) === normalizeSessionText(session)
       : (record.session || getInvoiceSessionForDate(record.date)) === session);
   return matchesSession
     && (month === 'ALL' || String(record.date || '').startsWith(month))
