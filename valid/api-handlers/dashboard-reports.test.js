@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { getPeriodRange, paymentPipeline } from './dashboard-reports.js';
+import {
+  addPaymentRows,
+  getActivityRoster,
+  getPeriodRange,
+  legacyInvoicePipeline,
+  paymentPipeline
+} from './dashboard-reports.js';
 
 test('payment summary pipeline resolves categories from legacy payment fields', () => {
   const pipeline = paymentPipeline({ date: { $gte: '2026-07-01' } });
@@ -60,4 +66,64 @@ test('dashboard reports accept an all-session and all-month period', () => {
     start: '0001-01-01',
     end: '9999-12-31'
   });
+});
+
+test('legacy invoice pipeline reads scoped legacy records without overlapping typed invoices', () => {
+  const pipeline = legacyInvoicePipeline({
+    $and: [
+      { date: { $gte: '2026-07-01', $lt: '2027-01-01' } },
+      { $or: [{ officerId: { $in: ['SO-01'] } }] }
+    ]
+  }, {}, ['INV-1']);
+  const match = pipeline[0].$match;
+
+  assert.equal(match.type, 'invoices');
+  assert.deepEqual(match.$and[0]['data.date'], {
+    $gte: '2026-07-01',
+    $lt: '2027-01-01'
+  });
+  assert.deepEqual(match.$and[1].$or[0]['data.officerId'], { $in: ['SO-01'] });
+  assert.deepEqual(match.$nor, [
+    { 'data.id': { $in: ['INV-1'] } },
+    { 'data.invoiceNo': { $in: ['INV-1'] } }
+  ]);
+  assert.deepEqual(pipeline[1], { $replaceRoot: { newRoot: '$data' } });
+});
+
+test('activity owners can populate a missing master roster without losing their identity', () => {
+  assert.deepEqual(getActivityRoster([{
+    _id: {
+      officerId: 'OFF-01',
+      officerCode: 'so-01',
+      officerName: 'Sales Officer'
+    }
+  }]), [{
+    id: 'OFF-01',
+    officerId: 'OFF-01',
+    code: 'SO-01',
+    officerCode: 'so-01',
+    name: 'Sales Officer',
+    officerName: 'Sales Officer'
+  }]);
+});
+
+test('all-session legacy expenses without a date are included, but not treated as prior payments', () => {
+  const groups = new Map();
+  const rows = [{
+    session: 'জুলাই - ডিসেম্বর ২০২৬',
+    officerId: 'SO-01',
+    paymentType: 'L/C',
+    amount: 125
+  }];
+  const options = {
+    period: 'all',
+    periodValue: 'ALL',
+    periodRange: getPeriodRange('all', 'ALL'),
+    scope: { global: true }
+  };
+
+  addPaymentRows(groups, rows, { ...options, beforePeriod: false });
+  assert.equal([...groups.values()][0].lc, 125);
+  addPaymentRows(new Map(), rows, { ...options, beforePeriod: true });
+  assert.equal(groups.size, 1);
 });

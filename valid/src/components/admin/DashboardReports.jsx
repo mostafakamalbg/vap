@@ -157,18 +157,21 @@ export default function DashboardReports() {
     lastDue: sum.lastDue + numeric(officer.lastDue),
     sales: sum.sales + numeric(officer.salesAmount),
     returns: sum.returns + numeric(officer.returnAmount),
+    netSales: sum.netSales + numeric(officer.totalNetSales),
     previousPlusNetSales: sum.previousPlusNetSales + numeric(officer.previousPlusNetSales),
     officePayment: sum.officePayment + numeric(officer.paymentAndExpense?.officePayment),
     expenses: sum.expenses + numeric(officer.totalExpenses),
     fare: sum.fare + numeric(officer.paymentAndExpense?.fare),
     salary: sum.salary + numeric(officer.paymentAndExpense?.salary),
     lc: sum.lc + numeric(officer.paymentAndExpense?.lc),
+    dealerCollection: sum.dealerCollection + numeric(officer.dealerCollection),
     received: sum.received + numeric(officer.totalReceivedAmount),
     dues: sum.dues + numeric(officer.totalAmountDues),
     salesDues: sum.salesDues + numeric(officer.totalSalesDues)
   }), {
-    target: 0, lastDue: 0, sales: 0, returns: 0, previousPlusNetSales: 0,
-    officePayment: 0, expenses: 0, fare: 0, salary: 0, lc: 0, received: 0, dues: 0,
+    target: 0, lastDue: 0, sales: 0, returns: 0, netSales: 0, previousPlusNetSales: 0,
+    officePayment: 0, expenses: 0, fare: 0, salary: 0, lc: 0, dealerCollection: 0,
+    received: 0, dues: 0,
     salesDues: 0
   });
   const periodLabel = period === 'session-range'
@@ -315,8 +318,10 @@ export default function DashboardReports() {
                 <th rowSpan="2" className="px-2 py-1">Session Due / Last Due</th>
                 <th rowSpan="2" className="px-2 py-1">Sales Amount (Tk)</th>
                 <th rowSpan="2" className="px-2 py-1">Return Amount (Tk)</th>
+                <th rowSpan="2" className="px-2 py-1">Net Sales (Tk)</th>
                 <th rowSpan="2" className="px-2 py-1">Previous + Net Sales (Tk)</th>
                 <th colSpan="5" className="px-2 py-1 text-center">Payment &amp; Expense</th>
+                <th rowSpan="2" className="px-2 py-1">ডিলার কালেকশন</th>
                 <th rowSpan="2" className="px-2 py-1">Total Received Amount</th>
                 <th rowSpan="2" className="px-2 py-1">Total Amount Dues</th>
                 <th rowSpan="2" className="px-2 py-1">Total Sales Dues</th>
@@ -336,10 +341,12 @@ export default function DashboardReports() {
                   <td className="sticky left-12 bg-inherit px-2 py-1 text-left font-bold text-slate-900">{officer.officerName}<span className="block text-[10px] font-normal text-slate-500">{officer.officerCode}</span></td>
                   <td className="px-2 py-1">{amount(period === 'year' ? officer.yearlyTarget : officer.sessionTarget)}</td><td className="px-2 py-1">{amount(officer.lastDue)}</td>
                   <td className="px-2 py-1">{amount(officer.salesAmount)}</td><td className="px-2 py-1">{amount(officer.returnAmount)}</td>
+                  <td className="px-2 py-1">{amount(officer.totalNetSales)}</td>
                   <td className="px-2 py-1 font-semibold">{amount(officer.previousPlusNetSales)}</td>
                   <td className="px-2 py-1">{amount(officer.paymentAndExpense.officePayment)}</td><td className="px-2 py-1">{amount(officer.paymentAndExpense.fare)}</td>
                   <td className="px-2 py-1">{amount(officer.paymentAndExpense.salary)}</td><td className="px-2 py-1">{amount(officer.paymentAndExpense.lc)}</td>
                   <td className="px-2 py-1">{amount(officer.totalExpenses)}</td>
+                  <td className="px-2 py-1">{amount(officer.dealerCollection)}</td>
                   <td className="px-2 py-1 font-bold text-emerald-800">{amount(officer.totalReceivedAmount)}</td>
                   <td className="px-2 py-1 font-bold text-rose-700">{amount(officer.totalAmountDues)}</td>
                   <td className="px-2 py-1">{amount(officer.totalSalesDues)}</td>
@@ -350,14 +357,16 @@ export default function DashboardReports() {
                 <td colSpan="2" className="sticky left-0 bg-emerald-50 px-2 py-1 text-left">TOTAL</td>
                 <td className="px-2 py-1">{amount(totals.target)}</td><td className="px-2 py-1">{amount(totals.lastDue)}</td>
                 <td className="px-2 py-1">{amount(totals.sales)}</td><td className="px-2 py-1">{amount(totals.returns)}</td>
+                <td className="px-2 py-1">{amount(totals.netSales)}</td>
                 <td className="px-2 py-1">{amount(totals.previousPlusNetSales)}</td><td className="px-2 py-1">{amount(totals.officePayment)}</td>
                 <td className="px-2 py-1">{amount(totals.fare)}</td><td className="px-2 py-1">{amount(totals.salary)}</td>
                 <td className="px-2 py-1">{amount(totals.lc)}</td><td className="px-2 py-1">{amount(totals.expenses)}</td>
+                <td className="px-2 py-1">{amount(totals.dealerCollection)}</td>
                 <td className="px-2 py-1">{amount(totals.received)}</td>
                 <td className="px-2 py-1">{amount(totals.dues)}</td>
                 <td className="px-2 py-1">{amount(totals.salesDues)}</td><td className="px-2 py-1">—</td><td className="px-2 py-1">—</td>
               </tr>
-              {!officers.length && <tr><td colSpan="17" className="px-4 py-10 text-center text-slate-500">{loading ? 'লাইভ রিপোর্ট লোড হচ্ছে…' : 'এই সময়সীমায় কোনো অফিসার বা লেনদেন নেই।'}</td></tr>}
+              {!officers.length && <tr><td colSpan="19" className="px-4 py-10 text-center text-slate-500">{loading ? 'লাইভ রিপোর্ট লোড হচ্ছে…' : 'এই সময়সীমায় কোনো অফিসার বা লেনদেন নেই।'}</td></tr>}
             </tbody>
           </table>
         </TableFrame>

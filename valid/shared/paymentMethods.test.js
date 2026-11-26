@@ -45,6 +45,15 @@ test('office payment is the only active category for legacy company, office and 
   assert.equal(resolvePaymentType('লেস কমিশন (LC)'), 'lc_commission');
 });
 
+test('legacy L/C and travel expense labels resolve to live report categories', () => {
+  ['L/C', 'l_c', 'LC', 'L C'].forEach((label) => {
+    assert.equal(resolvePaymentType(label), 'lc_commission');
+  });
+  ['TA', 'travel', 'travel allowance', 'fare'].forEach((label) => {
+    assert.equal(resolvePaymentType(label), 'vehicle_rent');
+  });
+});
+
 test('the first recognized category wins and unknown populated categories are not defaulted', () => {
   assert.equal(resolvePaymentRecordType({
     paymentType: 'unrecognized',
