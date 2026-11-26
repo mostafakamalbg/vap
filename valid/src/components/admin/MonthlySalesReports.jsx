@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Save, Trash2 } from 'lucide-react';
 import { useAgro } from '../../context/AgroContext';
 import { isAdminRole, LOGISTIC_OFFICER_ROLE } from '../../../shared/roles';
@@ -9,10 +9,12 @@ import {
   sortSessionsNewestFirst
 } from '../../../shared/sessions';
 import { normalizeOfficerCode } from '../../../shared/codes';
-import { roundAmount } from '../../../shared/salesReports';
+import {
+  buildMonthlySalesReports,
+  roundAmount
+} from '../../../shared/salesReports';
 import { readJsonResponse } from '../../utils/api';
-import { getInvoiceSalesAmount, roundCurrency } from '../../../shared/invoiceTotals';
-import { isDealerCollection } from '../../../shared/paymentMethods';
+import { mergeOfficerRecords } from '../../../shared/officerIdentity';
 
 const amount = (value) => Math.round(Number(value) || 0).toLocaleString('en-US');
 const emptyParty = () => ({
@@ -87,6 +89,7 @@ export default function MonthlySalesReports({ selectedAsm = '', hierarchyOfficer
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
+  const manuallyCreatingRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -105,28 +108,37 @@ export default function MonthlySalesReports({ selectedAsm = '', hierarchyOfficer
       .then((records) => {
         if (cancelled) return;
         setReports(records);
-        if (selectedReportId && !records.some((report) => report._id === selectedReportId)) {
-          setSelectedReportId('');
-          setReportDraft((current) => (
-            current._id === selectedReportId ? createReportDraft() : current
-          ));
-        }
       })
       .catch((requestError) => { if (!cancelled) setError(requestError.message); });
     return () => { cancelled = true; };
-  }, [monthFilter, selectedReportId, sessionFilter]);
+  }, [monthFilter, sessionFilter]);
 
-  const availableMonths = useMemo(() => (
-    [...new Set(allReports
-      .map((report) => report.monthOfReport)
-      .filter(Boolean))]
-  ), [allReports]);
+  const reportOfficers = useMemo(
+    () => mergeOfficerRecords([...officers, ...hierarchyOfficers]),
+    [hierarchyOfficers, officers]
+  );
+  const generatedReports = useMemo(() => buildMonthlySalesReports({
+    invoices,
+    payments,
+    dealers,
+    officers: reportOfficers,
+    monthFilter,
+    sessionFilter
+  }), [dealers, invoices, monthFilter, payments, reportOfficers, sessionFilter]);
+  const reportEntries = useMemo(() => {
+    return [...generatedReports, ...reports];
+  }, [generatedReports, reports]);
+  const availableMonths = useMemo(() => [...new Set([
+    ...allReports.map((report) => report.monthOfReport),
+    ...generatedReports.map((report) => report.monthOfReport)
+  ].filter(Boolean))], [allReports, generatedReports]);
   const availableSessions = useMemo(() => sortSessionsNewestFirst([
     ...INVOICE_SESSIONS,
-    ...allReports.map((report) => report.session)
-  ]), [allReports]);
+    ...allReports.map((report) => report.session),
+    ...generatedReports.map((report) => report.session)
+  ]), [allReports, generatedReports]);
   const visibleReports = useMemo(() => {
-    if (!selectedAsm) return reports;
+    if (!selectedAsm) return reportEntries;
     const asmOfficers = hierarchyOfficers.filter((officer) => (
       String(officer.hierarchyUserId || officer.id || '') === selectedAsm
       || String(officer.asmId || '') === selectedAsm
@@ -138,13 +150,15 @@ export default function MonthlySalesReports({ selectedAsm = '', hierarchyOfficer
       normalizeOfficerCode(officer.code, officer.designation)
     )).filter(Boolean));
     const names = new Set(asmOfficers.map((officer) => String(officer.name || '')).filter(Boolean));
-    return reports.filter((report) => (
+    return reportEntries.filter((report) => (
       ids.has(String(report.officerId || ''))
       || codes.has(normalizeOfficerCode(report.officerCode))
       || (!report.officerId && !report.officerCode && names.has(String(report.personName || '')))
     ));
-  }, [hierarchyOfficers, reports, selectedAsm]);
-  const selectedReport = visibleReports.find((report) => report._id === selectedReportId);
+  }, [hierarchyOfficers, reportEntries, selectedAsm]);
+  const selectedReport = visibleReports.find((report) => (
+    (report._id || report.autoKey) === selectedReportId
+  ));
   const selectedReportTotals = useMemo(() => (
     (selectedReport?.parties || []).reduce((totals, party) => {
       const values = partyTotals(party);
@@ -158,11 +172,20 @@ export default function MonthlySalesReports({ selectedAsm = '', hierarchyOfficer
   ), [selectedReport]);
 
   useEffect(() => {
-    if (!selectedReportId || visibleReports.some((report) => report._id === selectedReportId)) return;
+    if (!selectedReportId || visibleReports.some((report) => (
+      (report._id || report.autoKey) === selectedReportId
+    ))) return;
     setSelectedReportId('');
     setReportDraft((current) => (
       current._id === selectedReportId ? createReportDraft() : current
     ));
+  }, [selectedReportId, visibleReports]);
+
+  useEffect(() => {
+    if (selectedReportId || manuallyCreatingRef.current || !visibleReports.length) return;
+    const report = visibleReports[0];
+    setReportDraft(structuredClone(report));
+    setSelectedReportId(report._id || report.autoKey);
   }, [selectedReportId, visibleReports]);
 
   const updateParty = (index, path, value) => {
@@ -188,96 +211,34 @@ export default function MonthlySalesReports({ selectedAsm = '', hierarchyOfficer
     const monthPrefix = String(reportDraft.reportingDate || '').slice(0, 7);
     const officerCode = normalizeOfficerCode(reportDraft.officerCode);
     if (!monthPrefix || (!reportDraft.officerId && !officerCode)) return;
-    const officerMatches = (record) => (
-      (reportDraft.officerId && record.officerId === reportDraft.officerId)
-      || (officerCode && normalizeOfficerCode(record.officerCode) === officerCode)
-      || (!record.officerId && !record.officerCode
-        && reportDraft.personName && record.officerName === reportDraft.personName)
-    );
-    const recordMatchesPeriod = (record) => (
-      String(record.date || '').startsWith(monthPrefix)
-      && normalizeSessionText(record.session || getInvoiceSessionForDate(record.date))
-        === normalizeSessionText(reportDraft.session)
-    );
-    const partyMap = new Map();
-    const seenInvoiceIds = new Set();
-    const dealerKeyByAlias = new Map();
-    dealers.forEach((dealer) => {
-      const key = String(dealer.id || dealer.code || dealer.shopName || '');
-      [dealer.id, dealer.code, dealer.shopName].filter(Boolean).forEach((alias) => {
-        dealerKeyByAlias.set(String(alias).trim().toLowerCase(), key);
-      });
-    });
-    invoices.filter((invoice) => (
-      recordMatchesPeriod(invoice)
-      && officerMatches(invoice)
-      && !['factory_damage', 'depot_factory_return'].includes(invoice.invoiceType)
-    )).forEach((invoice) => {
-      const invoiceId = String(invoice.id || invoice.invoiceNo || '');
-      if (invoiceId && seenInvoiceIds.has(invoiceId)) return;
-      if (invoiceId) seenInvoiceIds.add(invoiceId);
-      const dealerId = String(invoice.dealerId || '');
-      const dealerCode = String(invoice.dealerCode || '');
-      const dealerName = String(invoice.dealerName || dealers.find((dealer) => dealer.id === dealerId)?.shopName || 'নাম নেই');
-      const aliases = [dealerId, dealerCode, dealerName]
-        .filter(Boolean).map((alias) => String(alias).trim().toLowerCase());
-      const key = aliases.map((alias) => dealerKeyByAlias.get(alias)).find(Boolean)
-        || dealerId || dealerCode || dealerName;
-      const party = partyMap.get(key) || {
-        lastMonthDues: roundCurrency(dealers.find((dealer) => dealer.id === dealerId)?.lastSessionDue || 0),
-        sales: 0,
-        returned: 0,
-        dealerName
-      };
-      if (invoice.invoiceType === 'dealer_return') party.returned += Math.abs(roundCurrency(getInvoiceSalesAmount(invoice)));
-      else party.sales += roundCurrency(getInvoiceSalesAmount(invoice));
-      partyMap.set(key, party);
-    });
-    const seenPaymentIds = new Set();
-    payments.filter((payment) => (
-      recordMatchesPeriod(payment)
-      && officerMatches(payment)
-      && isDealerCollection(payment)
-      && !payment.sourceInvoiceId
-      && !/(?:invoice|চালান)\s*#/i.test(String(payment.reference || ''))
-    )).forEach((payment) => {
-      const paymentId = String(payment.id || '');
-      if (paymentId && seenPaymentIds.has(paymentId)) return;
-      if (paymentId) seenPaymentIds.add(paymentId);
-      const dealerId = String(payment.dealerId || '');
-      const dealerCode = String(payment.dealerCode || '');
-      const dealerName = String(payment.dealerName || 'নাম নেই');
-      const aliases = [dealerId, dealerCode, dealerName]
-        .filter(Boolean).map((alias) => String(alias).trim().toLowerCase());
-      const key = aliases.map((alias) => dealerKeyByAlias.get(alias)).find(Boolean)
-        || dealerId || dealerCode || dealerName;
-      const party = partyMap.get(key) || { lastMonthDues: 0, sales: 0, returned: 0, dealerName };
-      party.collection = roundCurrency((party.collection || 0) + roundCurrency(payment.amount));
-      partyMap.set(key, party);
-    });
+    const generated = buildMonthlySalesReports({
+      invoices,
+      payments,
+      dealers,
+      officers: reportOfficers,
+      monthFilter: monthPrefix,
+      sessionFilter: reportDraft.session
+    }).find((report) => (
+      (reportDraft.officerId && report.officerId === reportDraft.officerId)
+      || (officerCode && normalizeOfficerCode(report.officerCode) === officerCode)
+      || (!reportDraft.officerId && !officerCode && report.personName === reportDraft.personName)
+    ));
     setReportDraft((current) => ({
       ...current,
-      parties: partyMap.size ? [...partyMap.entries()].map(([key, party], index) => ({
-        slNo: index + 1,
-        nameOfTheParty: String(party.dealerName || key),
-        lastMonthDues: roundCurrency(party.lastMonthDues),
-        presentMonth: {
-          sales: roundCurrency(party.sales),
-          return: roundCurrency(party.returned),
-          netSales: roundCurrency(party.sales - party.returned)
-        },
-        lastAndPresent: {
-          netSales: roundCurrency(party.lastMonthDues + party.sales - party.returned),
-          salary: 0,
-          collection: roundCurrency(party.collection || 0),
-          fare: 0,
-          l_c: 0
-        },
-        presentMonthTotalCollection: roundCurrency(party.collection || 0),
-        presentMonthNetDues: roundCurrency(party.lastMonthDues + party.sales - party.returned - (party.collection || 0))
-      })) : [emptyParty()]
+      parties: generated?.parties
+        || (current._id ? current.parties : [emptyParty()])
     }));
-  }, [dealers, invoices, payments, reportDraft.officerId, reportDraft.officerCode, reportDraft.personName, reportDraft.reportingDate, reportDraft.session]);
+  }, [
+    dealers,
+    invoices,
+    payments,
+    reportDraft.officerId,
+    reportDraft.officerCode,
+    reportDraft.personName,
+    reportDraft.reportingDate,
+    reportDraft.session,
+    reportOfficers
+  ]);
 
   const saveReport = async (event) => {
     event.preventDefault();
@@ -295,6 +256,10 @@ export default function MonthlySalesReports({ selectedAsm = '', hierarchyOfficer
         saved,
         ...current.filter((report) => report._id !== saved._id)
       ]);
+      setReports((current) => [
+        saved,
+        ...current.filter((report) => report._id !== saved._id)
+      ]);
       setSelectedReportId(saved._id);
       setReportDraft({ ...saved });
       setMessage('মাসিক বিক্রয় রিপোর্ট সংরক্ষণ হয়েছে।');
@@ -306,14 +271,15 @@ export default function MonthlySalesReports({ selectedAsm = '', hierarchyOfficer
   };
 
   const loadReport = (report) => {
+    manuallyCreatingRef.current = false;
     setReportDraft(structuredClone(report));
-    setSelectedReportId(report._id);
+    setSelectedReportId(report._id || report.autoKey);
     setError('');
     setMessage('');
   };
 
   const deleteReport = async () => {
-    if (!selectedReportId || !window.confirm('এই মাসিক রিপোর্টটি মুছে ফেলবেন?')) return;
+    if (!selectedReport?._id || !window.confirm('এই মাসিক রিপোর্টটি মুছে ফেলবেন?')) return;
     setBusy(true);
     setError('');
     try {
@@ -344,28 +310,43 @@ export default function MonthlySalesReports({ selectedAsm = '', hierarchyOfficer
           </div>
           <div className="flex flex-wrap gap-2">
             <label className="text-xs font-semibold text-slate-600">মাস
-              <select value={monthFilter} onChange={(event) => setMonthFilter(event.target.value)} className="ml-2 rounded-lg border border-slate-300 bg-white px-3 py-2">
+              <select value={monthFilter} onChange={(event) => {
+                manuallyCreatingRef.current = false;
+                setSelectedReportId('');
+                setMonthFilter(event.target.value);
+              }} className="ml-2 rounded-lg border border-slate-300 bg-white px-3 py-2">
                 <option value="ALL">সকল মাস</option>
                 {availableMonths.map((month) => <option key={month} value={month}>{month}</option>)}
               </select>
             </label>
             <label className="text-xs font-semibold text-slate-600">সেশন
-              <select value={sessionFilter} onChange={(event) => setSessionFilter(event.target.value)} className="ml-2 rounded-lg border border-slate-300 bg-white px-3 py-2">
+              <select value={sessionFilter} onChange={(event) => {
+                manuallyCreatingRef.current = false;
+                setSelectedReportId('');
+                setSessionFilter(event.target.value);
+              }} className="ml-2 rounded-lg border border-slate-300 bg-white px-3 py-2">
                 <option value="ALL">সকল সেশন</option>
                 {availableSessions.map((session) => <option key={session} value={session}>{session}</option>)}
               </select>
             </label>
-            {canEditReports && <button type="button" onClick={() => { setReportDraft(createReportDraft()); setSelectedReportId(''); setError(''); setMessage(''); }} className="rounded-lg border border-emerald-700 px-3 py-2 text-xs font-bold text-emerald-800">নতুন রিপোর্ট</button>}
+            {canEditReports && <button type="button" onClick={() => { manuallyCreatingRef.current = true; setReportDraft(createReportDraft()); setSelectedReportId(''); setError(''); setMessage(''); }} className="rounded-lg border border-emerald-700 px-3 py-2 text-xs font-bold text-emerald-800">নতুন রিপোর্ট</button>}
           </div>
         </div>
 
-        <label className="no-print block max-w-xl text-xs font-semibold text-slate-600">সংরক্ষিত রিপোর্ট
+        <label className="no-print block max-w-xl text-xs font-semibold text-slate-600">রিপোর্ট নির্বাচন
           <select value={selectedReportId} onChange={(event) => {
-            const report = visibleReports.find((item) => item._id === event.target.value);
+            const report = visibleReports.find((item) => (
+              (item._id || item.autoKey) === event.target.value
+            ));
             if (report) loadReport(report);
+            else {
+              manuallyCreatingRef.current = true;
+              setSelectedReportId('');
+              setReportDraft(createReportDraft());
+            }
           }} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2">
             <option value="">নতুন রিপোর্ট তৈরি করুন</option>
-            {visibleReports.map((report) => <option key={report._id} value={report._id}>{report.personName} • {report.monthOfReport} • {report.session}</option>)}
+            {visibleReports.map((report) => <option key={report._id || report.autoKey} value={report._id || report.autoKey}>{report.personName} • {report.monthOfReport} • {report.session}{report.autoKey ? ' • অটো' : ''}</option>)}
           </select>
         </label>
 
@@ -431,7 +412,7 @@ export default function MonthlySalesReports({ selectedAsm = '', hierarchyOfficer
           <div className="no-print flex flex-wrap justify-between gap-3">
             <button type="button" onClick={() => setReportDraft((current) => ({ ...current, parties: [...current.parties, { ...emptyParty(), slNo: current.parties.length + 1 }] }))} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700">+ পার্টি যোগ করুন</button>
             <div className="flex gap-2">
-              {reportDraft._id && <button type="button" disabled={busy} onClick={deleteReport} className="rounded-lg border border-rose-300 px-4 py-2 text-sm font-bold text-rose-700 disabled:opacity-50">রিপোর্ট মুছুন</button>}
+              {reportDraft._id && selectedReport?._id && <button type="button" disabled={busy} onClick={deleteReport} className="rounded-lg border border-rose-300 px-4 py-2 text-sm font-bold text-rose-700 disabled:opacity-50">রিপোর্ট মুছুন</button>}
               <button type="submit" disabled={busy} className="inline-flex items-center gap-2 rounded-lg bg-emerald-700 px-5 py-2 text-sm font-bold text-white disabled:opacity-50"><Save className="h-4 w-4" />{busy ? 'সংরক্ষণ হচ্ছে…' : 'রিপোর্ট সংরক্ষণ'}</button>
             </div>
           </div>

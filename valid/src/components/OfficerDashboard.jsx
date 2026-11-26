@@ -18,9 +18,14 @@ import { calculateOfficerFinancials, filterOfficerRecordsByPeriod } from '../../
 import { getOfficerPreviousDueByDealer } from '../../shared/officerLedger';
 import { getInvoiceSalesAmount } from '../../shared/invoiceTotals';
 import { isDealerBalanceCredit } from '../../shared/paymentMethods';
+import {
+  buildMonthlySalesReports,
+  getMonthlySalesReportKey
+} from '../../shared/salesReports';
 import { sortProductItemsByInventory } from '../../shared/productSorting';
 import { readJsonResponse } from '../utils/api';
 import OfficerPaymentSubmission from './OfficerPaymentSubmission';
+import { isSalesOfficerRole } from '../../shared/roles';
 
 async function requestJson(url, options) {
   return readJsonResponse(await fetch(url, { cache: 'no-store', ...options }));
@@ -47,9 +52,13 @@ export default function OfficerDashboard() {
   const { currentUser, invoices, allProductVariants, dealers, officers, products } = useAgro();
   const { t, language } = useUiPreferences();
   const currentOfficer = officers.find((entry) => (
-    normalizeOfficerCode(entry.code, entry.designation)
-      === normalizeOfficerCode(currentUser?.officerCode, entry.designation)
-  ));
+    (currentUser?.officerId
+      && [entry.id, entry.officerId].some((id) => String(id || '') === String(currentUser.officerId)))
+    || (currentUser?.officerCode
+      && normalizeOfficerCode(entry.code, entry.designation)
+        === normalizeOfficerCode(currentUser.officerCode, entry.designation))
+    || (currentUser?.name && entry.name === currentUser.name)
+  )) || null;
   const officerCode = normalizeOfficerCode(currentUser?.officerCode, currentOfficer?.designation);
   const [orders, setOrders] = useState([]);
   const [salesOfficerSummaries, setSalesOfficerSummaries] = useState([]);
@@ -84,6 +93,43 @@ export default function OfficerDashboard() {
       .catch((requestError) => { if (!cancelled) setError(requestError.message); });
     return () => { cancelled = true; };
   }, [monthFilter, sessionFilter]);
+
+  const reportOfficers = useMemo(() => {
+    if (!isSalesOfficerRole(currentUser?.role)) return officers;
+    return [currentOfficer || {
+      id: currentUser?.officerId || '',
+      officerId: currentUser?.officerId || '',
+      code: officerCode,
+      officerCode,
+      name: currentUser?.name || '',
+      officerName: currentUser?.name || ''
+    }];
+  }, [currentOfficer, currentUser?.name, currentUser?.officerId, currentUser?.role, officerCode, officers]);
+  const generatedMonthlyReports = useMemo(() => buildMonthlySalesReports({
+    invoices: periodInvoices,
+    payments: periodPayments,
+    dealers: officerLedgerDealers || dealers,
+    officers: reportOfficers,
+    monthFilter,
+    sessionFilter
+  }), [
+    dealers,
+    monthFilter,
+    officerLedgerDealers,
+    periodInvoices,
+    periodPayments,
+    reportOfficers,
+    sessionFilter
+  ]);
+  const dashboardMonthlyReports = useMemo(() => {
+    const generatedKeys = new Set(generatedMonthlyReports.map(getMonthlySalesReportKey));
+    return [
+      ...generatedMonthlyReports,
+      ...monthlyReports.filter((report) => (
+        !generatedKeys.has(getMonthlySalesReportKey(report))
+      ))
+    ];
+  }, [generatedMonthlyReports, monthlyReports]);
 
   useEffect(() => {
     let cancelled = false;
@@ -159,16 +205,16 @@ export default function OfficerDashboard() {
     () => sortSessionsNewestFirst([
       ...OFFICER_TARGET_SESSIONS,
       ...salesInvoices.map((invoice) => invoice.session).filter(Boolean),
-      ...monthlyReports.map((report) => report.session).filter(Boolean)
+      ...dashboardMonthlyReports.map((report) => report.session).filter(Boolean)
     ]),
-    [monthlyReports, salesInvoices]
+    [dashboardMonthlyReports, salesInvoices]
   );
   const months = useMemo(
     () => [...new Set([
       ...salesInvoices.map((invoice) => String(invoice.date || '').slice(0, 7)),
-      ...monthlyReports.map((report) => String(report.reportingDate || '').slice(0, 7))
+      ...dashboardMonthlyReports.map((report) => String(report.reportingDate || '').slice(0, 7))
     ].filter((month) => /^\d{4}-\d{2}$/.test(month) && month >= '2025-07'))].sort().reverse(),
-    [monthlyReports, salesInvoices]
+    [dashboardMonthlyReports, salesInvoices]
   );
   const filteredSalesInvoices = periodInvoices.filter((invoice) => (
     !['dealer_return', 'factory_damage', 'depot_factory_return'].includes(invoice.invoiceType)
@@ -210,7 +256,7 @@ export default function OfficerDashboard() {
   const yearlyAchievement = yearlyTarget
     ? Math.round(yearlySalesAmount / yearlyTarget * 100)
     : 0;
-  const latestMonthlyReport = monthlyReports.reduce((latest, report) => (
+  const latestMonthlyReport = dashboardMonthlyReports.reduce((latest, report) => (
     !latest || String(report.reportingDate || '') > String(latest.reportingDate || '')
       ? report
       : latest
@@ -296,7 +342,7 @@ export default function OfficerDashboard() {
   ));
   const officerDealerLedgers = useMemo(() => {
     const reportDueByName = new Map();
-    monthlyReports.forEach((report) => (report.parties || []).forEach((party) => {
+    dashboardMonthlyReports.forEach((report) => (report.parties || []).forEach((party) => {
       const key = String(party.nameOfTheParty || '').trim().toLowerCase();
       const current = reportDueByName.get(key);
       if (key && (!current || String(report.reportingDate || '') > current.reportingDate)) {
@@ -380,7 +426,7 @@ export default function OfficerDashboard() {
     ledgerDealers,
     officerPreviousDues,
     monthFilter,
-    monthlyReports,
+    dashboardMonthlyReports,
     periodInvoices,
     periodPayments,
     sessionFilter,
@@ -635,7 +681,7 @@ export default function OfficerDashboard() {
             <div className="flex items-center justify-between gap-2 border-b border-slate-100 px-5 py-4">
               <div>
                 <h2 className="font-black text-slate-900">ফিল্টার করা মাসিক রিপোর্টের সারাংশ</h2>
-                <p className="text-xs text-slate-500">নির্বাচিত সেশন এবং মাস অনুযায়ী সার্ভার থেকে পাওয়া রিপোর্ট</p>
+                <p className="text-xs text-slate-500">নির্বাচিত মাস/সেশনের সেভড ও স্বয়ংক্রিয় রিপোর্ট</p>
               </div>
               <button type="button" onClick={() => printDashboardSection('monthly-summary')} className="no-print inline-flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-bold text-slate-700">প্রিন্ট</button>
             </div>
@@ -666,11 +712,11 @@ export default function OfficerDashboard() {
                   <th className="px-4 py-3">রিপোর্ট</th><th className="px-4 py-3">সেশন</th><th className="px-4 py-3 text-right">পার্টি</th><th className="px-4 py-3 text-right">রিটার্ন বাদে নিট বিক্রয়</th><th className="px-4 py-3 text-right">নিট বকেয়া</th>
                 </tr></thead>
                 <tbody className="divide-y divide-slate-100">
-                  {monthlyReports.map((report) => {
+                  {dashboardMonthlyReports.map((report) => {
                     const netSales = (report.parties || []).reduce((sum, party) => sum + (Number(party.presentMonth?.netSales) || 0), 0);
                     const dues = (report.parties || []).reduce((sum, party) => sum + (Number(party.presentMonthNetDues) || 0), 0);
                     return (
-                      <tr key={report._id}>
+                      <tr key={report._id || report.autoKey}>
                         <td className="px-4 py-3 font-semibold">{report.monthOfReport}<p className="text-[10px] text-slate-500">{report.reportingDate}</p></td>
                         <td className="px-4 py-3">{report.session}</td>
                         <td className="px-4 py-3 text-right">{report.parties?.length || 0}</td>
@@ -682,11 +728,11 @@ export default function OfficerDashboard() {
                   <tr className="bg-emerald-50 font-black">
                     <td className="px-4 py-3">মোট</td>
                     <td className="px-4 py-3">—</td>
-                    <td className="px-4 py-3 text-right">{monthlyReports.reduce((sum, report) => sum + (report.parties?.length || 0), 0)}</td>
-                    <td className="px-4 py-3 text-right">৳{Math.round(monthlyReports.reduce((sum, report) => sum + (report.parties || []).reduce((partySum, party) => partySum + (Number(party.presentMonth?.netSales) || 0), 0), 0)).toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}</td>
-                    <td className="px-4 py-3 text-right">৳{Math.round(monthlyReports.reduce((sum, report) => sum + (report.parties || []).reduce((partySum, party) => partySum + (Number(party.presentMonthNetDues) || 0), 0), 0)).toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}</td>
+                    <td className="px-4 py-3 text-right">{dashboardMonthlyReports.reduce((sum, report) => sum + (report.parties?.length || 0), 0)}</td>
+                    <td className="px-4 py-3 text-right">৳{Math.round(dashboardMonthlyReports.reduce((sum, report) => sum + (report.parties || []).reduce((partySum, party) => partySum + (Number(party.presentMonth?.netSales) || 0), 0), 0)).toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}</td>
+                    <td className="px-4 py-3 text-right">৳{Math.round(dashboardMonthlyReports.reduce((sum, report) => sum + (report.parties || []).reduce((partySum, party) => partySum + (Number(party.presentMonthNetDues) || 0), 0), 0)).toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}</td>
                   </tr>
-                  {!monthlyReports.length && <tr><td colSpan="5" className="px-4 py-6 text-center text-slate-500">এই সেশন/মাসে কোনো রিপোর্ট নেই।</td></tr>}
+                  {!dashboardMonthlyReports.length && <tr><td colSpan="5" className="px-4 py-6 text-center text-slate-500">এই সেশন/মাসে কোনো রিপোর্ট নেই।</td></tr>}
                 </tbody>
               </table>
             </div>

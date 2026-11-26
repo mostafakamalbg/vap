@@ -4,7 +4,7 @@ import { useAgro } from '../../context/AgroContext';
 import CompanyLetterhead from './CompanyLetterhead';
 import MonthlySalesReports from './MonthlySalesReports';
 import { calculateMonthlyStockReport, sumMonthlyStockReport } from '../../../shared/monthlyStockReport';
-import { isDealerCollection } from '../../../shared/paymentMethods';
+import { getDealerCollectionAmount } from '../../../shared/dealerLedger';
 import { getInvoiceSalesAmount } from '../../../shared/invoiceTotals';
 import { calculateOfficerFinancials } from '../../../shared/officerFinancials';
 import {
@@ -12,7 +12,7 @@ import {
   hasOfficerSessionSalesTarget
 } from '../../../shared/officerSalesTargets';
 import { getOfficerPreviousDueByDealer, dealerHasOfficerPreviousDue } from '../../../shared/officerLedger';
-import { normalizeOfficerCode } from '../../../shared/codes';
+import { formatDealerCode, normalizeOfficerCode } from '../../../shared/codes';
 import { mergeOfficerRecords } from '../../../shared/officerIdentity';
 import {
   parseReportMonth,
@@ -37,6 +37,21 @@ const finiteAmount = (value) => {
   return Number.isFinite(amount) ? amount : 0;
 };
 const money = (value) => `৳${Math.round(finiteAmount(value)).toLocaleString('bn-BD')}`;
+const dealerAliasValues = (record) => {
+  const values = [
+    record?.shopName ? record?.id : '',
+    record?.dealerId,
+    record?.shopName,
+    record?.dealerName
+  ]
+    .filter(Boolean)
+    .map((value) => String(value).trim().toLowerCase());
+  [record?.code, record?.dealerCode].filter(Boolean).forEach((value) => {
+    values.push(String(value).trim().toLowerCase());
+    values.push(formatDealerCode(value).toLowerCase());
+  });
+  return [...new Set(values.filter(Boolean))];
+};
 
 async function requestJson(url, options = {}) {
   return readJsonResponse(await fetch(url, { cache: 'no-store', ...options }));
@@ -383,9 +398,7 @@ export default function MonthlyTargetReports() {
     const dealerAliases = new Map();
     visibleDealers.forEach((dealer) => {
       const key = String(dealer.id || dealer.code || dealer.shopName).trim().toLowerCase();
-      [dealer.id, dealer.code, dealer.shopName].filter(Boolean).forEach((alias) => {
-        dealerAliases.set(String(alias).trim().toLowerCase(), key);
-      });
+      dealerAliasValues(dealer).forEach((alias) => dealerAliases.set(alias, key));
     });
     const groupedTargets = new Map();
     dealerTargets.filter((target) => (
@@ -395,8 +408,7 @@ export default function MonthlyTargetReports() {
         ? sessionsMatch(target.session, dealerFilter.value)
         : isInPeriod(target.targetDate, range)
     )).forEach((target) => {
-      const aliases = [target.dealerId, target.dealerCode, target.dealerName]
-        .filter(Boolean).map((alias) => String(alias).trim().toLowerCase());
+      const aliases = dealerAliasValues(target);
       const alias = aliases.find((candidate) => dealerAliases.has(candidate)) || aliases[0] || '';
       const key = dealerAliases.get(alias) || alias;
       if (!key) return;
@@ -411,8 +423,7 @@ export default function MonthlyTargetReports() {
       groupedTargets.set(key, sessionsForDealer);
     });
     dealerTargets.forEach((target) => {
-      const alias = [target.dealerId, target.dealerCode, target.dealerName]
-        .filter(Boolean).map((value) => String(value).trim().toLowerCase())
+      const alias = dealerAliasValues(target)
         .find((candidate) => dealerAliases.has(candidate)) || '';
       const key = dealerAliases.get(alias) || alias;
       if (key && !dealerRows.has(key)) dealerRows.set(key, null);
@@ -426,31 +437,36 @@ export default function MonthlyTargetReports() {
         const isSalesInvoice = (invoice) => (
           !['dealer_return', 'factory_damage', 'depot_factory_return'].includes(invoice.invoiceType)
         );
-        const aliases = new Set([dealerId, dealerCode, dealerName]
-          .filter(Boolean).map((alias) => String(alias).trim().toLowerCase()));
+        const aliases = new Set(dealerAliasValues({
+          id: dealerId,
+          code: dealerCode,
+          shopName: dealerName
+        }));
         const matchesDealer = (record) => (
-          [record.dealerId, record.dealerCode, record.dealerName]
-            .filter(Boolean)
-            .some((alias) => aliases.has(String(alias).trim().toLowerCase()))
+          dealerAliasValues(record).some((alias) => aliases.has(alias))
         );
         const dealerInvoices = invoices.filter((invoice) => (
           isRecordInPeriod(invoice, dealerFilter, range)
           && matchesDealer(invoice)
         ));
+        const dealerInvoiceIds = new Set(dealerInvoices.map((invoice) => (
+          String(invoice.id || invoice.invoiceNo || '')
+        )).filter(Boolean));
         const dealerPayments = payments.filter((payment) => (
           isPaymentInPeriod(payment, dealerFilter, range)
-          && matchesDealer(payment)
-          && isDealerCollection(payment)
-          && !payment.sourceInvoiceId
-          && !/(?:invoice|চালান)\s*#/i.test(String(payment.reference || ''))
+          && (
+            matchesDealer(payment)
+            || dealerInvoiceIds.has(String(payment.sourceInvoiceId || ''))
+            || dealerInvoiceIds.has(
+              String(payment.reference || '').match(/(?:invoice|চালান)\s*#?\s*([^\s,]+)/i)?.[1] || ''
+            )
+          )
         ));
         const sales = dealerInvoices.filter(isSalesInvoice)
           .reduce((sum, invoice) => sum + getInvoiceSalesAmount(invoice), 0);
         const returns = dealerInvoices.filter((invoice) => invoice.invoiceType === 'dealer_return')
           .reduce((sum, invoice) => sum + Math.abs(getInvoiceSalesAmount(invoice)), 0);
-        const invoiceReceived = dealerInvoices.filter(isSalesInvoice)
-          .reduce((sum, invoice) => sum + finiteAmount(invoice.paidAmount), 0);
-        const received = invoiceReceived + dealerPayments.reduce((sum, payment) => sum + finiteAmount(payment.amount), 0);
+        const received = getDealerCollectionAmount(dealerInvoices, dealerPayments);
         const dueHistory = dealer?.previousDueHistory?.filter((entry) => (
           dealerFilter.type === 'session'
             ? entry.session

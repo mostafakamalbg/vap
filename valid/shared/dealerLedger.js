@@ -1,5 +1,6 @@
 import {
   isDealerBalanceCredit,
+  isDealerCollection,
   PAYMENT_TYPES,
   resolvePaymentRecordType
 } from './paymentMethods.js';
@@ -19,6 +20,48 @@ export function getDealerNetDue({
     + amountOrZero(totalBillAmount)
     - amountOrZero(totalReturnAmount)
     - amountOrZero(totalPaidAmount);
+}
+
+function getLinkedInvoiceId(payment) {
+  const sourceInvoiceId = String(payment?.sourceInvoiceId || '').trim();
+  if (sourceInvoiceId) return sourceInvoiceId;
+  return String(payment?.reference || '').match(/(?:invoice|চালান)\s*#?\s*([^\s,]+)/i)?.[1] || '';
+}
+
+export function getDealerCollectionAmount(invoices = [], payments = []) {
+  const salesInvoices = invoices.filter((invoice) => (
+    !['dealer_return', 'factory_damage', 'depot_factory_return'].includes(invoice.invoiceType)
+  ));
+  const invoiceById = new Map(salesInvoices.map((invoice) => [
+    String(invoice.id || invoice.invoiceNo || ''),
+    invoice
+  ]).filter(([id]) => id));
+  const invoicePaidById = new Map();
+  salesInvoices.forEach((invoice) => {
+    const id = String(invoice.id || invoice.invoiceNo || '');
+    if (id) invoicePaidById.set(id, amountOrZero(invoice.paidAmount));
+  });
+
+  let standalonePayments = 0;
+  const linkedPaymentsByInvoice = new Map();
+  payments.filter(isDealerCollection).forEach((payment) => {
+    const amount = Math.abs(amountOrZero(payment.amount));
+    if (!amount) return;
+    const linkedInvoiceId = getLinkedInvoiceId(payment);
+    if (linkedInvoiceId && invoiceById.has(linkedInvoiceId)) {
+      linkedPaymentsByInvoice.set(
+        linkedInvoiceId,
+        (linkedPaymentsByInvoice.get(linkedInvoiceId) || 0) + amount
+      );
+    } else {
+      standalonePayments += amount;
+    }
+  });
+
+  const invoicePayments = [...invoicePaidById.entries()].reduce((sum, [id, amount]) => (
+    sum + Math.max(amount, linkedPaymentsByInvoice.get(id) || 0)
+  ), 0);
+  return invoicePayments + standalonePayments;
 }
 
 export function getDealerLedgerTransactions(summary = {}) {

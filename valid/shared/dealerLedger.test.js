@@ -1,6 +1,27 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { getDealerLedgerTransactions } from './dealerLedger.js';
+import {
+  getDealerCollectionAmount,
+  getDealerLedgerTransactions
+} from './dealerLedger.js';
+
+test('dealer collection totals include linked valid payments without double counting invoices', () => {
+  assert.equal(getDealerCollectionAmount(
+    [{ id: 'INV-1', paidAmount: 500 }, { id: 'INV-2', paidAmount: 0 }],
+    [
+      { id: 'PAY-1', amount: 500, sourceInvoiceId: 'INV-1' },
+      { id: 'PAY-2', amount: 250, sourceInvoiceId: 'INV-2' },
+      { id: 'PAY-3', amount: 100, paymentType: 'dealer_collection' }
+    ]
+  ), 850);
+});
+
+test('dealer collection totals include invoice-referenced payments when inline paid amount is empty', () => {
+  assert.equal(getDealerCollectionAmount(
+    [{ id: 'INV-4', paidAmount: 0 }],
+    [{ reference: 'চালান #INV-4', amount: 75 }]
+  ), 75);
+});
 
 test('legacy company transfers and office payments normalize to office payment', () => {
   const transactions = getDealerLedgerTransactions({
