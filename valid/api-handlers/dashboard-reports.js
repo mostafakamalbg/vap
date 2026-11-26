@@ -18,7 +18,7 @@ import {
   sessionsMatch
 } from '../shared/reportDateFilters.js';
 import { getInvoiceSessionForDate, INVOICE_SESSIONS, normalizeSessionText } from '../shared/sessions.js';
-import { ADMIN_ROLES, LOGISTIC_OFFICER_ROLE } from '../shared/roles.js';
+import { ADMIN_ROLES, ASM_ROLE, LOGISTIC_OFFICER_ROLE, RSM_ROLE } from '../shared/roles.js';
 import { HIERARCHY_ROLE_VALUES } from '../shared/roles.js';
 import { resolveHierarchyScope } from '../lib/hierarchy.js';
 import { buildOfficerOwnerFilter, matchesOfficerScope } from '../shared/hierarchy.js';
@@ -34,6 +34,7 @@ const EXPENSE_FIELDS = {
 };
 
 export function getPeriodRange(period, value, startSession, endSession, startDate, endDate) {
+  if (period === 'all') return { start: '0001-01-01', end: '9999-12-31' };
   if (period === 'month') return parseReportMonth(value);
   if (period === 'session') return parseSessionDateRange(value);
   if (period === 'session-range') {
@@ -58,7 +59,7 @@ export function getPeriodRange(period, value, startSession, endSession, startDat
   return null;
 }
 
-function invoicePipeline(match) {
+function invoicePipeline(match, { openingBalance = false } = {}) {
   return [
     { $match: { ...match, invoiceType: { $nin: DAMAGE_TYPES } } },
     {
@@ -107,7 +108,10 @@ function invoicePipeline(match) {
             ]
           },
           openingDue: {
-            $ifNull: ['$dealerProfile.lastSessionDue', '$dealerProfile.openingDue']
+            $ifNull: [
+              openingBalance ? '$dealerProfile.openingDue' : '$dealerProfile.lastSessionDue',
+              openingBalance ? '$dealerProfile.lastSessionDue' : '$dealerProfile.openingDue'
+            ]
           }
         },
         salesAmount: {
@@ -296,6 +300,15 @@ function officerMatches(row, officer) {
   );
 }
 
+function matchesHierarchyUser(officer, entry) {
+  return Boolean(
+    (entry.officerId && String(officer.id || officer.officerId || '') === String(entry.officerId))
+    || (entry.officerCode
+      && normalizeOfficerCode(officer.code || officer.officerCode) === normalizeOfficerCode(entry.officerCode))
+    || (entry.name && (officer.name || officer.officerName) === entry.name)
+  );
+}
+
 function addPaymentRows(groups, rows, { period, periodValue, periodRange, beforePeriod, scope }) {
   rows.forEach((payment) => {
     const date = String(payment.date || '');
@@ -362,8 +375,8 @@ export default async function handler(req, res) {
   );
   if (!user) return;
 
-  const period = String(req.query?.period || 'session');
-  const value = String(req.query?.value || '');
+  const period = String(req.query?.period || 'all');
+  const value = String(req.query?.value || (period === 'all' ? 'ALL' : ''));
   const periodRange = getPeriodRange(
     period,
     value,
@@ -377,9 +390,27 @@ export default async function handler(req, res) {
   try {
     const scope = await resolveHierarchyScope(user);
     const ownerMatch = buildOfficerOwnerFilter(scope);
-    const periodMatch = period === 'session'
-      ? { $and: [sessionPrimaryCondition(value), ownerMatch] }
-      : { ...dateRangeCondition('date', periodRange), ...ownerMatch };
+    const asmFilter = String(req.query?.asm || '');
+    const selectedAsm = asmFilter
+      ? user.role === RSM_ROLE
+        ? scope.users.find((entry) => (
+          entry.role === ASM_ROLE && String(entry._id || entry.id) === asmFilter
+        ))
+        : null
+      : null;
+    if (asmFilter && !selectedAsm) {
+      return res.status(403).json({ error: 'নির্বাচিত ASM আপনার অনুমোদিত অধীনস্থ নন।' });
+    }
+    const hierarchyUsers = selectedAsm
+      ? scope.users.filter((entry) => (
+        String(entry._id || entry.id) === asmFilter || String(entry.asmId || '') === asmFilter
+      ))
+      : scope.users;
+    const periodMatch = period === 'all'
+      ? ownerMatch
+      : period === 'session'
+        ? { $and: [sessionPrimaryCondition(value), ownerMatch] }
+        : { ...dateRangeCondition('date', periodRange), ...ownerMatch };
     const periodPaymentMatch = period === 'session'
       ? {
           $and: [
@@ -388,14 +419,14 @@ export default async function handler(req, res) {
           ]
         }
       : periodMatch;
-    const priorMatch = {
+    const priorMatch = period === 'all' ? { _id: null } : {
       date: { $lt: periodRange.start },
       ...ownerMatch
     };
     const [officerRecords, salesOfficerRecords, periodInvoices, priorInvoices, periodPayments, priorPayments, typedPayments, legacyRecords] = await Promise.all([
       BusinessRecord.find({ type: 'officers' }).select('data').lean(),
       SalesOfficer.find(ownerMatch).sort({ slNo: 1 }).lean(),
-      Invoice.aggregate(invoicePipeline(periodMatch)),
+      Invoice.aggregate(invoicePipeline(periodMatch, { openingBalance: period === 'all' })),
       Invoice.aggregate(invoicePipeline(priorMatch)),
       Payment.aggregate(paymentPipeline(periodPaymentMatch)),
       Payment.aggregate(paymentPipeline(priorMatch)),
@@ -413,7 +444,11 @@ export default async function handler(req, res) {
         officerCode: entry.officerCode || '',
         name: entry.name || '',
         phone: entry.phone || '',
-        territory: entry.territory || ''
+        territory: entry.territory || '',
+        role: entry.role,
+        asmId: String(entry.asmId || ''),
+        rsmId: String(entry.rsmId || ''),
+        hierarchyUserId: String(entry._id || entry.id || '')
       }))
     ]);
 
@@ -449,6 +484,7 @@ export default async function handler(req, res) {
         officerCode: officer.code || officer.officerCode,
         officerName: officer.name || officer.officerName
       }, scope)
+      && (!selectedAsm || hierarchyUsers.some((entry) => matchesHierarchyUser(officer, entry)))
     ));
     const rows = filteredRoster.map((officer, index) => {
       const periodOfficerInvoices = periodInvoices.filter((row) => officerMatches(row._id, officer));
@@ -557,7 +593,9 @@ export default async function handler(req, res) {
       const returnAmount = parties.reduce((sum, party) => sum + party.returns, 0);
       const totalNetSales = salesAmount - returnAmount;
       const derivedPreviousDue = parties.reduce((sum, party) => sum + party.previousDue, 0);
-      const previousDue = derivedPreviousDue || roundAmount(officer.lastSessionDue);
+      const previousDue = period === 'all'
+        ? derivedPreviousDue
+        : derivedPreviousDue || roundAmount(officer.lastSessionDue);
       const previousPlusNetSales = previousDue + totalNetSales;
       const totalExpenses = Object.values(expenses).reduce((sum, amount) => sum + amount, 0);
       const actualCollections = parties.reduce(
@@ -570,7 +608,13 @@ export default async function handler(req, res) {
         : period === 'month'
           ? getInvoiceSessionForDate(`${value}-01`)
           : period === 'year' ? `জানুয়ারি - জুন ${value}` : '';
-      const sessionTarget = period === 'session-range' || period === 'date-range'
+      const allTargets = [...new Set([
+        ...INVOICE_SESSIONS,
+        ...Object.keys(officer.salesTargets || {})
+      ])].reduce((sum, entry) => sum + getOfficerSalesTarget(officer, entry), 0);
+      const sessionTarget = period === 'all'
+        ? allTargets
+        : period === 'session-range' || period === 'date-range'
         ? INVOICE_SESSIONS.filter((entry) => {
             const range = parseSessionDateRange(entry);
             return Boolean(range && range.start >= periodRange.start && range.end <= periodRange.end);
@@ -578,7 +622,9 @@ export default async function handler(req, res) {
         : session ? getOfficerSalesTarget(officer, session) : 0;
       const targetYear = value.match(/\d{4}/)?.[0] || String(new Date().getFullYear());
       const julyDecemberTarget = getOfficerSalesTarget(officer, `জুলাই - ডিসেম্বর ${targetYear}`);
-      const yearlyTarget = period === 'year'
+      const yearlyTarget = period === 'all'
+        ? allTargets
+        : period === 'year'
         ? getOfficerSalesTarget(officer, `জানুয়ারি - জুন ${value}`)
           + getOfficerSalesTarget(officer, `জুলাই - ডিসেম্বর ${value}`)
         : getOfficerSalesTarget(officer, `জানুয়ারি - জুন ${value.slice(0, 4)}`)
@@ -621,7 +667,14 @@ export default async function handler(req, res) {
     const resultRows = officerFilter
       ? rows.filter((row) => row.officerId === officerFilter || row.officerCode === officerFilter)
       : rows;
-    return res.status(200).json({ period, value, officers: resultRows });
+    const asms = user.role === RSM_ROLE
+      ? scope.users.filter((entry) => entry.role === ASM_ROLE).map((entry) => ({
+        id: String(entry._id || entry.id || ''),
+        name: String(entry.name || ''),
+        officerCode: String(entry.officerCode || '')
+      }))
+      : [];
+    return res.status(200).json({ period, value, asms, officers: resultRows });
   } catch (error) {
     console.error('Dashboard report aggregation failed:', error);
     return res.status(500).json({ error: 'লাইভ ড্যাশবোর্ড রিপোর্ট তৈরি করা যায়নি।' });

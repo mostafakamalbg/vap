@@ -194,14 +194,24 @@ export default async function handler(req, res) {
         ) {
           filter = { type };
         } else if (['stockInLogs', 'damageLogs', 'payments'].includes(type)) {
-          filter = {
-            type,
-            ...buildOfficerOwnerFilter(scope, {
-              idField: 'data.officerId',
-              codeField: 'data.officerCode',
-              nameField: 'data.officerName'
-            })
-          };
+          const ownerFilter = buildOfficerOwnerFilter(scope, {
+            idField: 'data.officerId',
+            codeField: 'data.officerCode',
+            nameField: 'data.officerName'
+          });
+          filter = type === 'stockInLogs'
+            ? {
+              type,
+              $or: [
+                ...(ownerFilter.$or || []),
+                {
+                  'data.officerId': { $in: ['', null] },
+                  'data.officerCode': { $in: ['', null] },
+                  'data.officerName': { $in: ['', null] }
+                }
+              ]
+            }
+            : { type, ...ownerFilter };
         }
       }
       const recordsQuery = BusinessRecord.find(filter);

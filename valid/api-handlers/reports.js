@@ -42,11 +42,9 @@ export default async function handler(req, res) {
     if (req.method === 'GET') {
       const filters = [];
       const scope = await resolveHierarchyScope(user);
-      if (req.query?.month) {
-        filters.push(getMonthFilter(req.query.month));
-      } else if (req.query?.date) {
-        filters.push(getMonthFilter(req.query.date));
-      } else if (req.query?.session) {
+      if (req.query?.month) filters.push(getMonthFilter(req.query.month));
+      if (req.query?.date) filters.push(getMonthFilter(req.query.date));
+      if (req.query?.session) {
         filters.push(sessionPrimaryCondition(String(req.query.session), 'reportingDate'));
       }
       if (!scope.global) filters.push(buildOfficerOwnerFilter(scope));

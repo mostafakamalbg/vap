@@ -8,6 +8,7 @@ import {
 } from '../../../shared/sessions';
 import { useAgro } from '../../context/AgroContext';
 import { readJsonResponse } from '../../utils/api';
+import CompanyLetterhead from './CompanyLetterhead';
 import {
   isAdminRole,
   LOGISTIC_OFFICER_ROLE,
@@ -33,6 +34,16 @@ function TableFrame({ children }) {
   );
 }
 
+function DashboardPrintHeader({ title, periodLabel }) {
+  return (
+    <div className="report-invoice-header">
+      <CompanyLetterhead />
+      <h2 className="mt-2 border-y-2 border-slate-900 py-2 text-center text-lg font-black">{title}</h2>
+      <p className="py-2 text-center text-sm font-bold">{periodLabel}</p>
+    </div>
+  );
+}
+
 function printReportSection(section) {
   const source = document.querySelector(`[data-report-print="${section}"]`);
   if (!source) return;
@@ -52,20 +63,22 @@ function printReportSection(section) {
 
 export default function DashboardReports() {
   const { currentUser } = useAgro();
-  const [period, setPeriod] = useState('session');
-  const [value, setValue] = useState(() => getInvoiceSessionForDate(new Date().toISOString().slice(0, 10)));
+  const [period, setPeriod] = useState('all');
+  const [value, setValue] = useState('ALL');
   const [startSession, setStartSession] = useState(() => getInvoiceSessionForDate(new Date().toISOString().slice(0, 10)));
   const [endSession, setEndSession] = useState(() => getInvoiceSessionForDate(new Date().toISOString().slice(0, 10)));
   const [startDate, setStartDate] = useState(`${currentYear}-01-01`);
   const [endDate, setEndDate] = useState(new Date().toISOString().slice(0, 10));
   const [selectedOfficer, setSelectedOfficer] = useState('');
-  const [report, setReport] = useState({ officers: [] });
+  const [selectedAsm, setSelectedAsm] = useState('');
+  const [report, setReport] = useState({ officers: [], asms: [] });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [refreshIndex, setRefreshIndex] = useState(0);
 
   const query = useMemo(() => {
     const params = new URLSearchParams({ period, value });
+    if (selectedAsm) params.set('asm', selectedAsm);
     if (period === 'session-range') {
       params.set('startSession', startSession);
       params.set('endSession', endSession);
@@ -76,7 +89,7 @@ export default function DashboardReports() {
     }
     if (selectedOfficer) params.set('officer', selectedOfficer);
     return params.toString();
-  }, [endDate, endSession, period, selectedOfficer, startDate, startSession, value]);
+  }, [endDate, endSession, period, selectedAsm, selectedOfficer, startDate, startSession, value]);
 
   useEffect(() => {
     let cancelled = false;
@@ -87,7 +100,11 @@ export default function DashboardReports() {
         if (!result || !Array.isArray(result.officers)) {
           throw new Error('লাইভ রিপোর্টের তথ্য সঠিকভাবে পাওয়া যায়নি।');
         }
-        setReport({ ...result, officers: result.officers.filter((officer) => officer && typeof officer === 'object') });
+        setReport({
+          ...result,
+          asms: Array.isArray(result.asms) ? result.asms : [],
+          officers: result.officers.filter((officer) => officer && typeof officer === 'object')
+        });
         setError('');
       } catch (requestError) {
         if (!cancelled) setError(requestError.message);
@@ -105,6 +122,7 @@ export default function DashboardReports() {
   }, [query, refreshIndex]);
 
   const officers = Array.isArray(report?.officers) ? report.officers : [];
+  const asms = Array.isArray(report?.asms) ? report.asms : [];
   const canSelectOfficer = isAdminRole(currentUser?.role)
     || currentUser?.role === LOGISTIC_OFFICER_ROLE
     || [RSM_ROLE, ASM_ROLE].includes(currentUser?.role);
@@ -157,13 +175,16 @@ export default function DashboardReports() {
     ? `${startSession} থেকে ${endSession}`
     : period === 'date-range'
       ? `${startDate} থেকে ${endDate}`
+    : period === 'all'
+      ? 'সকল সেশন • সকল মাস'
     : period === 'month'
     ? new Date(`${value}-01T00:00:00`).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
     : period === 'year' ? value : value;
 
   const setPeriodType = (nextPeriod) => {
     setPeriod(nextPeriod);
-    if (nextPeriod === 'month') setValue(currentMonth);
+    if (nextPeriod === 'all') setValue('ALL');
+    else if (nextPeriod === 'month') setValue(currentMonth);
     else if (nextPeriod === 'year') setValue(currentYear);
     else if (nextPeriod === 'session-range') setValue(startSession);
     else if (nextPeriod === 'date-range') {
@@ -173,6 +194,7 @@ export default function DashboardReports() {
     }
     else setValue(getInvoiceSessionForDate(new Date().toISOString().slice(0, 10)));
     setSelectedOfficer('');
+    setSelectedAsm('');
   };
 
   return (
@@ -198,10 +220,11 @@ export default function DashboardReports() {
         </div>
       </header>
 
-      <section className="no-print grid gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:grid-cols-3">
+      <section className={`no-print grid gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm ${currentUser?.role === RSM_ROLE ? 'sm:grid-cols-4' : 'sm:grid-cols-3'}`}>
         <label className="text-xs font-bold text-slate-600">
           রিপোর্টের সময়সীমা
           <select value={period} onChange={(event) => setPeriodType(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm">
+            <option value="all">সকল সেশন / সকল মাস</option>
             <option value="month">মাসিক</option>
             <option value="session">সেশন অনুযায়ী</option>
             <option value="year">বার্ষিক</option>
@@ -210,8 +233,10 @@ export default function DashboardReports() {
           </select>
         </label>
         <label className="text-xs font-bold text-slate-600">
-          {period === 'month' ? 'মাস' : period === 'year' ? 'বছর' : period === 'session-range' ? 'শুরুর সেশন → শেষ সেশন' : period === 'date-range' ? 'শুরুর তারিখ → শেষ তারিখ' : 'সেশন'}
-          {period === 'session-range' ? (
+          {period === 'all' ? 'সময়সীমা' : period === 'month' ? 'মাস' : period === 'year' ? 'বছর' : period === 'session-range' ? 'শুরুর সেশন → শেষ সেশন' : period === 'date-range' ? 'শুরুর তারিখ → শেষ তারিখ' : 'সেশন'}
+          {period === 'all' ? (
+            <span className="mt-1 block rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm">সকল সেশন • সকল মাস</span>
+          ) : period === 'session-range' ? (
             <div className="mt-1 grid grid-cols-2 gap-2">
               <select value={startSession} onChange={(event) => setStartSession(event.target.value)} className="w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-xs">
                 {sortSessionsNewestFirst(INVOICE_SESSIONS.filter(isCurrentSession)).map((session) => <option key={session} value={session}>{session}</option>)}
@@ -237,6 +262,22 @@ export default function DashboardReports() {
             </select>
           )}
         </label>
+        {currentUser?.role === RSM_ROLE && (
+          <label className="text-xs font-bold text-slate-600">
+            ASM নির্বাচন করুন
+            <select
+              value={selectedAsm}
+              onChange={(event) => {
+                setSelectedAsm(event.target.value);
+                setSelectedOfficer('');
+              }}
+              className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+            >
+              <option value="">সকল ASM</option>
+              {asms.map((asm) => <option key={asm.id} value={asm.id}>{asm.name}{asm.officerCode ? ` (${asm.officerCode})` : ''}</option>)}
+            </select>
+          </label>
+        )}
         <label className="text-xs font-bold text-slate-600">
           অফিসার
           <select value={selectedOfficer} onChange={(event) => setSelectedOfficer(event.target.value)} disabled={!canSelectOfficer} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm disabled:bg-slate-100">
@@ -253,6 +294,7 @@ export default function DashboardReports() {
       {error && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-800">{error}</div>}
 
       <section data-report-print="master" className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        <DashboardPrintHeader title="লাইভ অফিসার পারফরম্যান্স রিপোর্ট" periodLabel={periodLabel} />
         <div className="flex flex-wrap items-end justify-between gap-2 border-b border-slate-200 p-4">
           <div>
             <h2 className="font-black text-slate-900">Officer / Session Summary Master Table</h2>
@@ -345,6 +387,7 @@ export default function DashboardReports() {
           </section>
 
           <section data-report-print="party" className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+            <DashboardPrintHeader title={`অফিসার লেনদেন রিপোর্ট — ${selected.officerName}`} periodLabel={periodLabel} />
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 p-4">
               <div>
                 <h2 className="font-black text-slate-900">Party / Mobile &amp; Transaction Details — {selected.officerName}</h2>
@@ -389,6 +432,7 @@ export default function DashboardReports() {
           </section>
 
           <section data-report-print="monthly-party" className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+            <DashboardPrintHeader title={`মাসিক ডিলার লেজার — ${selected.officerName}`} periodLabel={periodLabel} />
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 p-4">
               <div>
                 <h2 className="font-black text-slate-900">Monthly Party-wise Ledger — Name of the party</h2>

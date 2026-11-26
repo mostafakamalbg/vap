@@ -73,23 +73,37 @@ export function dealerHasOfficerPreviousDue(dealer, identity) {
   return getDueEntries(dealer).some((entry) => matchesOfficer(entry, dealer, identity));
 }
 
-export function getOfficerPreviousDueByDealer(dealers, identity, filters) {
+export function getOfficerPreviousDueByDealer(dealers, identity, filters = {}) {
   const dueByDealer = new Map();
 
   dealers.forEach((dealer) => {
-    const eligibleEntries = getDueEntries(dealer)
+    let eligibleEntries = getDueEntries(dealer)
       .filter((entry) => matchesOfficer(entry, dealer, identity))
       .filter((entry) => matchesPeriod(entry, filters));
-    const latestEntry = eligibleEntries.reduce((latest, entry) => (
-      !latest || dueEntryTimestamp(entry) >= dueEntryTimestamp(latest) ? entry : latest
-    ), null);
+    if (
+      filters.openingBalance
+      && !dealer?.previousDueHistory?.length
+      && dealer?.openingDue != null
+      && eligibleEntries.length
+    ) {
+      eligibleEntries = [{ ...eligibleEntries[0], amount: dealer.openingDue }];
+    }
+    const openingBalance = Boolean(filters.openingBalance);
+    const selectedEntry = eligibleEntries.reduce((selected, entry) => {
+      if (!selected) return entry;
+      const currentTimestamp = dueEntryTimestamp(entry);
+      const selectedTimestamp = dueEntryTimestamp(selected);
+      return openingBalance
+        ? currentTimestamp < selectedTimestamp ? entry : selected
+        : currentTimestamp >= selectedTimestamp ? entry : selected;
+    }, null);
 
-    if (!latestEntry) return;
+    if (!selectedEntry) return;
     dueByDealer.set(String(dealer.id), {
-      amount: Number(latestEntry.amount) || 0,
-      date: String(latestEntry.date || ''),
-      session: String(latestEntry.session || ''),
-      officerId: String(latestEntry.officerId || '')
+      amount: Number(selectedEntry.amount) || 0,
+      date: String(selectedEntry.date || ''),
+      session: String(selectedEntry.session || ''),
+      officerId: String(selectedEntry.officerId || '')
     });
   });
 

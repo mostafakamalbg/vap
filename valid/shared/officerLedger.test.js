@@ -56,6 +56,11 @@ test('previous due history follows its officer and active session/month filters'
     session: 'জানুয়ারি - জুন 2027',
     month: '2027-01'
   }).size, 0);
+  assert.equal(getOfficerPreviousDueByDealer([dealer], officer, {
+    session: 'ALL',
+    month: 'ALL',
+    openingBalance: true
+  }).get('DLR-01').amount, 100);
 });
 
 test('legacy dealer due falls back to assignment and only appears without unsupported period metadata', () => {
@@ -71,6 +76,9 @@ test('legacy dealer due falls back to assignment and only appears without unsupp
     getOfficerPreviousDueByDealer([dealer], officer, {}).get('DLR-02'),
     { amount: 450, date: '', session: '', officerId: '' }
   );
+  assert.equal(getOfficerPreviousDueByDealer([dealer], officer, {
+    openingBalance: true
+  }).get('DLR-02').amount, 300);
   assert.equal(getOfficerPreviousDueByDealer([dealer], officer, {
     session: 'জুলাই - ডিসেম্বর 2026',
     month: '2026-10'

@@ -54,3 +54,10 @@ test('dashboard reports accept inclusive date bounds for date ranges', () => {
   );
   assert.equal(getPeriodRange('date-range', '', '', '', '2025-02-01', '2025-01-31'), null);
 });
+
+test('dashboard reports accept an all-session and all-month period', () => {
+  assert.deepEqual(getPeriodRange('all', 'ALL'), {
+    start: '0001-01-01',
+    end: '9999-12-31'
+  });
+});

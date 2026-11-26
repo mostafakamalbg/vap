@@ -82,7 +82,11 @@ function AppContent() {
     } else if (currentUser?.role === DEALER_ROLE) {
       setActiveTab(tab === 'dealer-ledger-portal' ? tab : 'dealer-ledger-portal');
     } else if ([OFFICER_ROLE, SO_ROLE].includes(currentUser?.role)) {
-      setActiveTab(tab === 'officer-dashboard' ? tab : 'officer-dashboard');
+      setActiveTab(tab === 'officer-dashboard'
+        || (currentUser?.role === SO_ROLE
+          && ['monthly-sales-reports', 'dashboard-reports'].includes(tab))
+        ? tab
+        : 'officer-dashboard');
     } else {
       setActiveTab(tab === 'officer-dashboard' ? 'officer-login' : 'admin-login');
     }
@@ -124,6 +128,8 @@ function AppContent() {
     }
     if (
       [OFFICER_ROLE, SO_ROLE].includes(currentUser?.role)
+      && !(currentUser?.role === SO_ROLE
+        && ['monthly-sales-reports', 'dashboard-reports'].includes(activeTab))
       && !['website-home', 'website-products', 'website-about'].includes(activeTab)
     ) return <OfficerDashboard />;
     if (currentUser?.role === DEALER_ROLE

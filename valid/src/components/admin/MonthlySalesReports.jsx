@@ -5,7 +5,7 @@ import { isAdminRole, LOGISTIC_OFFICER_ROLE } from '../../../shared/roles';
 import {
   getInvoiceSessionForDate,
   INVOICE_SESSIONS,
-  isCurrentSession,
+  getBangladeshBusinessDate,
   sortSessionsNewestFirst
 } from '../../../shared/sessions';
 import { normalizeOfficerCode } from '../../../shared/codes';
@@ -26,7 +26,8 @@ const emptyParty = () => ({
 });
 
 function createReportDraft() {
-  const now = new Date();
+  const date = getBangladeshBusinessDate();
+  const now = new Date(`${date}T00:00:00`);
   return {
     personName: '',
     designation: '',
@@ -34,7 +35,7 @@ function createReportDraft() {
     mobileNo: '',
     monthOfReport: `${new Intl.DateTimeFormat('en', { month: 'long' }).format(now)}/${String(now.getFullYear()).slice(-2)}`,
     session: getInvoiceSessionForDate(now.toISOString().slice(0, 10)),
-    reportingDate: now.toISOString().slice(0, 10),
+    reportingDate: date,
     officerId: '',
     officerCode: '',
     parties: [emptyParty()]
@@ -73,7 +74,7 @@ function ReportField({ label, value, onChange, type = 'text', required = false, 
   );
 }
 
-export default function MonthlySalesReports() {
+export default function MonthlySalesReports({ selectedAsm = '', hierarchyOfficers = [] }) {
   const { currentUser, officers, invoices = [], payments = [], dealers = [] } = useAgro();
   const canEditReports = isAdminRole(currentUser?.role)
     || currentUser?.role === LOGISTIC_OFFICER_ROLE;
@@ -81,6 +82,7 @@ export default function MonthlySalesReports() {
   const [allReports, setAllReports] = useState([]);
   const [reportDraft, setReportDraft] = useState(createReportDraft);
   const [monthFilter, setMonthFilter] = useState('ALL');
+  const [sessionFilter, setSessionFilter] = useState('ALL');
   const [selectedReportId, setSelectedReportId] = useState('');
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
@@ -98,6 +100,7 @@ export default function MonthlySalesReports() {
     let cancelled = false;
     const query = new URLSearchParams();
     if (monthFilter !== 'ALL') query.set('month', monthFilter);
+    if (sessionFilter !== 'ALL') query.set('session', sessionFilter);
     requestJson(`/api/reports?${query}`)
       .then((records) => {
         if (cancelled) return;
@@ -111,19 +114,56 @@ export default function MonthlySalesReports() {
       })
       .catch((requestError) => { if (!cancelled) setError(requestError.message); });
     return () => { cancelled = true; };
-  }, [monthFilter, selectedReportId]);
+  }, [monthFilter, selectedReportId, sessionFilter]);
 
   const availableMonths = useMemo(() => (
     [...new Set(allReports
-      .filter((report) => isCurrentSession(report.session))
       .map((report) => report.monthOfReport)
       .filter(Boolean))]
   ), [allReports]);
   const availableSessions = useMemo(() => sortSessionsNewestFirst([
     ...INVOICE_SESSIONS,
     ...allReports.map((report) => report.session)
-  ].filter(isCurrentSession)), [allReports]);
-  const selectedReport = reports.find((report) => report._id === selectedReportId);
+  ]), [allReports]);
+  const visibleReports = useMemo(() => {
+    if (!selectedAsm) return reports;
+    const asmOfficers = hierarchyOfficers.filter((officer) => (
+      String(officer.hierarchyUserId || officer.id || '') === selectedAsm
+      || String(officer.asmId || '') === selectedAsm
+    ));
+    const ids = new Set(asmOfficers.map((officer) => (
+      String(officer.id || officer.officerId || '')
+    )).filter(Boolean));
+    const codes = new Set(asmOfficers.map((officer) => (
+      normalizeOfficerCode(officer.code, officer.designation)
+    )).filter(Boolean));
+    const names = new Set(asmOfficers.map((officer) => String(officer.name || '')).filter(Boolean));
+    return reports.filter((report) => (
+      ids.has(String(report.officerId || ''))
+      || codes.has(normalizeOfficerCode(report.officerCode))
+      || (!report.officerId && !report.officerCode && names.has(String(report.personName || '')))
+    ));
+  }, [hierarchyOfficers, reports, selectedAsm]);
+  const selectedReport = visibleReports.find((report) => report._id === selectedReportId);
+  const selectedReportTotals = useMemo(() => (
+    (selectedReport?.parties || []).reduce((totals, party) => {
+      const values = partyTotals(party);
+      return {
+        sales: totals.sales + roundAmount(party.presentMonth?.sales),
+        returns: totals.returns + roundAmount(party.presentMonth?.return),
+        netSales: totals.netSales + values.netSales,
+        dues: totals.dues + values.dues
+      };
+    }, { sales: 0, returns: 0, netSales: 0, dues: 0 })
+  ), [selectedReport]);
+
+  useEffect(() => {
+    if (!selectedReportId || visibleReports.some((report) => report._id === selectedReportId)) return;
+    setSelectedReportId('');
+    setReportDraft((current) => (
+      current._id === selectedReportId ? createReportDraft() : current
+    ));
+  }, [selectedReportId, visibleReports]);
 
   const updateParty = (index, path, value) => {
     setReportDraft((current) => ({
@@ -154,10 +194,24 @@ export default function MonthlySalesReports() {
       || (!record.officerId && !record.officerCode
         && reportDraft.personName && record.officerName === reportDraft.personName)
     );
+    const recordMatchesPeriod = (record) => (
+      String(record.date || '').startsWith(monthPrefix)
+      && normalizeSessionText(record.session || getInvoiceSessionForDate(record.date))
+        === normalizeSessionText(reportDraft.session)
+    );
     const partyMap = new Map();
     const seenInvoiceIds = new Set();
+    const dealerKeyByAlias = new Map();
+    dealers.forEach((dealer) => {
+      const key = String(dealer.id || dealer.code || dealer.shopName || '');
+      [dealer.id, dealer.code, dealer.shopName].filter(Boolean).forEach((alias) => {
+        dealerKeyByAlias.set(String(alias).trim().toLowerCase(), key);
+      });
+    });
     invoices.filter((invoice) => (
-      String(invoice.date || '').startsWith(monthPrefix) && officerMatches(invoice)
+      recordMatchesPeriod(invoice)
+      && officerMatches(invoice)
+      && !['factory_damage', 'depot_factory_return'].includes(invoice.invoiceType)
     )).forEach((invoice) => {
       const invoiceId = String(invoice.id || invoice.invoiceNo || '');
       if (invoiceId && seenInvoiceIds.has(invoiceId)) return;
@@ -165,7 +219,10 @@ export default function MonthlySalesReports() {
       const dealerId = String(invoice.dealerId || '');
       const dealerCode = String(invoice.dealerCode || '');
       const dealerName = String(invoice.dealerName || dealers.find((dealer) => dealer.id === dealerId)?.shopName || 'নাম নেই');
-      const key = dealerId || dealerCode || dealerName;
+      const aliases = [dealerId, dealerCode, dealerName]
+        .filter(Boolean).map((alias) => String(alias).trim().toLowerCase());
+      const key = aliases.map((alias) => dealerKeyByAlias.get(alias)).find(Boolean)
+        || dealerId || dealerCode || dealerName;
       const party = partyMap.get(key) || {
         lastMonthDues: roundCurrency(dealers.find((dealer) => dealer.id === dealerId)?.lastSessionDue || 0),
         sales: 0,
@@ -178,7 +235,7 @@ export default function MonthlySalesReports() {
     });
     const seenPaymentIds = new Set();
     payments.filter((payment) => (
-      String(payment.date || '').startsWith(monthPrefix)
+      recordMatchesPeriod(payment)
       && officerMatches(payment)
       && isDealerCollection(payment)
       && !payment.sourceInvoiceId
@@ -188,16 +245,19 @@ export default function MonthlySalesReports() {
       if (paymentId && seenPaymentIds.has(paymentId)) return;
       if (paymentId) seenPaymentIds.add(paymentId);
       const dealerId = String(payment.dealerId || '');
+      const dealerCode = String(payment.dealerCode || '');
       const dealerName = String(payment.dealerName || 'নাম নেই');
-      const key = dealerId || dealerName;
+      const aliases = [dealerId, dealerCode, dealerName]
+        .filter(Boolean).map((alias) => String(alias).trim().toLowerCase());
+      const key = aliases.map((alias) => dealerKeyByAlias.get(alias)).find(Boolean)
+        || dealerId || dealerCode || dealerName;
       const party = partyMap.get(key) || { lastMonthDues: 0, sales: 0, returned: 0, dealerName };
       party.collection = roundCurrency((party.collection || 0) + roundCurrency(payment.amount));
       partyMap.set(key, party);
     });
-    if (!partyMap.size) return;
     setReportDraft((current) => ({
       ...current,
-      parties: [...partyMap.entries()].map(([key, party], index) => ({
+      parties: partyMap.size ? [...partyMap.entries()].map(([key, party], index) => ({
         slNo: index + 1,
         nameOfTheParty: String(party.dealerName || key),
         lastMonthDues: roundCurrency(party.lastMonthDues),
@@ -215,9 +275,9 @@ export default function MonthlySalesReports() {
         },
         presentMonthTotalCollection: roundCurrency(party.collection || 0),
         presentMonthNetDues: roundCurrency(party.lastMonthDues + party.sales - party.returned - (party.collection || 0))
-      }))
+      })) : [emptyParty()]
     }));
-  }, [dealers, invoices, payments, reportDraft.officerId, reportDraft.officerCode, reportDraft.personName, reportDraft.reportingDate]);
+  }, [dealers, invoices, payments, reportDraft.officerId, reportDraft.officerCode, reportDraft.personName, reportDraft.reportingDate, reportDraft.session]);
 
   const saveReport = async (event) => {
     event.preventDefault();
@@ -289,17 +349,23 @@ export default function MonthlySalesReports() {
                 {availableMonths.map((month) => <option key={month} value={month}>{month}</option>)}
               </select>
             </label>
+            <label className="text-xs font-semibold text-slate-600">সেশন
+              <select value={sessionFilter} onChange={(event) => setSessionFilter(event.target.value)} className="ml-2 rounded-lg border border-slate-300 bg-white px-3 py-2">
+                <option value="ALL">সকল সেশন</option>
+                {availableSessions.map((session) => <option key={session} value={session}>{session}</option>)}
+              </select>
+            </label>
             {canEditReports && <button type="button" onClick={() => { setReportDraft(createReportDraft()); setSelectedReportId(''); setError(''); setMessage(''); }} className="rounded-lg border border-emerald-700 px-3 py-2 text-xs font-bold text-emerald-800">নতুন রিপোর্ট</button>}
           </div>
         </div>
 
         <label className="no-print block max-w-xl text-xs font-semibold text-slate-600">সংরক্ষিত রিপোর্ট
           <select value={selectedReportId} onChange={(event) => {
-            const report = reports.find((item) => item._id === event.target.value);
+            const report = visibleReports.find((item) => item._id === event.target.value);
             if (report) loadReport(report);
           }} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2">
             <option value="">নতুন রিপোর্ট তৈরি করুন</option>
-            {reports.map((report) => <option key={report._id} value={report._id}>{report.personName} • {report.monthOfReport} • {report.session}</option>)}
+            {visibleReports.map((report) => <option key={report._id} value={report._id}>{report.personName} • {report.monthOfReport} • {report.session}</option>)}
           </select>
         </label>
 
@@ -387,6 +453,13 @@ export default function MonthlySalesReports() {
                     <td className="px-3 py-2 text-right">{amount(totals.dues)}</td>
                   </tr>;
                 })}
+                <tr className="bg-emerald-50 font-black">
+                  <td className="px-3 py-2">মোট</td>
+                  <td className="px-3 py-2 text-right">{amount(selectedReportTotals.sales)}</td>
+                  <td className="px-3 py-2 text-right">{amount(selectedReportTotals.returns)}</td>
+                  <td className="px-3 py-2 text-right">{amount(selectedReportTotals.netSales)}</td>
+                  <td className="px-3 py-2 text-right">{amount(selectedReportTotals.dues)}</td>
+                </tr>
               </tbody>
             </table>
           </div>

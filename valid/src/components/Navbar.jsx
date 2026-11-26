@@ -86,7 +86,16 @@ export default function Navbar({ activeTab, setActiveTab }) {
             { id: 'dashboard-reports', label: 'লাইভ ড্যাশবোর্ড রিপোর্ট', icon: FileText }
           ]
         : [OFFICER_ROLE, SO_ROLE].includes(currentUser?.role)
-      ? [...publicItems, { id: 'officer-dashboard', label: t('nav.officerDashboard'), icon: UserCheck }]
+      ? [
+          ...publicItems,
+          { id: 'officer-dashboard', label: t('nav.officerDashboard'), icon: UserCheck },
+          ...(currentUser?.role === SO_ROLE
+            ? [
+                { id: 'dashboard-reports', label: 'লাইভ ড্যাশবোর্ড রিপোর্ট', icon: FileText },
+                { id: 'monthly-sales-reports', label: 'মাসিক টার্গেট ও রিপোর্ট', icon: FileText }
+              ]
+            : [])
+        ]
       : publicItems;
 
   const handleNavClick = (tabId) => {

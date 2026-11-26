@@ -1838,6 +1838,14 @@ html[data-theme="dark"] .hover\:bg-slate-100:hover {
   .report-print .max-h-\[34rem\],
   .report-print .max-h-\[28rem\],
   .officer-dashboard-print .max-h-\[28rem\],
+  .report-print .overflow-hidden,
+  .report-print .overflow-auto,
+  .report-print .overflow-x-auto,
+  .report-print .overflow-y-auto,
+  .officer-dashboard-print .overflow-hidden,
+  .officer-dashboard-print .overflow-auto,
+  .officer-dashboard-print .overflow-x-auto,
+  .officer-dashboard-print .overflow-y-auto,
   .invoice-list-print .overflow-x-auto,
   .dealer-ledger-list-print .overflow-x-auto {
     max-height: none !important;

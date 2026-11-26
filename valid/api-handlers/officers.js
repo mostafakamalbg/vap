@@ -25,7 +25,7 @@ export default async function handler(req, res) {
         role: { $in: HIERARCHY_ROLE_VALUES },
         status: { $in: ['active', 'একটিভ', 'এডমিন', 'সুপার এডমিন'] }
       })
-        .select('name role officerId officerCode phone territory')
+        .select('name role officerId officerCode phone territory asmId rsmId')
         .lean()
     ]);
 
@@ -49,7 +49,11 @@ export default async function handler(req, res) {
         name: record.name,
         phone: record.phone,
         designation: record.role,
-        territory: record.territory
+        territory: record.territory,
+        role: record.role,
+        asmId: record.asmId ? String(record.asmId) : '',
+        rsmId: record.rsmId ? String(record.rsmId) : '',
+        hierarchyUserId: String(record._id)
       }))
     ]).filter((officer) => officer.name);
     if (isAdminRole(user.role) || user.role === LOGISTIC_OFFICER_ROLE) {

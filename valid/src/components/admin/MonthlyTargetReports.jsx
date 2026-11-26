@@ -25,20 +25,25 @@ import {
   getBangladeshBusinessDate,
   normalizeSessionText
 } from '../../../shared/sessions';
-import { isAdminRole, LOGISTIC_OFFICER_ROLE } from '../../../shared/roles';
+import { isAdminRole, LOGISTIC_OFFICER_ROLE, RSM_ROLE } from '../../../shared/roles';
 import { readJsonResponse } from '../../utils/api';
 
 const today = getBangladeshBusinessDate();
 const currentSession = getInvoiceSessionForDate(today);
 const currentMonth = today.slice(0, 7);
 const currentYear = today.slice(0, 4);
-const money = (value) => `৳${Math.round(Number(value) || 0).toLocaleString('bn-BD')}`;
+const finiteAmount = (value) => {
+  const amount = Number(value);
+  return Number.isFinite(amount) ? amount : 0;
+};
+const money = (value) => `৳${Math.round(finiteAmount(value)).toLocaleString('bn-BD')}`;
 
 async function requestJson(url, options = {}) {
   return readJsonResponse(await fetch(url, { cache: 'no-store', ...options }));
 }
 
 function periodRange(filter) {
+  if (filter.type === 'all') return { start: '0001-01-01', end: '9999-12-31' };
   if (filter.type === 'month') return parseReportMonth(filter.value);
   if (filter.type === 'session') return parseSessionDateRange(filter.value);
   if (filter.type === 'year' && /^20\d{2}$/.test(filter.value)) {
@@ -61,6 +66,7 @@ function isPaymentInPeriod(payment, filter, range) {
 }
 
 function isRecordInPeriod(record, filter, range) {
+  if (filter.type === 'all') return true;
   if (filter.type === 'session') {
     return record.session
       ? sessionsMatch(record.session, filter.value)
@@ -70,7 +76,7 @@ function isRecordInPeriod(record, filter, range) {
 }
 
 function createFilter() {
-  return { type: 'session', value: currentSession };
+  return { type: 'all', value: 'ALL' };
 }
 
 function PeriodFilter({ value, onChange, years, months, sessions }) {
@@ -84,19 +90,24 @@ function PeriodFilter({ value, onChange, years, months, sessions }) {
             const type = event.target.value;
             onChange({
               type,
-              value: type === 'month' ? currentMonth : type === 'year' ? currentYear : currentSession
+              value: type === 'all' ? 'ALL'
+                : type === 'month' ? currentMonth
+                  : type === 'year' ? currentYear : currentSession
             });
           }}
           className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2"
         >
+          <option value="all">সকল সেশন / সকল মাস</option>
           <option value="month">মাসিক</option>
           <option value="session">সেশন</option>
           <option value="year">ইয়ারলি</option>
         </select>
       </label>
       <label className="text-xs font-semibold text-slate-600">
-        {value.type === 'month' ? 'মাস' : value.type === 'year' ? 'বছর' : 'সেশন'}
-        {value.type === 'month' ? (
+        {value.type === 'all' ? 'সময়সীমা' : value.type === 'month' ? 'মাস' : value.type === 'year' ? 'বছর' : 'সেশন'}
+        {value.type === 'all' ? (
+          <span className="mt-1 block rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">সকল সেশন • সকল মাস</span>
+        ) : value.type === 'month' ? (
           <input
             type="month"
             min="2025-07"
@@ -126,7 +137,7 @@ function ReportPrintHeader({ title, filter }) {
       <CompanyLetterhead />
       <h2 className="mt-2 border-y-2 border-slate-900 py-2 text-center text-lg font-black">{title}</h2>
       <p className="py-2 text-center text-sm font-bold">
-        {filter.type === 'month' ? 'মাসিক' : filter.type === 'year' ? 'ইয়ারলি' : 'সেশন'}: {filter.value}
+        {filter.type === 'all' ? 'সকল সেশন • সকল মাস' : filter.type === 'month' ? 'মাসিক' : filter.type === 'year' ? 'ইয়ারলি' : 'সেশন'}{filter.type !== 'all' ? `: ${filter.value}` : ''}
       </p>
     </div>
   );
@@ -140,6 +151,7 @@ function targetSessionsForPeriod(record, filter, range) {
   return [...targets].filter((session) => {
     const target = getOfficerSalesTarget(record, session);
     if (target == null || !Number.isFinite(Number(target))) return false;
+    if (filter.type === 'all') return true;
     if (filter.type === 'session') return sessionsMatch(session, filter.value);
     const targetDate = record.salesTargetDates?.[session];
     if (targetDate) return isInPeriod(targetDate, range);
@@ -166,7 +178,8 @@ function getOfficerPreviousDue(dealers, officer, range, filter) {
   };
   const dueByDealer = getOfficerPreviousDueByDealer(dealers, identity, {
     session: filter.type === 'session' ? filter.value : 'ALL',
-    month: filter.type === 'month' ? filter.value : 'ALL'
+    month: filter.type === 'month' ? filter.value : 'ALL',
+    openingBalance: filter.type === 'all'
   });
   if (filter.type !== 'year') {
     return [...dueByDealer.values()].reduce((sum, due) => sum + due.amount, 0);
@@ -218,9 +231,11 @@ export default function MonthlyTargetReports() {
   const [activeReport, setActiveReport] = useState('officer');
   const [officerTargets, setOfficerTargets] = useState([]);
   const [dealerTargets, setDealerTargets] = useState([]);
+  const [hierarchyOfficers, setHierarchyOfficers] = useState([]);
   const [officerFilter, setOfficerFilter] = useState(createFilter);
   const [dealerFilter, setDealerFilter] = useState(createFilter);
   const [stockFilter, setStockFilter] = useState(createFilter);
+  const [selectedAsm, setSelectedAsm] = useState('');
   const [officerDraft, setOfficerDraft] = useState({
     officerId: '',
     date: today,
@@ -246,6 +261,26 @@ export default function MonthlyTargetReports() {
     ...officerTargets.flatMap((record) => Object.keys(record.salesTargets || {})),
     ...dealerTargets.map((record) => record.session)
   ])], [dealerTargets, officerTargets]);
+  const allOfficers = useMemo(
+    () => mergeOfficerRecords([...officers, ...hierarchyOfficers]),
+    [hierarchyOfficers, officers]
+  );
+  const asmOptions = useMemo(() => allOfficers.filter((officer) => officer.role === 'ASM'), [allOfficers]);
+  const visibleOfficers = useMemo(() => allOfficers.filter((officer) => (
+    !selectedAsm
+    || String(officer.hierarchyUserId || officer.id || '') === selectedAsm
+    || String(officer.asmId || '') === selectedAsm
+  )), [allOfficers, selectedAsm]);
+  const visibleOfficerIds = useMemo(() => new Set(visibleOfficers.map((officer) => (
+    String(officer.id || officer.officerId || '')
+  )).filter(Boolean)), [visibleOfficers]);
+  const visibleOfficerCodes = useMemo(() => new Set(visibleOfficers
+    .map((officer) => normalizeOfficerCode(officer.code, officer.designation))
+    .filter(Boolean)), [visibleOfficers]);
+  const visibleDealers = useMemo(() => !selectedAsm ? dealers : dealers.filter((dealer) => (
+    visibleOfficerIds.has(String(dealer.assignedOfficerId || dealer.officerId || ''))
+    || visibleOfficerCodes.has(normalizeOfficerCode(dealer.officerCode || dealer.assignedOfficerCode))
+  )), [dealers, selectedAsm, visibleOfficerCodes, visibleOfficerIds]);
 
   const refreshTargets = async () => {
     const [officerRecords, dealerRecords] = await Promise.all([
@@ -268,10 +303,20 @@ export default function MonthlyTargetReports() {
     return () => { cancelled = true; };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    requestJson('/api/officers')
+      .then((records) => {
+        if (!cancelled) setHierarchyOfficers(Array.isArray(records) ? records : []);
+      })
+      .catch((requestError) => { if (!cancelled) setError(requestError.message); });
+    return () => { cancelled = true; };
+  }, []);
+
   const officerReport = useMemo(() => {
     const range = periodRange(officerFilter);
     if (!range) return { rows: [], totals: null };
-    const uniqueOfficers = mergeOfficerRecords(officers);
+    const uniqueOfficers = mergeOfficerRecords(visibleOfficers);
     const rows = uniqueOfficers.map((officer) => {
       const saved = officerTargets.find((record) => officerMatches(record, officer)) || {};
       const target = getTargetValue({ ...officer, ...saved }, officerFilter, range);
@@ -326,29 +371,33 @@ export default function MonthlyTargetReports() {
       ? Math.round(totals.received / totals.paymentPercentageBase * 100)
       : 0;
     return { rows, totals };
-  }, [dealers, invoices, officers, officerFilter, officerTargets, payments]);
+  }, [dealers, invoices, officerFilter, officerTargets, payments, visibleOfficers]);
 
   const dealerReport = useMemo(() => {
     const range = periodRange(dealerFilter);
     if (!range) return { rows: [], totals: null };
-    const dealerRows = new Map(dealers.map((dealer) => [
-      String(dealer.id || dealer.code || dealer.shopName),
+    const dealerRows = new Map(visibleDealers.map((dealer) => [
+      String(dealer.id || dealer.code || dealer.shopName).trim().toLowerCase(),
       dealer
     ]));
     const dealerAliases = new Map();
-    dealers.forEach((dealer) => {
-      const key = String(dealer.id || dealer.code || dealer.shopName);
+    visibleDealers.forEach((dealer) => {
+      const key = String(dealer.id || dealer.code || dealer.shopName).trim().toLowerCase();
       [dealer.id, dealer.code, dealer.shopName].filter(Boolean).forEach((alias) => {
-        dealerAliases.set(String(alias), key);
+        dealerAliases.set(String(alias).trim().toLowerCase(), key);
       });
     });
     const groupedTargets = new Map();
     dealerTargets.filter((target) => (
-      dealerFilter.type === 'session'
+      dealerFilter.type === 'all'
+        ? true
+        : dealerFilter.type === 'session'
         ? sessionsMatch(target.session, dealerFilter.value)
         : isInPeriod(target.targetDate, range)
     )).forEach((target) => {
-      const alias = String(target.dealerId || target.dealerCode || target.dealerName || '');
+      const aliases = [target.dealerId, target.dealerCode, target.dealerName]
+        .filter(Boolean).map((alias) => String(alias).trim().toLowerCase());
+      const alias = aliases.find((candidate) => dealerAliases.has(candidate)) || aliases[0] || '';
       const key = dealerAliases.get(alias) || alias;
       if (!key) return;
       const sessionsForDealer = groupedTargets.get(key) || new Map();
@@ -362,7 +411,9 @@ export default function MonthlyTargetReports() {
       groupedTargets.set(key, sessionsForDealer);
     });
     dealerTargets.forEach((target) => {
-      const alias = String(target.dealerId || target.dealerCode || target.dealerName || '');
+      const alias = [target.dealerId, target.dealerCode, target.dealerName]
+        .filter(Boolean).map((value) => String(value).trim().toLowerCase())
+        .find((candidate) => dealerAliases.has(candidate)) || '';
       const key = dealerAliases.get(alias) || alias;
       if (key && !dealerRows.has(key)) dealerRows.set(key, null);
     });
@@ -372,22 +423,23 @@ export default function MonthlyTargetReports() {
         const dealerId = String(dealer?.id || target.dealerId || '');
         const dealerCode = String(dealer?.code || target.dealerCode || '');
         const dealerName = String(dealer?.shopName || target.dealerName || '');
-        const isDealerInvoice = (invoice) => (
-          invoice.dealerId === dealerId
-          || invoice.dealerCode === dealerCode
-        );
         const isSalesInvoice = (invoice) => (
           !['dealer_return', 'factory_damage', 'depot_factory_return'].includes(invoice.invoiceType)
         );
+        const aliases = new Set([dealerId, dealerCode, dealerName]
+          .filter(Boolean).map((alias) => String(alias).trim().toLowerCase()));
+        const matchesDealer = (record) => (
+          [record.dealerId, record.dealerCode, record.dealerName]
+            .filter(Boolean)
+            .some((alias) => aliases.has(String(alias).trim().toLowerCase()))
+        );
         const dealerInvoices = invoices.filter((invoice) => (
           isRecordInPeriod(invoice, dealerFilter, range)
-          && isDealerInvoice(invoice)
+          && matchesDealer(invoice)
         ));
         const dealerPayments = payments.filter((payment) => (
           isPaymentInPeriod(payment, dealerFilter, range)
-          && (payment.dealerId === dealerId
-            || payment.dealerCode === dealerCode
-            || payment.dealerName === dealerName)
+          && matchesDealer(payment)
           && isDealerCollection(payment)
           && !payment.sourceInvoiceId
           && !/(?:invoice|চালান)\s*#/i.test(String(payment.reference || ''))
@@ -397,24 +449,30 @@ export default function MonthlyTargetReports() {
         const returns = dealerInvoices.filter((invoice) => invoice.invoiceType === 'dealer_return')
           .reduce((sum, invoice) => sum + Math.abs(getInvoiceSalesAmount(invoice)), 0);
         const invoiceReceived = dealerInvoices.filter(isSalesInvoice)
-          .reduce((sum, invoice) => sum + (Number(invoice.paidAmount) || 0), 0);
-        const received = invoiceReceived + dealerPayments.reduce((sum, payment) => sum + (Number(payment.amount) || 0), 0);
-        const previousDue = dealer?.previousDueHistory?.filter((entry) => (
+          .reduce((sum, invoice) => sum + finiteAmount(invoice.paidAmount), 0);
+        const received = invoiceReceived + dealerPayments.reduce((sum, payment) => sum + finiteAmount(payment.amount), 0);
+        const dueHistory = dealer?.previousDueHistory?.filter((entry) => (
           dealerFilter.type === 'session'
             ? entry.session
               ? sessionsMatch(entry.session, dealerFilter.value)
               : isInPeriod(entry.date, range)
             : isInPeriod(entry.date, range)
-        )).sort((left, right) => String(right.date || '').localeCompare(String(left.date || '')))[0]?.amount
-          ?? dealer?.lastSessionDue
-          ?? dealer?.openingDue
+        )) || [];
+        const previousDueEntry = dueHistory.sort((left, right) => (
+          String(dealerFilter.type === 'all' ? left.date || '' : right.date || '')
+            .localeCompare(String(dealerFilter.type === 'all' ? right.date || '' : left.date || ''))
+        ))[0];
+        const previousDue = previousDueEntry?.amount
+          ?? (dealerFilter.type === 'all'
+            ? dealer?.openingDue ?? dealer?.previousDue ?? dealer?.lastSessionDue
+            : dealer?.lastSessionDue ?? dealer?.openingDue)
           ?? 0;
         const targetAmount = targetRecords.reduce(
-          (sum, record) => sum + (Number(record.targetAmount) || 0),
+          (sum, record) => sum + finiteAmount(record.targetAmount),
           0
         );
         const netSales = sales - returns;
-        const paymentBase = Math.max(0, Number(previousDue) + netSales);
+        const paymentBase = Math.max(0, finiteAmount(previousDue) + netSales);
         return {
           ...target,
           id: dealerId || key,
@@ -425,7 +483,7 @@ export default function MonthlyTargetReports() {
           returns,
           netSales,
           received,
-          paymentDue: Number(previousDue) + netSales - received,
+          paymentDue: finiteAmount(previousDue) + netSales - received,
           salesPercentage: targetAmount > 0
             ? Math.round(netSales / targetAmount * 100)
             : 0,
@@ -444,7 +502,7 @@ export default function MonthlyTargetReports() {
     totals.salesPercentage = totals.target > 0 ? Math.round(totals.netSales / totals.target * 100) : 0;
     totals.paymentPercentage = totals.paymentBase > 0 ? Math.round(totals.received / totals.paymentBase * 100) : 0;
     return { rows, totals };
-  }, [dealerFilter, dealerTargets, dealers, invoices, payments]);
+  }, [dealerFilter, dealerTargets, visibleDealers, invoices, payments]);
 
   const stockReport = useMemo(() => {
     const range = periodRange(stockFilter);
@@ -457,7 +515,7 @@ export default function MonthlyTargetReports() {
     }
   }, [invoices, products, stockFilter, stockInLogs]);
 
-  const selectedOfficer = mergeOfficerRecords(officers).find((entry) => (
+  const selectedOfficer = allOfficers.find((entry) => (
     String(entry.id || entry.officerId || '') === String(officerDraft.officerId)
   ));
   const selectedOfficerTarget = officerTargets.find((entry) => (
@@ -553,9 +611,18 @@ export default function MonthlyTargetReports() {
           <h1 className="text-2xl font-black">মাসিক বিক্রয় টার্গেট ও রিপোর্ট</h1>
           <p className="mt-1 text-sm text-emerald-100">অফিসার, ডিলার ও স্টক রিপোর্ট</p>
         </div>
-        <button type="button" onClick={() => window.print()} className="inline-flex items-center gap-2 rounded-lg bg-white/10 px-4 py-2 text-sm font-bold">
-          <Printer className="h-4 w-4" /> প্রিন্ট
-        </button>
+        <div className="flex flex-wrap items-center gap-3">
+          {currentUser?.role === RSM_ROLE && <label className="text-xs font-bold text-white">
+            ASM নির্বাচন করুন
+            <select value={selectedAsm} onChange={(event) => setSelectedAsm(event.target.value)} className="mt-1 block min-w-48 rounded-lg border border-white/30 bg-white px-3 py-2 text-sm text-slate-900">
+              <option value="">সকল ASM</option>
+              {asmOptions.map((asm) => <option key={asm.hierarchyUserId || asm.id} value={asm.hierarchyUserId || asm.id}>{asm.name}{asm.code ? ` (${asm.code})` : ''}</option>)}
+            </select>
+          </label>}
+          <button type="button" onClick={() => window.print()} className="inline-flex items-center gap-2 rounded-lg bg-white/10 px-4 py-2 text-sm font-bold">
+            <Printer className="h-4 w-4" /> প্রিন্ট
+          </button>
+        </div>
       </header>
 
       <nav className="no-print flex flex-wrap gap-2" aria-label="রিপোর্ট নির্বাচন">
@@ -605,7 +672,7 @@ export default function MonthlyTargetReports() {
             <label className="text-xs font-semibold text-slate-600">অফিসার নাম
               <select required value={officerDraft.officerId} onChange={(event) => setOfficerDraft((draft) => ({ ...draft, officerId: event.target.value }))} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2">
                 <option value="">অফিসার নির্বাচন</option>
-                {officers.map((officer) => <option key={officer.id} value={officer.id}>{officer.name}</option>)}
+                {allOfficers.map((officer) => <option key={officer.id} value={officer.id}>{officer.name}</option>)}
               </select>
             </label>
             <label className="text-xs font-semibold text-slate-600">টার্গেট ভ্যালু
@@ -744,14 +811,15 @@ export default function MonthlyTargetReports() {
           <PeriodFilter value={stockFilter} onChange={setStockFilter} years={years} months={[]} sessions={sessions} />
           {stockReport.error && <p role="alert" className="text-sm font-semibold text-rose-700">{stockReport.error}</p>}
           <FilteredReportTable>
-            <table className="w-full min-w-[1100px] text-left text-xs monthly-stock-table">
+            <table className="w-full min-w-[1200px] text-left text-xs monthly-stock-table">
               <thead className="bg-emerald-900 text-white"><tr>
-                {['সিরিয়াল নাম্বার', 'প্রোডাক্ট নাম', 'প্যাক সাইজ', 'লাষ্ট মাস স্টক', 'ফ্যাক্টরি রিসিভ', 'মার্কেট রিটার্ন', 'টোটাল স্টক', 'ফ্যাক্টরি রিটার্ন', 'সেলস', 'নিট স্টক'].map((label) => <th key={label} className="px-2 py-2">{label}</th>)}
+                {['সিরিয়াল নাম্বার', 'প্রোডাক্ট কোড', 'প্রোডাক্ট নাম', 'প্যাক সাইজ', 'লাষ্ট মাস স্টক', 'ফ্যাক্টরি রিসিভ', 'মার্কেট রিটার্ন', 'টোটাল স্টক', 'ফ্যাক্টরি রিটার্ন', 'সেলস', 'নিট স্টক'].map((label) => <th key={label} className="px-2 py-2">{label}</th>)}
               </tr></thead>
               <tbody className="divide-y divide-slate-100">
                 {stockReport.rows.map((row, index) => (
                   <tr key={`${row.productId}-${row.sku}`}>
                     <td className="px-2 py-1 text-center">{index + 1}</td>
+                  <td className="px-2 py-1 font-semibold">{row.productCode}</td>
                     <td className="px-2 py-1">{row.productName}</td>
                     <td className="px-2 py-1">{row.packSize} • {row.quantityUnit}</td>
                     <td className="px-2 py-1 text-right">{row.lastMonthStock}</td>
@@ -764,7 +832,7 @@ export default function MonthlyTargetReports() {
                   </tr>
                 ))}
                 <tr className="bg-emerald-50 font-black">
-                  <td colSpan="3" className="px-2 py-1 text-right">মোট</td>
+                  <td colSpan="4" className="px-2 py-1 text-right">মোট</td>
                   <td className="px-2 py-1 text-right">{stockReport.totals?.lastMonthStock || 0}</td>
                   <td className="px-2 py-1 text-right">{stockReport.totals?.factoryReceive || 0}</td>
                   <td className="px-2 py-1 text-right">{stockReport.totals?.marketReturn || 0}</td>
@@ -773,14 +841,14 @@ export default function MonthlyTargetReports() {
                   <td className="px-2 py-1 text-right">{stockReport.totals?.sales || 0}</td>
                   <td className="px-2 py-1 text-right">{stockReport.totals?.netStock || 0}</td>
                 </tr>
-                {!stockReport.rows.length && !stockReport.error && <tr><td colSpan="10" className="px-2 py-8 text-center text-slate-500">কোনো স্টক তথ্য নেই।</td></tr>}
+                {!stockReport.rows.length && !stockReport.error && <tr><td colSpan="11" className="px-2 py-8 text-center text-slate-500">কোনো স্টক তথ্য নেই।</td></tr>}
               </tbody>
             </table>
           </FilteredReportTable>
         </section>
       )}
 
-      {activeReport === 'manual' && <MonthlySalesReports />}
+      {activeReport === 'manual' && <MonthlySalesReports selectedAsm={selectedAsm} hierarchyOfficers={allOfficers} />}
     </main>
   );
 }
