@@ -17,7 +17,12 @@ import {
   sessionPrimaryCondition,
   sessionsMatch
 } from '../shared/reportDateFilters.js';
-import { getInvoiceSessionForDate, INVOICE_SESSIONS, normalizeSessionText } from '../shared/sessions.js';
+import {
+  getInvoiceSessionForDate,
+  INVOICE_SESSIONS,
+  LEGACY_INVOICE_SESSION,
+  normalizeSessionText
+} from '../shared/sessions.js';
 import { ADMIN_ROLES, ASM_ROLE, LOGISTIC_OFFICER_ROLE, RSM_ROLE } from '../shared/roles.js';
 import { HIERARCHY_ROLE_VALUES } from '../shared/roles.js';
 import { resolveHierarchyScope } from '../lib/hierarchy.js';
@@ -59,6 +64,99 @@ export function getPeriodRange(period, value, startSession, endSession, startDat
   return null;
 }
 
+function escapeRegex(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function buildDealerOwnerFilter(scope) {
+  if (scope.global) return {};
+  const conditions = [];
+  const officerIds = [...scope.officerIds];
+  if (officerIds.length) {
+    conditions.push(
+      { officerId: { $in: officerIds } },
+      { assignedOfficerId: { $in: officerIds } }
+    );
+  }
+  [...scope.officerCodes].forEach((code) => {
+    const regex = { $regex: `^${escapeRegex(code)}$`, $options: 'i' };
+    conditions.push(
+      { officerCode: regex },
+      { assignedOfficerCode: regex }
+    );
+  });
+  return conditions.length ? { $or: conditions } : { _id: null };
+}
+
+export function buildReportOwnerMatch(scope, dealerIds = []) {
+  const ownerMatch = buildOfficerOwnerFilter(scope);
+  if (scope.global || !dealerIds.length) return ownerMatch;
+  const directConditions = ownerMatch.$or || [ownerMatch];
+  return {
+    $or: [
+      ...directConditions,
+      {
+        officerId: { $in: ['', null] },
+        officerCode: { $in: ['', null] },
+        officerName: { $in: ['', null] },
+        dealerId: { $in: dealerIds }
+      }
+    ]
+  };
+}
+
+export function priorSessionCondition(value) {
+  const selectedRange = parseSessionDateRange(value);
+  if (!selectedRange) return null;
+  const priorSessions = INVOICE_SESSIONS.filter((session) => {
+    const range = parseSessionDateRange(session);
+    return range && range.end <= selectedRange.start;
+  });
+  const priorSessionAliases = priorSessions.flatMap((session) => {
+    const range = parseSessionDateRange(session);
+    const year = range.start.slice(0, 4);
+    const aliases = range.start.endsWith('-01-01')
+      ? [`January-June ${year}`, `January - June ${year}`]
+      : [`July-December ${year}`, `July - December ${year}`];
+    return [session, ...aliases];
+  });
+  return {
+    $or: [
+      { session: { $in: [...new Set(priorSessionAliases)] } },
+      {
+        $and: [
+          { session: { $in: ['', null, LEGACY_INVOICE_SESSION] } },
+          { date: { $lt: selectedRange.start } }
+        ]
+      }
+    ]
+  };
+}
+
+function ownerIsMissingExpression() {
+  return {
+    $and: [
+      { $eq: [{ $ifNull: ['$officerId', ''] }, ''] },
+      { $eq: [{ $ifNull: ['$officerCode', ''] }, ''] },
+      { $eq: [{ $ifNull: ['$officerName', ''] }, ''] }
+    ]
+  };
+}
+
+function reportOwnerField(field, dealerFields) {
+  const dealerValue = dealerFields.reduceRight(
+    (value, dealerField) => ({ $ifNull: [`$dealerProfile.${dealerField}`, value] }),
+    ''
+  );
+  return {
+    $cond: [
+      ownerIsMissingExpression(),
+      dealerValue,
+      { $ifNull: [`$${field}`, ''] }
+    ]
+  };
+}
+
 function invoicePipeline(match, { openingBalance = false } = {}) {
   return [
     { $match: { ...match, invoiceType: { $nin: DAMAGE_TYPES } } },
@@ -70,9 +168,9 @@ function invoicePipeline(match, { openingBalance = false } = {}) {
         as: 'dealerProfile'
       }
     },
+    { $set: { dealerProfile: { $first: '$dealerProfile' } } },
     {
       $set: {
-        dealerProfile: { $first: '$dealerProfile' },
         reportAmount: {
           $abs: {
             $cond: [
@@ -81,16 +179,19 @@ function invoicePipeline(match, { openingBalance = false } = {}) {
               { $ifNull: ['$grandTotal', '$totalAmount'] }
             ]
           }
-        }
+        },
+        reportOfficerId: reportOwnerField('officerId', ['assignedOfficerId', 'officerId']),
+        reportOfficerCode: reportOwnerField('officerCode', ['assignedOfficerCode', 'officerCode']),
+        reportOfficerName: reportOwnerField('officerName', ['assignedOfficerName', 'officerName'])
       }
     },
     { $sort: { date: 1, createdAt: 1 } },
     {
       $group: {
         _id: {
-          officerId: '$officerId',
-          officerCode: '$officerCode',
-          officerName: '$officerName',
+          officerId: '$reportOfficerId',
+          officerCode: '$reportOfficerCode',
+          officerName: '$reportOfficerName',
           dealerId: '$dealerId',
           dealerCode: '$dealerCode',
           dealerName: {
@@ -258,13 +359,20 @@ export function paymentPipeline(match) {
       }
     },
     { $set: { dealerProfile: { $first: '$dealerProfile' } } },
-    { $set: { resolvedPaymentType } },
+    {
+      $set: {
+        resolvedPaymentType,
+        reportOfficerId: reportOwnerField('officerId', ['assignedOfficerId', 'officerId']),
+        reportOfficerCode: reportOwnerField('officerCode', ['assignedOfficerCode', 'officerCode']),
+        reportOfficerName: reportOwnerField('officerName', ['assignedOfficerName', 'officerName'])
+      }
+    },
     {
       $group: {
         _id: {
-          officerId: '$officerId',
-          officerCode: '$officerCode',
-          officerName: '$officerName',
+          officerId: '$reportOfficerId',
+          officerCode: '$reportOfficerCode',
+          officerName: '$reportOfficerName',
           dealerId: '$dealerId',
           dealerName: {
             $cond: [
@@ -360,14 +468,18 @@ export function addPaymentRows(groups, rows, { period, periodValue, periodRange,
     const explicitSession = normalizeSessionText(payment.session);
     if (period === 'all' && beforePeriod) return;
     if (period === 'session') {
-      if (beforePeriod && sessionsMatch(explicitSession, periodValue)) return;
-      if (!beforePeriod && explicitSession) {
-        if (!sessionsMatch(explicitSession, periodValue)) return;
+      if (explicitSession) {
+        if (beforePeriod) {
+          const paymentSessionRange = parseSessionDateRange(explicitSession);
+          if (!paymentSessionRange || paymentSessionRange.end > periodRange.start) return;
+        } else if (!sessionsMatch(explicitSession, periodValue)) {
+          return;
+        }
       } else if (date && (beforePeriod
         ? date >= periodRange.start
         : date < periodRange.start || date >= periodRange.end)) {
         return;
-      } else if (!date && (!explicitSession || beforePeriod)) {
+      } else if (!date) {
         return;
       }
     } else if (period !== 'all') {
@@ -436,7 +548,14 @@ export default async function handler(req, res) {
 
   try {
     const scope = await resolveHierarchyScope(user);
+    const scopedDealers = scope.global
+      ? []
+      : await Dealer.find(buildDealerOwnerFilter(scope))
+        .select('id officerCode')
+        .lean();
+    const scopedDealerIds = scopedDealers.map((dealer) => String(dealer.id || '')).filter(Boolean);
     const ownerMatch = buildOfficerOwnerFilter(scope);
+    const reportOwnerMatch = buildReportOwnerMatch(scope, scopedDealerIds);
     const asmFilter = String(req.query?.asm || '');
     const selectedAsm = asmFilter
       ? user.role === RSM_ROLE
@@ -454,21 +573,25 @@ export default async function handler(req, res) {
       ))
       : scope.users;
     const periodMatch = period === 'all'
-      ? ownerMatch
+      ? reportOwnerMatch
       : period === 'session'
-        ? { $and: [sessionPrimaryCondition(value), ownerMatch] }
-        : { ...dateRangeCondition('date', periodRange), ...ownerMatch };
+        ? { $and: [sessionPrimaryCondition(value), reportOwnerMatch] }
+        : { ...dateRangeCondition('date', periodRange), ...reportOwnerMatch };
     const periodPaymentMatch = period === 'session'
       ? {
           $and: [
             sessionPrimaryCondition(value),
-            ownerMatch
+            reportOwnerMatch
           ]
         }
       : periodMatch;
     const priorMatch = period === 'all' ? { _id: null } : {
-      date: { $lt: periodRange.start },
-      ...ownerMatch
+      $and: [
+        period === 'session'
+          ? priorSessionCondition(value)
+          : { date: { $lt: periodRange.start } },
+        reportOwnerMatch
+      ]
     };
     const [officerRecords, salesOfficerRecords, periodInvoices, priorInvoices, invoiceIdentities, periodPayments, priorPayments, typedPayments, legacyRecords] = await Promise.all([
       BusinessRecord.find({ type: 'officers' }).select('data').lean(),
@@ -478,7 +601,7 @@ export default async function handler(req, res) {
       Invoice.find({ $or: [periodMatch, priorMatch] }).select('id invoiceNo').lean(),
       Payment.aggregate(paymentPipeline(periodPaymentMatch)),
       Payment.aggregate(paymentPipeline(priorMatch)),
-      Payment.find(ownerMatch).select('id sourceInvoiceId').lean(),
+      Payment.find(reportOwnerMatch).select('id sourceInvoiceId').lean(),
       BusinessRecord.find({ type: 'payments' }).select('data').lean()
     ]);
     const excludedInvoiceIds = [...new Set(invoiceIdentities.flatMap((invoice) => (
@@ -499,11 +622,26 @@ export default async function handler(req, res) {
 
     const typedPaymentIds = new Set(typedPayments.map((payment) => String(payment.id)));
     const typedInvoiceSources = new Set(typedPayments.map((payment) => String(payment.sourceInvoiceId || '')).filter(Boolean));
-    const legacyPayments = legacyRecords.map((record) => record.data).filter((payment) => (
+    const rawLegacyPayments = legacyRecords.map((record) => record.data).filter((payment) => (
       payment
       && !(payment.id && typedPaymentIds.has(String(payment.id)))
       && !(payment.sourceInvoiceId && typedInvoiceSources.has(String(payment.sourceInvoiceId)))
     ));
+    const legacyDealerIds = [...new Set(rawLegacyPayments
+      .map((payment) => String(payment.dealerId || ''))
+      .filter(Boolean))];
+    const legacyDealerRecords = scope.global && legacyDealerIds.length
+      ? await Dealer.find({ id: { $in: legacyDealerIds } }).select('id officerCode').lean()
+      : scopedDealers;
+    const legacyDealerCodes = new Map(legacyDealerRecords.map((dealer) => [
+      String(dealer.id),
+      String(dealer.officerCode || '')
+    ]));
+    const legacyPayments = rawLegacyPayments.map((payment) => {
+      if (payment.officerId || payment.officerCode || payment.officerName) return payment;
+      const officerCode = legacyDealerCodes.get(String(payment.dealerId || ''));
+      return officerCode ? { ...payment, officerCode } : payment;
+    });
     const periodPaymentGroups = new Map();
     const priorPaymentGroups = new Map();
     addPaymentRows(periodPaymentGroups, legacyPayments, {
