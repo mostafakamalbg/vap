@@ -12,6 +12,7 @@ import {
 } from '../shared/roles.js';
 import { createApprovalRequest } from '../lib/approvalRequests.js';
 import {
+  createStockInChallanSnapshot,
   assertStockInSnapshot,
   getStockInRecordData,
   loadStockInChallan,
@@ -19,6 +20,7 @@ import {
 } from '../lib/stockInMutations.js';
 import { getStockInChallanKey } from '../shared/stockInChallans.js';
 import { canEditStockInDirectly } from '../shared/stockInPermissions.js';
+import { getStockInRevisionChanges } from '../shared/stockInRevisions.js';
 
 function isValidDate(value) {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -72,6 +74,14 @@ function getStockInTargetIds(records) {
   ]).filter(Boolean))];
 }
 
+function getStockInSnapshots(records) {
+  return records.map((record) => ({
+    id: record.recordId,
+    data: getStockInRecordData(record),
+    recordUpdatedAt: record.updatedAt
+  }));
+}
+
 async function prepareStockInEntries(currentRecords, input, session) {
   const rawItems = Array.isArray(input.items) ? input.items : [input];
   if (!rawItems.length || rawItems.length > 200) {
@@ -80,7 +90,10 @@ async function prepareStockInEntries(currentRecords, input, session) {
     throw error;
   }
   const sharedFields = getChallanSharedFields(input);
-  const currentById = new Map(currentRecords.map((record) => [record.recordId, record]));
+  const currentById = new Map(currentRecords.flatMap((record) => [
+    [String(record.recordId || ''), record],
+    [String(record.data?.id || ''), record]
+  ]).filter(([id]) => id));
   const selectedIds = new Set();
   const products = new Map();
   const revisedEntries = [];
@@ -92,15 +105,16 @@ async function prepareStockInEntries(currentRecords, input, session) {
       throw error;
     }
     const requestedId = String(rawItem?.id || '').trim();
-    if (requestedId && (!currentById.has(requestedId) || selectedIds.has(requestedId))) {
+    const current = requestedId
+      ? currentById.get(requestedId)
+      : (rawItems.length === 1 ? currentRecords[0] : null);
+    const currentRecordId = String(current?.recordId || '');
+    if (requestedId && (!current || selectedIds.has(currentRecordId))) {
       const error = new Error('চালানের পণ্য তালিকা সঠিক নয়; আবার খুলে সম্পাদনা করুন।');
       error.statusCode = 409;
       throw error;
     }
-    if (requestedId) selectedIds.add(requestedId);
-    const current = requestedId
-      ? currentById.get(requestedId)
-      : (rawItems.length === 1 ? currentRecords[0] : null);
+    if (requestedId) selectedIds.add(currentRecordId);
     const id = current?.recordId || `STK-IN-${randomUUID()}`;
     const itemFields = Object.fromEntries(
       ['productId', 'sku', 'cartons', 'quantity']
@@ -237,20 +251,40 @@ export default async function handler(req, res) {
       if (!currentRecords.length) {
         return res.status(409).json({ error: 'সক্রিয় স্টক-ইন পণ্য পাওয়া যায়নি।' });
       }
+      const originalEntries = Array.isArray(req.body?.originalEntries)
+        ? req.body.originalEntries
+        : getStockInSnapshots(currentRecords);
       const conflictingRequest = await BusinessRecord.findOne({
         type: 'approvalRequests',
         'data.targetId': { $in: targetIds },
         'data.requestType': { $in: ['stock_in_update', 'stock_in_delete'] },
-        'data.status': 'pending_super_admin_approval'
-      }).select('recordId').lean();
-      if (conflictingRequest && !directAccess) {
-        return res.status(409).json({ error: 'এই চালানের আরেকটি পরিবর্তন অনুমোদনের অপেক্ষায় আছে।' });
+        'data.status': { $in: ['pending_super_admin_approval', 'processing_super_admin_approval'] }
+      }).select('recordId data.status').lean();
+      if (
+        conflictingRequest
+        && (!directAccess || conflictingRequest.data?.status === 'processing_super_admin_approval')
+      ) {
+        return res.status(409).json({ error: 'এই চালানের আরেকটি পরিবর্তন অনুমোদন বা প্রক্রিয়াধীন আছে।' });
       }
-      assertStockInSnapshot(currentRecords, req.body?.originalEntries);
+      assertStockInSnapshot(currentRecords, originalEntries);
       const revisedEntries = await prepareStockInEntries(currentRecords, input);
       const identity = getStockInChallanKey(revisedEntries[0]);
       if (revisedEntries.some((entry) => getStockInChallanKey(entry) !== identity)) {
         return res.status(400).json({ error: 'একটি চালানের সব পণ্যের তারিখ ও চালান নম্বর একই হতে হবে।' });
+      }
+      const revisionChanges = getStockInRevisionChanges(
+        currentRecords.map((record) => ({
+          ...getStockInRecordData(record),
+          id: record.recordId
+        })),
+        revisedEntries
+      );
+      if (!revisionChanges.length) {
+        return res.status(200).json({
+          pendingApproval: false,
+          unchanged: true,
+          entries: currentRecords.map(getStockInRecordData)
+        });
       }
       if (directAccess) {
         let savedEntries = [];
@@ -264,44 +298,41 @@ export default async function handler(req, res) {
           const recordsToUpdate = Array.isArray(input.items)
             ? current.records
             : current.records.filter((record) => record.recordId === current.anchor.recordId);
-          assertStockInSnapshot(recordsToUpdate, req.body?.originalEntries);
+          assertStockInSnapshot(recordsToUpdate, originalEntries);
           savedEntries = await saveStockInRevision(recordsToUpdate, revisedEntries, {
             deletedBy: String(user.name || ''),
             deletedByRole: String(user.role || '')
           }, session);
-          if (conflictingRequest) {
-            await BusinessRecord.updateMany({
-              type: 'approvalRequests',
-              'data.targetId': { $in: targetIds },
-              'data.requestType': { $in: ['stock_in_update', 'stock_in_delete'] },
-              'data.status': 'pending_super_admin_approval'
-            }, {
-              $set: {
-                'data.status': 'superseded',
-                'data.decidedBy': String(user.name || ''),
-                'data.decidedByRole': String(user.role || ''),
-                'data.decidedAt': new Date(),
-                'data.resolutionNote': 'সুপার অ্যাডমিন/MD/Chairman সরাসরি চালান সংশোধন করেছেন।'
-              }
-            }, transactionOptions(session));
-          }
+          await BusinessRecord.updateMany({
+            type: 'approvalRequests',
+            'data.targetId': { $in: targetIds },
+            'data.requestType': { $in: ['stock_in_update', 'stock_in_delete'] },
+            'data.status': 'pending_super_admin_approval'
+          }, {
+            $set: {
+              'data.status': 'superseded',
+              'data.decidedBy': String(user.name || ''),
+              'data.decidedByRole': String(user.role || ''),
+              'data.decidedAt': new Date(),
+              'data.resolutionNote': 'সুপার অ্যাডমিন/MD/Chairman সরাসরি চালান সংশোধন করেছেন।'
+            }
+          }, transactionOptions(session));
         });
         return res.status(200).json({ pendingApproval: false, entries: savedEntries });
       }
       const approvalRequest = await createApprovalRequest({
         requestType: 'stock_in_update',
         targetId,
-        original: currentRecords.map((record) => ({
-          id: record.recordId,
-          data: getStockInRecordData(record),
-          recordUpdatedAt: record.updatedAt
-        })),
-        originalUpdatedAt: Object.fromEntries(currentRecords.map((record) => (
-          [record.recordId, record.updatedAt]
-        ))),
+        original: revisionChanges
+          .filter((change) => change.oldEntry)
+          .map((change) => ({ id: change.id, data: change.oldEntry })),
         proposed: {
           grouped: Array.isArray(input.items),
-          entries: revisedEntries,
+          entries: revisionChanges
+            .map((change) => change.newEntry)
+            .filter(Boolean),
+          changes: revisionChanges,
+          challanSnapshot: createStockInChallanSnapshot(currentRecords),
           requestedBy: String(user.name || ''),
           requestedByRole: String(user.role || '')
         },
@@ -328,16 +359,22 @@ export default async function handler(req, res) {
       if (loaded.anchor.data?.deletedAt) {
         return res.status(409).json({ error: 'স্টক-ইন চালানটি আগেই মুছে ফেলা হয়েছে।' });
       }
+      const originalEntries = Array.isArray(req.body?.originalEntries)
+        ? req.body.originalEntries
+        : getStockInSnapshots(loaded.records);
       const conflictingRequest = await BusinessRecord.findOne({
         type: 'approvalRequests',
         'data.targetId': { $in: getStockInTargetIds(loaded.records) },
         'data.requestType': { $in: ['stock_in_update', 'stock_in_delete'] },
-        'data.status': 'pending_super_admin_approval'
-      }).select('recordId').lean();
-      if (conflictingRequest && !directAccess) {
-        return res.status(409).json({ error: 'এই চালানের আরেকটি পরিবর্তন অনুমোদনের অপেক্ষায় আছে।' });
+        'data.status': { $in: ['pending_super_admin_approval', 'processing_super_admin_approval'] }
+      }).select('recordId data.status').lean();
+      if (
+        conflictingRequest
+        && (!directAccess || conflictingRequest.data?.status === 'processing_super_admin_approval')
+      ) {
+        return res.status(409).json({ error: 'এই চালানের আরেকটি পরিবর্তন অনুমোদন বা প্রক্রিয়াধীন আছে।' });
       }
-      assertStockInSnapshot(loaded.records, req.body?.originalEntries);
+      assertStockInSnapshot(loaded.records, originalEntries);
       if (directAccess) {
         await withTransactionFallback(async (session) => {
           const current = await loadStockInChallan(id, session);
@@ -346,38 +383,32 @@ export default async function handler(req, res) {
             error.statusCode = 409;
             throw error;
           }
-          assertStockInSnapshot(current.records, req.body?.originalEntries);
+          assertStockInSnapshot(current.records, originalEntries);
           await saveStockInRevision(current.records, [], {
             deletedBy: String(user.name || ''),
             deletedByRole: String(user.role || '')
           }, session);
-          if (conflictingRequest) {
-            await BusinessRecord.updateMany({
-              type: 'approvalRequests',
-              'data.targetId': { $in: getStockInTargetIds(loaded.records) },
-              'data.requestType': { $in: ['stock_in_update', 'stock_in_delete'] },
-              'data.status': 'pending_super_admin_approval'
-            }, {
-              $set: {
-                'data.status': 'superseded',
-                'data.decidedBy': String(user.name || ''),
-                'data.decidedByRole': String(user.role || ''),
-                'data.decidedAt': new Date(),
-                'data.resolutionNote': 'সুপার অ্যাডমিন/MD/Chairman সরাসরি চালান নিষ্পত্তি করেছেন।'
-              }
-            }, transactionOptions(session));
-          }
+          await BusinessRecord.updateMany({
+            type: 'approvalRequests',
+            'data.targetId': { $in: getStockInTargetIds(current.records) },
+            'data.requestType': { $in: ['stock_in_update', 'stock_in_delete'] },
+            'data.status': 'pending_super_admin_approval'
+          }, {
+            $set: {
+              'data.status': 'superseded',
+              'data.decidedBy': String(user.name || ''),
+              'data.decidedByRole': String(user.role || ''),
+              'data.decidedAt': new Date(),
+              'data.resolutionNote': 'সুপার অ্যাডমিন/MD/Chairman সরাসরি চালান নিষ্পত্তি করেছেন।'
+            }
+          }, transactionOptions(session));
         });
         return res.status(200).json({ pendingApproval: false, deleted: true });
       }
       const approvalRequest = await createApprovalRequest({
         requestType: 'stock_in_delete',
         targetId: loaded.records[0]?.recordId || loaded.anchor.recordId,
-        original: loaded.records.map((record) => ({
-          id: record.recordId,
-          data: getStockInRecordData(record),
-          recordUpdatedAt: record.updatedAt
-        })),
+        original: getStockInSnapshots(loaded.records),
         originalUpdatedAt: Object.fromEntries(loaded.records.map((record) => (
           [record.recordId, record.updatedAt]
         ))),

@@ -20,6 +20,105 @@ async function requestJson(url, options) {
   return result;
 }
 
+function getStockInApprovalChanges(request) {
+  const snapshots = (Array.isArray(request.original) ? request.original : [request.original])
+    .filter(Boolean);
+  const originals = snapshots.map((entry) => entry.data || entry);
+  if (Array.isArray(request.proposed?.changes)) return request.proposed.changes;
+  if (request.requestType === 'stock_in_delete') {
+    return originals.map((oldEntry, index) => ({
+      id: snapshots[index].id || oldEntry.id,
+      oldEntry,
+      newEntry: null
+    }));
+  }
+
+  const proposedEntries = Array.isArray(request.proposed?.entries)
+    ? request.proposed.entries
+    : request.proposed && !request.proposed.payment ? [request.proposed] : [];
+  const originalById = new Map();
+  originals.forEach((entry, index) => {
+    const snapshotId = String(snapshots[index].id || '');
+    const dataId = String(entry.id || '');
+    if (snapshotId) originalById.set(snapshotId, entry);
+    if (dataId) originalById.set(dataId, entry);
+  });
+  const proposedById = new Map(proposedEntries.map((entry) => [String(entry.id || ''), entry]));
+  const ids = [...new Set([...originalById.keys(), ...proposedById.keys()])].filter(Boolean);
+  return ids.flatMap((id) => {
+    const oldEntry = originalById.get(id) || null;
+    const newEntry = proposedById.get(id) || null;
+    if (JSON.stringify(oldEntry) === JSON.stringify(newEntry)) return [];
+    return [{ id, oldEntry, newEntry }];
+  });
+}
+
+function getStockInEntrySummary(entry, emptyLabel) {
+  if (!entry) return emptyLabel;
+  const product = entry.productName || entry.productId || 'অজানা পণ্য';
+  const variant = entry.size || entry.sku;
+  const quantity = Number(entry.cartons ?? entry.quantity) || 0;
+  const unit = entry.quantityUnit || 'কার্টুন';
+  const pieces = Number(entry.quantityPieces) || 0;
+  return [
+    `${product}${variant ? ` • ${variant}` : ''}`,
+    `${quantity.toLocaleString('bn-BD')} ${unit}${pieces ? ` (${pieces.toLocaleString('bn-BD')} পিস)` : ''}`,
+    entry.date ? `তারিখ: ${entry.date}` : ''
+  ].filter(Boolean).join(' • ');
+}
+
+function StockInApprovalDetails({ request }) {
+  const original = (Array.isArray(request.original) ? request.original : [request.original])
+    .filter(Boolean)
+    .map((entry) => entry.data || entry);
+  const changes = getStockInApprovalChanges(request);
+  const representative = original[0]
+    || changes.find((change) => change.oldEntry || change.newEntry)?.oldEntry
+    || changes.find((change) => change.newEntry)?.newEntry
+    || {};
+  const challanNo = representative.challanNo
+    || representative.challanNumber
+    || representative.invoiceNo
+    || representative.voucherNo
+    || request.targetId;
+  const proposedRepresentative = changes.find((change) => change.newEntry)?.newEntry;
+  const proposedChallanNo = proposedRepresentative?.challanNo
+    || proposedRepresentative?.challanNumber
+    || proposedRepresentative?.invoiceNo
+    || proposedRepresentative?.voucherNo;
+
+  return (
+    <div className="space-y-3">
+      <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
+        <p><span className="font-bold">চালান নম্বর:</span> {challanNo}</p>
+        <p><span className="font-bold">তারিখ:</span> {representative.date || '—'}</p>
+        {request.requestType === 'stock_in_update' && proposedRepresentative && (
+          <>
+            <p><span className="font-bold">প্রস্তাবিত চালান নম্বর:</span> {proposedChallanNo || '—'}</p>
+            <p><span className="font-bold">প্রস্তাবিত তারিখ:</span> {proposedRepresentative.date || '—'}</p>
+          </>
+        )}
+        {request.requestType === 'stock_in_delete' && (
+          <p className="mt-1 font-semibold text-rose-700">অনুমোদন করলে তালিকাভুক্ত পণ্যের স্টক চালান অনুযায়ী কমবে।</p>
+        )}
+      </div>
+      {changes.map((change) => (
+        <div key={change.id} className="grid gap-3 rounded-lg border border-slate-200 p-3 lg:grid-cols-2">
+          <div className="min-w-0 rounded-md bg-rose-50 p-3">
+            <h3 className="mb-1 text-xs font-black text-rose-800">আগের তথ্য</h3>
+            <p className="break-words text-sm text-slate-800">{getStockInEntrySummary(change.oldEntry, 'আগে চালানে ছিল না')}</p>
+          </div>
+          <div className="min-w-0 rounded-md bg-emerald-50 p-3">
+            <h3 className="mb-1 text-xs font-black text-emerald-800">অনুমোদনের পর</h3>
+            <p className="break-words text-sm text-slate-800">{getStockInEntrySummary(change.newEntry, 'চালান থেকে সরানো হবে')}</p>
+          </div>
+        </div>
+      ))}
+      {!changes.length && <p className="text-xs text-slate-500">পরিবর্তিত পণ্যের তথ্য পাওয়া যায়নি।</p>}
+    </div>
+  );
+}
+
 export default function AdminAccess({ onInvoiceCreated, onStockInApproved }) {
   const { products, refreshSharedRecords, currentUser } = useAgro();
   const isSuperAdmin = isSuperAdminRole(currentUser?.role) || currentUser?.isSuperAdmin;
@@ -532,28 +631,38 @@ export default function AdminAccess({ onInvoiceCreated, onStockInApproved }) {
                       {request.submittedAt ? new Date(request.submittedAt).toLocaleString('bn-BD') : 'তারিখ নেই'}
                     </p>
                   </div>
-                  <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-bold text-amber-800">অনুমোদন অপেক্ষমাণ</span>
+                  <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${
+                    request.status === 'processing_super_admin_approval'
+                      ? 'bg-sky-100 text-sky-800'
+                      : 'bg-amber-100 text-amber-800'
+                  }`}>
+                    {request.status === 'processing_super_admin_approval' ? 'প্রয়োগ হচ্ছে' : 'অনুমোদন অপেক্ষমাণ'}
+                  </span>
                 </div>
-                <div className="grid gap-3 lg:grid-cols-2">
-                  {[
-                    ['মূল তথ্য', request.original],
-                    ['প্রস্তাবিত পরিবর্তন', request.requestType === 'officer_payment_submission'
-                      ? request.proposed?.payment
-                      : request.proposed]
-                  ].map(([label, values]) => (
-                    <div key={label} className="min-w-0 rounded-lg border border-slate-200 bg-slate-50 p-3">
-                      <h3 className="mb-2 text-xs font-black text-slate-700">{label}</h3>
-                      <dl className="space-y-1">
-                        {Object.entries(values || {}).filter(([key]) => !['_id', '__v', 'createdAt', 'updatedAt', 'proof'].includes(key)).map(([key, value]) => (
-                          <div key={key} className="grid grid-cols-[minmax(5rem,auto)_1fr] gap-2 text-[11px]">
-                            <dt className="break-all font-semibold text-slate-500">{key}</dt>
-                            <dd className="break-all text-slate-800">{value != null && typeof value === 'object' ? JSON.stringify(value) : String(value ?? '—')}</dd>
-                          </div>
-                        ))}
-                      </dl>
+                {['stock_in_update', 'stock_in_delete'].includes(request.requestType)
+                  ? <StockInApprovalDetails request={request} />
+                  : (
+                    <div className="grid gap-3 lg:grid-cols-2">
+                      {[
+                        ['মূল তথ্য', request.original],
+                        ['প্রস্তাবিত পরিবর্তন', request.requestType === 'officer_payment_submission'
+                          ? request.proposed?.payment
+                          : request.proposed]
+                      ].map(([label, values]) => (
+                        <div key={label} className="min-w-0 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                          <h3 className="mb-2 text-xs font-black text-slate-700">{label}</h3>
+                          <dl className="space-y-1">
+                            {Object.entries(values || {}).filter(([key]) => !['_id', '__v', 'createdAt', 'updatedAt', 'proof'].includes(key)).map(([key, value]) => (
+                              <div key={key} className="grid grid-cols-[minmax(5rem,auto)_1fr] gap-2 text-[11px]">
+                                <dt className="break-all font-semibold text-slate-500">{key}</dt>
+                                <dd className="break-all text-slate-800">{value != null && typeof value === 'object' ? JSON.stringify(value) : String(value ?? '—')}</dd>
+                              </div>
+                            ))}
+                          </dl>
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
+                  )}
                 {request.requestType === 'officer_payment_submission' && request.proposed?.proof?.dataUrl && (
                   <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
                     <h3 className="mb-2 text-xs font-black text-slate-700">পেমেন্টের ছবি প্রমাণ</h3>
@@ -561,10 +670,10 @@ export default function AdminAccess({ onInvoiceCreated, onStockInApproved }) {
                   </div>
                 )}
                 <div className="flex gap-2">
-                  <button disabled={busyId === request.id} onClick={() => decideApprovalRequest(request, 'approved')} className="inline-flex items-center gap-1 rounded-lg bg-emerald-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">
+                  <button disabled={busyId === request.id || request.status !== 'pending_super_admin_approval'} onClick={() => decideApprovalRequest(request, 'approved')} className="inline-flex items-center gap-1 rounded-lg bg-emerald-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">
                     <Check className="h-4 w-4" /> অনুমোদন ও প্রয়োগ
                   </button>
-                  <button disabled={busyId === request.id} onClick={() => decideApprovalRequest(request, 'rejected')} className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700 disabled:opacity-50">
+                  <button disabled={busyId === request.id || request.status !== 'pending_super_admin_approval'} onClick={() => decideApprovalRequest(request, 'rejected')} className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700 disabled:opacity-50">
                     <ShieldX className="h-4 w-4" /> প্রত্যাখ্যান
                   </button>
                 </div>

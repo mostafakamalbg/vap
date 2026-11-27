@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { assertStockInSnapshot } from './stockInMutations.js';
+import {
+  assertStockInChallanSnapshot,
+  assertStockInSnapshot,
+  createStockInChallanSnapshot
+} from './stockInMutations.js';
 import { REAL_HORMONE_SHORT_NAME } from '../shared/productNames.js';
 
 test('stock-in snapshot ignores server timestamp changes when record data is unchanged', () => {
@@ -39,6 +43,48 @@ test('stock-in snapshot still rejects changed record contents', () => {
 
   assert.throws(
     () => assertStockInSnapshot(currentRecords, snapshots),
+    (error) => error.statusCode === 409
+  );
+});
+
+test('stock-in snapshot fails closed when the caller provides no snapshot', () => {
+  assert.throws(
+    () => assertStockInSnapshot([{
+      recordId: 'STK-IN-1',
+      data: { id: 'STK-IN-1', cartons: 19 }
+    }]),
+    (error) => error.statusCode === 409
+  );
+});
+
+test('stock-in snapshots accept legacy data IDs that differ from storage record IDs', () => {
+  const currentRecords = [{
+    recordId: 'legacy-storage-key',
+    data: { id: 'legacy-display-key', cartons: 19 }
+  }];
+  const snapshots = [{
+    id: 'legacy-display-key',
+    cartons: 19
+  }];
+
+  assert.doesNotThrow(() => assertStockInSnapshot(currentRecords, snapshots));
+});
+
+test('compact challan snapshots validate all rows without storing unchanged product details', () => {
+  const currentRecords = [
+    { recordId: 'storage-1', data: { id: 'legacy-1', productName: 'Product 1', cartons: 2 } },
+    { recordId: 'storage-2', data: { id: 'legacy-2', productName: 'Product 2', cartons: 4 } }
+  ];
+  const snapshot = createStockInChallanSnapshot(currentRecords);
+
+  assert.equal(snapshot.length, currentRecords.length);
+  assert.equal(Object.hasOwn(snapshot[1], 'data'), false);
+  assert.doesNotThrow(() => assertStockInChallanSnapshot(currentRecords, snapshot));
+  assert.throws(
+    () => assertStockInChallanSnapshot([
+      currentRecords[0],
+      { ...currentRecords[1], data: { ...currentRecords[1].data, cartons: 5 } }
+    ], snapshot),
     (error) => error.statusCode === 409
   );
 });

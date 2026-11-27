@@ -16,7 +16,7 @@ export async function createApprovalRequest({
     type: 'approvalRequests',
     'data.requestType': { $in: conflictingTypes },
     'data.targetId': targetId,
-    'data.status': 'pending_super_admin_approval'
+    'data.status': { $in: ['pending_super_admin_approval', 'processing_super_admin_approval'] }
   }).select('recordId').lean();
   if (pendingRequest) {
     const error = new Error('এই রেকর্ডের একটি পরিবর্তন ইতোমধ্যে অনুমোদনের অপেক্ষায় আছে।');

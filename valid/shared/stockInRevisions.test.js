@@ -1,6 +1,60 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { calculateStockInRevisionDeltas } from './stockInRevisions.js';
+import {
+  applyStockInRevisionChanges,
+  calculateStockInRevisionDeltas,
+  getStockInRevisionChanges
+} from './stockInRevisions.js';
+
+test('revision changes include only modified, added, and removed rows', () => {
+  const originalEntries = [
+    { id: 'existing-1', productName: 'Product 1', cartons: 2 },
+    { id: 'existing-2', productName: 'Product 2', cartons: 4 }
+  ];
+  const proposedEntries = [
+    { id: 'existing-1', productName: 'Product 1', cartons: 3 },
+    { id: 'new-1', productName: 'Product 3', cartons: 1 }
+  ];
+
+  assert.deepEqual(
+    getStockInRevisionChanges(originalEntries, proposedEntries),
+    [
+      {
+        id: 'existing-1',
+        oldEntry: originalEntries[0],
+        newEntry: proposedEntries[0]
+      },
+      { id: 'existing-2', oldEntry: originalEntries[1], newEntry: null },
+      { id: 'new-1', oldEntry: null, newEntry: proposedEntries[1] }
+    ]
+  );
+});
+
+test('revision patch preserves untouched entries and applies additions/removals', () => {
+  const untouched = { id: 'existing-2', productName: 'Product 2', cartons: 4 };
+  const changes = [
+    {
+      id: 'existing-1',
+      oldEntry: { id: 'existing-1', cartons: 2 },
+      newEntry: { id: 'existing-1', cartons: 3 }
+    },
+    { id: 'removed-1', oldEntry: { id: 'removed-1' }, newEntry: null },
+    { id: 'new-1', oldEntry: null, newEntry: { id: 'new-1', cartons: 1 } }
+  ];
+
+  assert.deepEqual(
+    applyStockInRevisionChanges([
+      { id: 'existing-1', cartons: 2 },
+      untouched,
+      { id: 'removed-1' }
+    ], changes),
+    [
+      { id: 'existing-1', cartons: 3 },
+      untouched,
+      { id: 'new-1', cartons: 1 }
+    ]
+  );
+});
 
 test('editing a challan applies only the old-to-new stock delta', () => {
   const [change] = calculateStockInRevisionDeltas(

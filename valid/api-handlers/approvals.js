@@ -11,7 +11,10 @@ import {
   withTransactionFallback
 } from '../lib/transactions.js';
 import {
+  applyStockInRevisionChanges,
+  assertStockInChallanSnapshot,
   assertStockInSnapshot,
+  getStockInRecordData,
   loadStockInChallan,
   saveStockInRevision
 } from '../lib/stockInMutations.js';
@@ -116,6 +119,7 @@ async function applyRequest(request, session) {
     let currentRecords = loaded.records;
     let expectedSnapshots = original;
     let proposedEntries = proposed?.entries;
+    const hasRevisionChanges = Array.isArray(proposed?.changes);
     const groupedRequest = proposed?.grouped === true
       || (proposed?.grouped == null && Array.isArray(original) && original.length === loaded.records.length);
     if (!groupedRequest) {
@@ -127,16 +131,35 @@ async function applyRequest(request, session) {
           recordUpdatedAt: originalUpdatedAt
         }];
         proposedEntries = [{ ...proposed, id: loaded.anchor.recordId }];
-      } else {
+      } else if (!hasRevisionChanges) {
         proposedEntries = (proposedEntries || []).map((entry) => (
           { ...entry, id: loaded.anchor.recordId }
         ));
       }
     }
-    if (!Array.isArray(proposedEntries) || !proposedEntries.length) {
+    if (!hasRevisionChanges && (!Array.isArray(proposedEntries) || !proposedEntries.length)) {
       fail(400, 'স্টক-ইন চালানের প্রস্তাবিত পণ্য তালিকা সঠিক নয়।');
     }
-    assertStockInSnapshot(currentRecords, expectedSnapshots);
+    if (Array.isArray(proposed?.challanSnapshot)) {
+      assertStockInChallanSnapshot(currentRecords, proposed.challanSnapshot);
+    } else {
+      assertStockInSnapshot(currentRecords, expectedSnapshots);
+    }
+    if (hasRevisionChanges) {
+      if (!proposed.changes.length) {
+        fail(400, 'স্টক-ইন চালানের প্রস্তাবিত পরিবর্তন পাওয়া যায়নি।');
+      }
+      proposedEntries = applyStockInRevisionChanges(
+        currentRecords.map((record) => ({
+          ...getStockInRecordData(record),
+          id: record.recordId
+        })),
+        proposed.changes
+      );
+      if (!proposedEntries.length) {
+        fail(400, 'স্টক-ইন চালানে অন্তত একটি পণ্য থাকতে হবে।');
+      }
+    }
     await saveStockInRevision(currentRecords, proposedEntries, {
       deletedBy: String(proposed?.requestedBy || request.submittedBy || ''),
       deletedByRole: String(proposed?.requestedByRole || request.submittedByRole || '')
@@ -193,7 +216,9 @@ export default async function handler(req, res) {
     if (req.method === 'GET') {
       const filter = {
         type: 'approvalRequests',
-        'data.status': 'pending_super_admin_approval'
+        'data.status': {
+          $in: ['pending_super_admin_approval', 'processing_super_admin_approval']
+        }
       };
       if (!await hasSuperAdminAccess(user)) {
         filter['data.requestType'] = 'officer_payment_submission';
@@ -220,7 +245,7 @@ export default async function handler(req, res) {
       });
       if (session) query.session(session);
       const record = await query;
-      if (!record || record.data?.status !== 'pending_super_admin_approval') {
+      if (!record) {
         fail(404, 'অপেক্ষমাণ অনুমোদনের অনুরোধটি পাওয়া যায়নি।');
       }
       if (
@@ -229,11 +254,29 @@ export default async function handler(req, res) {
       ) {
         fail(403, 'এই পরিবর্তন শুধু সুপার অ্যাডমিন অনুমোদন করতে পারবেন।');
       }
+      if (record.data?.status === decision) {
+        result = record.data;
+        return;
+      }
+      if (record.data?.status !== 'pending_super_admin_approval') {
+        fail(409, 'অনুরোধটি ইতোমধ্যে প্রক্রিয়াধীন বা অন্য একটি সিদ্ধান্তে নিষ্পত্তি হয়েছে।');
+      }
+
+      const claimed = await BusinessRecord.findOneAndUpdate(
+        {
+          type: 'approvalRequests',
+          recordId: id,
+          'data.status': 'pending_super_admin_approval'
+        },
+        { $set: { 'data.status': 'processing_super_admin_approval' } },
+        { ...transactionOptions(session), new: true }
+      ).lean();
+      if (!claimed) fail(409, 'অনুরোধটি ইতোমধ্যে প্রক্রিয়াধীন বা নিষ্পত্তি হয়েছে।');
 
       const decidedAt = new Date();
-      if (decision === 'approved') await applyRequest(record.data, session);
+      if (decision === 'approved') await applyRequest(claimed.data, session);
       const updatedData = {
-        ...record.data,
+        ...claimed.data,
         status: decision,
         decidedBy: String(user.name || ''),
         decidedByRole: String(user.role || ''),
@@ -244,7 +287,7 @@ export default async function handler(req, res) {
         {
           type: 'approvalRequests',
           recordId: id,
-          'data.status': 'pending_super_admin_approval'
+          'data.status': 'processing_super_admin_approval'
         },
         { $set: { data: updatedData } },
         { ...transactionOptions(session), new: true }

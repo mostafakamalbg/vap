@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { BusinessRecord, Product } from './models.js';
 import {
   transactionCreateOptions,
@@ -5,7 +6,10 @@ import {
 } from './transactions.js';
 import { STOCK_RECONCILIATION_START_DATE } from '../shared/stockReconciliation.js';
 import { getStockInChallanKey } from '../shared/stockInChallans.js';
-import { calculateStockInRevisionDeltas } from '../shared/stockInRevisions.js';
+import {
+  applyStockInRevisionChanges,
+  calculateStockInRevisionDeltas
+} from '../shared/stockInRevisions.js';
 import { normalizeProductDisplayNames } from '../shared/productNames.js';
 
 function fail(statusCode, message) {
@@ -67,11 +71,16 @@ function withoutRecordVersion(value) {
 }
 
 export function assertStockInSnapshot(currentRecords, snapshots) {
-  if (!Array.isArray(snapshots)) return;
+  if (!Array.isArray(snapshots)) {
+    fail(409, 'চালানের বর্তমান তথ্য যাচাই করা যায়নি; তালিকা রিফ্রেশ করে আবার চেষ্টা করুন।');
+  }
   if (snapshots.length !== currentRecords.length) {
     fail(409, 'চালানটি খোলার পর পরিবর্তিত হয়েছে; নতুন করে সম্পাদনা করুন।');
   }
-  const currentById = new Map(currentRecords.map((record) => [record.recordId, record]));
+  const currentById = new Map(currentRecords.flatMap((record) => [
+    [String(record.recordId || ''), record],
+    [String(record.data?.id || ''), record]
+  ]).filter(([id]) => id));
   for (const snapshot of snapshots) {
     const snapshotId = String(snapshot?.id || snapshot?.recordId || '').trim();
     const current = currentById.get(snapshotId);
@@ -87,11 +96,50 @@ export function assertStockInSnapshot(currentRecords, snapshots) {
   }
 }
 
+export function createStockInChallanSnapshot(records) {
+  return records.map((record) => ({
+    id: String(record.recordId || record.data?.id || ''),
+    fingerprint: createHash('sha256')
+      .update(JSON.stringify(normalizeValue(withoutRecordVersion(recordData(record)))))
+      .digest('hex')
+  }));
+}
+
+export function assertStockInChallanSnapshot(currentRecords, snapshots) {
+  if (!Array.isArray(snapshots) || snapshots.length !== currentRecords.length) {
+    fail(409, 'চালানটি খোলার পর পরিবর্তিত হয়েছে; নতুন করে সম্পাদনা করুন।');
+  }
+  const expectedById = new Map(snapshots.map((snapshot) => [String(snapshot?.id || ''), snapshot]));
+  for (const record of currentRecords) {
+    const id = String(record.recordId || '');
+    const expected = expectedById.get(id);
+    if (
+      !expected
+      || expected.fingerprint !== createStockInChallanSnapshot([record])[0].fingerprint
+    ) {
+      fail(409, 'চালানটি খোলার পর পরিবর্তিত হয়েছে; নতুন করে সম্পাদনা করুন।');
+    }
+  }
+}
+
 export async function applyStockInRevision(originalEntries, proposedEntries, session) {
   const loadedProducts = new Map();
   const packPerBoxByVariant = {};
+  const candidateChanges = calculateStockInRevisionDeltas(
+    originalEntries,
+    proposedEntries,
+    {},
+    STOCK_RECONCILIATION_START_DATE
+  );
+  const affectedVariants = new Set(candidateChanges
+    .filter((change) => change.pieces !== 0 || change.packages !== 0)
+    .map((change) => `${change.productId}::${change.sku}`));
   const allEntries = [...(originalEntries || []), ...(proposedEntries || [])]
-    .filter((entry) => entry && entry.date >= STOCK_RECONCILIATION_START_DATE);
+    .filter((entry) => (
+      entry
+      && entry.date >= STOCK_RECONCILIATION_START_DATE
+      && affectedVariants.has(`${entry.productId}::${entry.sku}`)
+    ));
 
   for (const entry of allEntries) {
     const productId = String(entry.productId || '');
@@ -121,6 +169,7 @@ export async function applyStockInRevision(originalEntries, proposedEntries, ses
     STOCK_RECONCILIATION_START_DATE
   );
   for (const change of changes) {
+    if (change.pieces === 0 && change.packages === 0) continue;
     const product = loadedProducts.get(change.productId);
     let foundVariant = false;
     product.variants = (product.variants || []).map((variant) => {
@@ -165,6 +214,12 @@ export async function saveStockInRevision(
   for (const entry of proposedEntries) {
     const current = currentById.get(entry.id);
     if (!current) continue;
+    if (
+      JSON.stringify(normalizeValue(withoutRecordVersion(recordData(current))))
+      === JSON.stringify(normalizeValue(withoutRecordVersion(entry)))
+    ) {
+      continue;
+    }
     const saved = await BusinessRecord.findOneAndUpdate(
       { type: 'stockInLogs', recordId: current.recordId, updatedAt: current.updatedAt },
       { $set: { data: entry } },

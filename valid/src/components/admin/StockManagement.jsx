@@ -296,13 +296,16 @@ export default function StockManagement({
           cartons: Number(item.cartons)
         }))
       }, stockInActionPassword, originalEntries);
-      const refreshError = result.pendingApproval ? '' : await refreshStockInRecords();
+      const refreshError = result.pendingApproval || result.unchanged
+        ? ''
+        : await refreshStockInRecords();
       setEditingStockIn(null);
       setStockInActionPassword('');
       setStockInSuccess({
         productLines: items.length,
         packages: items.reduce((sum, item) => sum + Number(item.cartons), 0),
         pendingApproval: Boolean(result.pendingApproval),
+        unchanged: Boolean(result.unchanged),
         action: 'update',
         refreshError
       });
@@ -1019,18 +1022,22 @@ export default function StockManagement({
                         ? stockInSuccess.action === 'delete'
                           ? 'মুছে ফেলার অনুরোধ অনুমোদনের অপেক্ষায়'
                           : 'সংশোধন অনুমোদনের অপেক্ষায়'
-                        : stockInSuccess.action === 'delete'
-                          ? 'চালান সফট-ডিলিট সম্পন্ন হয়েছে'
-                          : 'চালান সংশোধন সংরক্ষিত হয়েছে'}
+                        : stockInSuccess.unchanged
+                          ? 'কোনো পরিবর্তন শনাক্ত হয়নি'
+                          : stockInSuccess.action === 'delete'
+                            ? 'চালান সফট-ডিলিট সম্পন্ন হয়েছে'
+                            : 'চালান সংশোধন সংরক্ষিত হয়েছে'}
                     </h3>
                     <p className="mt-2 text-sm text-slate-600">
                       {stockInSuccess.pendingApproval
                         ? 'সুপার অ্যাডমিন অনুমোদনের আগে মূল চালান ও মজুত অপরিবর্তিত থাকবে।'
-                        : stockInSuccess.action === 'delete'
-                          ? `${stockInSuccess.productLines.toLocaleString('bn-BD')}টি পণ্য সফট-ডিলিট হয়েছে; রেকর্ড সংরক্ষিত আছে।`
-                          : `${stockInSuccess.productLines.toLocaleString('bn-BD')}টি পণ্য চালানে সংরক্ষণ হয়েছে।`}
+                        : stockInSuccess.unchanged
+                          ? 'চালান ও পণ্যের মজুত আগের মতোই আছে; কোনো অনুমোদনের অনুরোধ তৈরি হয়নি।'
+                          : stockInSuccess.action === 'delete'
+                            ? `${stockInSuccess.productLines.toLocaleString('bn-BD')}টি পণ্য সফট-ডিলিট হয়েছে; রেকর্ড সংরক্ষিত আছে।`
+                            : `${stockInSuccess.productLines.toLocaleString('bn-BD')}টি পণ্য চালানে সংরক্ষণ হয়েছে।`}
                     </p>
-                    {!stockInSuccess.pendingApproval && (
+                    {!stockInSuccess.pendingApproval && !stockInSuccess.unchanged && (
                       <p className="mt-2 text-sm font-semibold text-emerald-800">
                         চালানের মোট {stockInSuccess.packages.toLocaleString('bn-BD')}টি প্যাকেজ।
                       </p>
