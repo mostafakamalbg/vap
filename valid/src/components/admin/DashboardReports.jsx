@@ -21,6 +21,13 @@ const currentYear = String(new Date().getFullYear());
 const amount = (value) => `৳${Math.round(Number(value) || 0).toLocaleString('en-US')}`;
 const number = (value) => Math.round(Number(value) || 0).toLocaleString('en-US');
 const numeric = (value) => Number.isFinite(Number(value)) ? Number(value) : 0;
+const percentage = (numerator, denominator) => (
+  Number.isFinite(numerator)
+  && Number.isFinite(denominator)
+  && denominator !== 0
+  ? Math.round(numerator / denominator * 100)
+  : 0
+);
 
 async function requestReport(query) {
   return readJsonResponse(await fetch(`/api/dashboard-reports?${query}`, { cache: 'no-store' }));
@@ -105,7 +112,9 @@ export default function DashboardReports() {
           asms: Array.isArray(result.asms) ? result.asms : [],
           officers: result.officers.filter((officer) => officer && typeof officer === 'object')
         });
-        setError('');
+        setError(Array.isArray(result.warnings) && result.warnings.length
+          ? `কিছু রিপোর্ট উৎস থেকে তথ্য পাওয়া যায়নি: ${result.warnings.join(', ')}`
+          : '');
       } catch (requestError) {
         if (!cancelled) setError(requestError.message);
       } finally {
@@ -183,6 +192,7 @@ export default function DashboardReports() {
     : period === 'month'
     ? new Date(`${value}-01T00:00:00`).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
     : period === 'year' ? value : value;
+  const isPartialReport = error.startsWith('কিছু রিপোর্ট উৎস');
 
   const setPeriodType = (nextPeriod) => {
     setPeriod(nextPeriod);
@@ -294,7 +304,18 @@ export default function DashboardReports() {
         </label>
       </section>
 
-      {error && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-800">{error}</div>}
+      {error && (
+        <div
+          role="alert"
+          className={`rounded-lg border px-4 py-3 text-sm font-semibold ${
+            isPartialReport
+              ? 'border-amber-200 bg-amber-50 text-amber-800'
+              : 'border-rose-200 bg-rose-50 text-rose-800'
+          }`}
+        >
+          {error}
+        </div>
+      )}
 
       <section data-report-print="master" className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         <DashboardPrintHeader title="লাইভ অফিসার পারফরম্যান্স রিপোর্ট" periodLabel={periodLabel} />
@@ -343,14 +364,14 @@ export default function DashboardReports() {
                   <td className="px-2 py-1">{amount(officer.salesAmount)}</td><td className="px-2 py-1">{amount(officer.returnAmount)}</td>
                   <td className="px-2 py-1">{amount(officer.totalNetSales)}</td>
                   <td className="px-2 py-1 font-semibold">{amount(officer.previousPlusNetSales)}</td>
-                  <td className="px-2 py-1">{amount(officer.paymentAndExpense.officePayment)}</td><td className="px-2 py-1">{amount(officer.paymentAndExpense.fare)}</td>
-                  <td className="px-2 py-1">{amount(officer.paymentAndExpense.salary)}</td><td className="px-2 py-1">{amount(officer.paymentAndExpense.lc)}</td>
+                  <td className="px-2 py-1">{amount(officer.paymentAndExpense?.officePayment)}</td><td className="px-2 py-1">{amount(officer.paymentAndExpense?.fare)}</td>
+                  <td className="px-2 py-1">{amount(officer.paymentAndExpense?.salary)}</td><td className="px-2 py-1">{amount(officer.paymentAndExpense?.lc)}</td>
                   <td className="px-2 py-1">{amount(officer.totalExpenses)}</td>
                   <td className="px-2 py-1">{amount(officer.dealerCollection)}</td>
                   <td className="px-2 py-1 font-bold text-emerald-800">{amount(officer.totalReceivedAmount)}</td>
                   <td className="px-2 py-1 font-bold text-rose-700">{amount(officer.totalAmountDues)}</td>
                   <td className="px-2 py-1">{amount(officer.totalSalesDues)}</td>
-                  <td className="px-2 py-1">{officer.salesPercentage}%</td><td className="px-2 py-1">{officer.paymentPercentage}%</td>
+                  <td className="px-2 py-1">{numeric(officer.salesPercentage)}%</td><td className="px-2 py-1">{numeric(officer.paymentPercentage)}%</td>
                 </tr>
               ))}
               <tr className="sticky bottom-0 bg-emerald-50 font-black text-slate-900">
@@ -364,7 +385,11 @@ export default function DashboardReports() {
                 <td className="px-2 py-1">{amount(totals.dealerCollection)}</td>
                 <td className="px-2 py-1">{amount(totals.received)}</td>
                 <td className="px-2 py-1">{amount(totals.dues)}</td>
-                <td className="px-2 py-1">{amount(totals.salesDues)}</td><td className="px-2 py-1">—</td><td className="px-2 py-1">—</td>
+                <td className="px-2 py-1">{amount(totals.salesDues)}</td>
+                <td className="px-2 py-1">{percentage(totals.previousPlusNetSales, totals.target)}%</td>
+                <td className="px-2 py-1">{totals.previousPlusNetSales > 0
+                  ? percentage(totals.received, totals.previousPlusNetSales)
+                  : 0}%</td>
               </tr>
               {!officers.length && <tr><td colSpan="19" className="px-4 py-10 text-center text-slate-500">{loading ? 'লাইভ রিপোর্ট লোড হচ্ছে…' : 'এই সময়সীমায় কোনো অফিসার বা লেনদেন নেই।'}</td></tr>}
             </tbody>

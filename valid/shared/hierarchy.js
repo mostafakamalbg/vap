@@ -9,6 +9,11 @@ import {
 } from './roles.js';
 
 const userId = (user) => String(user?._id || user?.id || '');
+const normalizeName = (name) => String(name || '')
+  .normalize('NFKC')
+  .trim()
+  .replace(/\s+/g, ' ')
+  .toLocaleLowerCase();
 
 export function getHierarchyUsers(user, users) {
   if (isAdminRole(user?.role)) return users;
@@ -79,15 +84,28 @@ export function buildOfficerOwnerFilter(scope, {
   if (scope.global) return {};
   const conditions = [];
   if (scope.officerIds.size) conditions.push({ [idField]: { $in: [...scope.officerIds] } });
+  if (scope.userIds?.size) {
+    conditions.push(
+      { [idField]: { $in: [...scope.userIds] } },
+      { userId: { $in: [...scope.userIds] } },
+      { officerUserId: { $in: [...scope.userIds] } }
+    );
+  }
   [...scope.officerCodes].forEach((code) => {
     const escaped = code.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     conditions.push({ [codeField]: { $regex: `^${escaped}$`, $options: 'i' } });
   });
   if (scope.officerNames.size) {
+    const namePatterns = [...scope.officerNames].map((name) => {
+      const escaped = String(name)
+        .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+        .replace(/\s+/g, '\\s+');
+      return new RegExp(`^${escaped}$`, 'i');
+    });
     conditions.push({
       [idField]: { $in: ['', null] },
       [codeField]: { $in: ['', null] },
-      [nameField]: { $in: [...scope.officerNames] }
+      [nameField]: { $in: namePatterns }
     });
   }
   return conditions.length ? { $or: conditions } : { _id: null };
@@ -95,10 +113,18 @@ export function buildOfficerOwnerFilter(scope, {
 
 export function matchesOfficerScope(record, scope) {
   if (scope.global) return true;
-  const id = String(record?.officerId || '');
-  const code = String(record?.officerCode || '').trim().toUpperCase();
-  const name = String(record?.officerName || '').trim();
-  return (id && scope.officerIds.has(id))
+  const ids = [...new Set([
+    record?._id,
+    record?.id,
+    record?.userId,
+    record?.hierarchyUserId,
+    record?.officerId
+  ].map((value) => String(value || '').trim()).filter(Boolean))];
+  const rawCode = record?.code || record?.officerCode;
+  const code = normalizeOfficerCode(rawCode) || String(rawCode || '').trim().toUpperCase();
+  const name = normalizeName(record?.name || record?.officerName);
+  return ids.some((id) => scope.officerIds.has(id) || scope.userIds?.has(id))
     || (code && scope.officerCodes.has(code))
-    || (!id && !code && name && scope.officerNames.has(name));
+    || (!ids.length && !code && name
+      && [...scope.officerNames].some((scopeName) => normalizeName(scopeName) === name));
 }

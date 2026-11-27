@@ -12,7 +12,7 @@ export function parseReportMonth(value) {
     year = Number(match[1]);
     month = Number(match[2]);
   } else {
-    match = text.match(/^([a-z]+)\/(\d{2}|\d{4})$/i);
+    match = text.match(/^([a-z]+)[\s/]+(\d{2}|\d{4})$/i);
     if (!match) return null;
     month = MONTHS.indexOf(match[1].toLowerCase()) + 1;
     year = Number(match[2].length === 2 ? `20${match[2]}` : match[2]);

@@ -17,6 +17,10 @@ test('parses report month labels and ISO month filters', () => {
     start: '2026-10-01',
     end: '2026-11-01'
   });
+  assert.deepEqual(parseReportMonth('October 2026'), {
+    start: '2026-10-01',
+    end: '2026-11-01'
+  });
   assert.equal(parseReportMonth('2026-13'), null);
 });
 

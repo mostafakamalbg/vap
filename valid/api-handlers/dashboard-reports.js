@@ -1,5 +1,5 @@
 import dbConnect from '../lib/mongodb.js';
-import { BusinessRecord, Dealer, Invoice, Payment, SalesOfficer } from '../lib/models.js';
+import { BusinessRecord, Dealer, Invoice, Payment, SalesOfficer, User } from '../lib/models.js';
 import { authorize } from '../lib/auth.js';
 import { normalizeOfficerCode } from '../shared/codes.js';
 import { getOfficerSalesTarget } from '../shared/officerSalesTargets.js';
@@ -27,16 +27,79 @@ import { ADMIN_ROLES, ASM_ROLE, LOGISTIC_OFFICER_ROLE, RSM_ROLE } from '../share
 import { HIERARCHY_ROLE_VALUES } from '../shared/roles.js';
 import { resolveHierarchyScope } from '../lib/hierarchy.js';
 import { buildOfficerOwnerFilter, matchesOfficerScope } from '../shared/hierarchy.js';
-import { mergeOfficerRecords } from '../shared/officerIdentity.js';
+import { mergeOfficerRecords, officerRecordsMatch } from '../shared/officerIdentity.js';
+import { getOfficerPreviousDueByDealer } from '../shared/officerLedger.js';
 
 const DAMAGE_TYPES = ['factory_damage', 'depot_factory_return'];
 const RECEIPT_TYPES = new Set(['dealer_collection']);
+const LEGACY_PAYMENT_RECORD_TYPES = ['payments', 'payment', 'expenses', 'expense', 'vouchers', 'voucher'];
 const EXPENSE_FIELDS = {
   office_payment: 'officePayment',
   salary: 'salary',
   vehicle_rent: 'fare',
   lc_commission: 'lc'
 };
+const INVOICE_CANCELLATION_FLAGS = [
+  'isCancelled',
+  'isCanceled',
+  'cancelled',
+  'canceled',
+  'isDeleted',
+  'deleted'
+];
+const INVOICE_CANCELLATION_DATES = ['cancelledAt', 'canceledAt', 'deletedAt'];
+
+function isAllSelection(value) {
+  return ['all', 'all sessions', 'all months', 'সকল সেশন', 'সকল মাস', 'সকল সেশন / সকল মাস']
+    .includes(String(value || '').trim().toLocaleLowerCase());
+}
+
+export function normalizeReportPeriod(period, value) {
+  const resolvedPeriod = ['session', 'month'].includes(period) && isAllSelection(value)
+    ? 'all'
+    : period;
+  return {
+    period: resolvedPeriod,
+    value: resolvedPeriod === 'all' ? 'ALL' : value
+  };
+}
+
+function canonicalSession(session) {
+  const range = parseSessionDateRange(session);
+  if (!range) return '';
+  const year = range.start.slice(0, 4);
+  return range.start.endsWith('-01-01')
+    ? `জানুয়ারি - জুন ${year}`
+    : `জুলাই - ডিসেম্বর ${year}`;
+}
+
+function invoiceValidityCondition() {
+  return {
+    $and: [
+      { status: { $not: /cancel|void|delete|বাতিল/i } },
+      { invoiceStatus: { $not: /cancel|void|delete|বাতিল/i } },
+      ...INVOICE_CANCELLATION_FLAGS.map((field) => ({ [field]: { $ne: true } })),
+      ...INVOICE_CANCELLATION_DATES.map((field) => ({ [field]: { $in: [null, ''] } }))
+    ]
+  };
+}
+
+async function settleReportSources(sources) {
+  const results = await Promise.allSettled(sources.map(([, query]) => query));
+  const values = {};
+  const warnings = [];
+  results.forEach((result, index) => {
+    const [name] = sources[index];
+    if (result.status === 'fulfilled') {
+      values[name] = result.value;
+      return;
+    }
+    console.error(`Dashboard report ${name} source failed:`, result.reason);
+    warnings.push(name);
+    values[name] = [];
+  });
+  return { values, warnings };
+}
 
 export function getPeriodRange(period, value, startSession, endSession, startDate, endDate) {
   if (period === 'all') return { start: '0001-01-01', end: '9999-12-31' };
@@ -72,11 +135,24 @@ function buildDealerOwnerFilter(scope) {
   if (scope.global) return {};
   const conditions = [];
   const officerIds = [...scope.officerIds];
+  const hierarchyIds = [
+    ...scope.userIds,
+    ...(scope.users || []).map((entry) => entry._id).filter(Boolean)
+  ];
   if (officerIds.length) {
     conditions.push(
       { officerId: { $in: officerIds } },
       { assignedOfficerId: { $in: officerIds } }
     );
+  }
+  if (hierarchyIds.length) {
+    ['soId', 'asmId', 'rsmId', 'userId', 'officerUserId', 'salesOfficerId'].forEach((field) => {
+      conditions.push({ [field]: { $in: hierarchyIds } });
+    });
+    conditions.push({ previousDueOfficerId: { $in: hierarchyIds } });
+  }
+  if (scope.officerIds.size) {
+    conditions.push({ previousDueOfficerId: { $in: [...scope.officerIds] } });
   }
   [...scope.officerCodes].forEach((code) => {
     const regex = { $regex: `^${escapeRegex(code)}$`, $options: 'i' };
@@ -99,6 +175,8 @@ export function buildReportOwnerMatch(scope, dealerIds = []) {
         officerId: { $in: ['', null] },
         officerCode: { $in: ['', null] },
         officerName: { $in: ['', null] },
+        userId: { $in: ['', null] },
+        officerUserId: { $in: ['', null] },
         dealerId: { $in: dealerIds }
       }
     ]
@@ -138,28 +216,57 @@ function ownerIsMissingExpression() {
     $and: [
       { $eq: [{ $ifNull: ['$officerId', ''] }, ''] },
       { $eq: [{ $ifNull: ['$officerCode', ''] }, ''] },
-      { $eq: [{ $ifNull: ['$officerName', ''] }, ''] }
+      { $eq: [{ $ifNull: ['$officerName', ''] }, ''] },
+      { $eq: [{ $ifNull: ['$userId', ''] }, ''] },
+      { $eq: [{ $ifNull: ['$officerUserId', ''] }, ''] }
     ]
   };
 }
 
 function reportOwnerField(field, dealerFields) {
   const dealerValue = dealerFields.reduceRight(
-    (value, dealerField) => ({ $ifNull: [`$dealerProfile.${dealerField}`, value] }),
+    (value, dealerField) => ({
+      $cond: [
+        { $ne: [{ $ifNull: [`$dealerProfile.${dealerField}`, ''] }, ''] },
+        `$dealerProfile.${dealerField}`,
+        value
+      ]
+    }),
+    ''
+  );
+  const directFields = field === 'officerId'
+    ? ['officerId', 'userId', 'officerUserId']
+    : [field];
+  const directValue = directFields.reduceRight(
+    (value, directField) => ({
+      $cond: [
+        { $ne: [{ $ifNull: [`$${directField}`, ''] }, ''] },
+        `$${directField}`,
+        value
+      ]
+    }),
     ''
   );
   return {
     $cond: [
       ownerIsMissingExpression(),
       dealerValue,
-      { $ifNull: [`$${field}`, ''] }
+      directValue
     ]
   };
 }
 
 function invoicePipeline(match, { openingBalance = false } = {}) {
   return [
-    { $match: { ...match, invoiceType: { $nin: DAMAGE_TYPES } } },
+    {
+      $match: {
+        $and: [
+          match,
+          { invoiceType: { $nin: DAMAGE_TYPES } },
+          invoiceValidityCondition()
+        ]
+      }
+    },
     {
       $lookup: {
         from: Dealer.collection.name,
@@ -180,8 +287,14 @@ function invoicePipeline(match, { openingBalance = false } = {}) {
             ]
           }
         },
-        reportOfficerId: reportOwnerField('officerId', ['assignedOfficerId', 'officerId']),
-        reportOfficerCode: reportOwnerField('officerCode', ['assignedOfficerCode', 'officerCode']),
+        reportOfficerId: reportOwnerField(
+          'officerId',
+          ['assignedOfficerId', 'officerId', 'salesOfficerId', 'officerUserId', 'soId', 'asmId', 'rsmId']
+        ),
+        reportOfficerCode: reportOwnerField(
+          'officerCode',
+          ['assignedOfficerCode', 'officerCode', 'soCode', 'asmCode', 'rsmCode']
+        ),
         reportOfficerName: reportOwnerField('officerName', ['assignedOfficerName', 'officerName'])
       }
     },
@@ -318,12 +431,39 @@ export function paymentPipeline(match) {
       then: type.value
     }))
   ));
+  const numericExpression = (input) => ({
+    $convert: {
+      input,
+      to: 'double',
+      onError: 0,
+      onNull: 0
+    }
+  });
+  const namedFieldAmount = (field) => ({
+    $add: [
+      numericExpression(`$${field}`),
+      numericExpression(`$paymentAndExpense.${field}`)
+    ]
+  });
   const blankCategoryFields = PAYMENT_TYPE_FIELDS
     .filter((field) => field !== 'type')
     .map((field) => ({ $eq: [normalizeTypeField(field), ''] }));
+  const namedExpenseBranches = [
+    ['office_payment', 'officePayment'],
+    ['office_payment', 'officePay'],
+    ['vehicle_rent', 'fare'],
+    ['salary', 'salary'],
+    ['lc_commission', 'lc'],
+    ['lc_commission', 'l/c']
+  ].map(([type, field]) => ({
+    case: {
+      $gt: [namedFieldAmount(field), 0]
+    },
+    then: type
+  }));
   const resolvedPaymentType = {
     $switch: {
-      branches: paymentTypeBranches,
+      branches: [...paymentTypeBranches, ...namedExpenseBranches],
       default: {
         $cond: [
           { $and: blankCategoryFields },
@@ -331,6 +471,44 @@ export function paymentPipeline(match) {
           ''
         ]
       }
+    }
+  };
+  const choosePositiveAmount = (first, second) => ({
+    $cond: [
+      { $gt: [numericExpression(first), 0] },
+      numericExpression(first),
+      numericExpression(second)
+    ]
+  });
+  const amountFieldExpression = (field) => {
+    if (field === 'officePayment') {
+      return choosePositiveAmount(
+        '$officePayment',
+        choosePositiveAmount(
+          '$officePay',
+          choosePositiveAmount('$paymentAndExpense.officePayment', '$paymentAndExpense.officePay')
+        )
+      );
+    }
+    return choosePositiveAmount(`$${field}`, `$paymentAndExpense.${field}`);
+  };
+  const amountExpression = (field) => ({
+    $cond: [
+      { $gt: [numericExpression('$amount'), 0] },
+      numericExpression('$amount'),
+      choosePositiveAmount('$totalAmount', amountFieldExpression(field))
+    ]
+  });
+  const standardAmount = amountExpression('totalAmount');
+  const reportAmount = {
+    $switch: {
+      branches: [
+        { case: { $eq: ['$resolvedPaymentType', 'office_payment'] }, then: amountExpression('officePayment') },
+        { case: { $eq: ['$resolvedPaymentType', 'salary'] }, then: amountExpression('salary') },
+        { case: { $eq: ['$resolvedPaymentType', 'vehicle_rent'] }, then: amountExpression('fare') },
+        { case: { $eq: ['$resolvedPaymentType', 'lc_commission'] }, then: amountExpression('lc') }
+      ],
+      default: standardAmount
     }
   };
   return [
@@ -362,11 +540,18 @@ export function paymentPipeline(match) {
     {
       $set: {
         resolvedPaymentType,
-        reportOfficerId: reportOwnerField('officerId', ['assignedOfficerId', 'officerId']),
-        reportOfficerCode: reportOwnerField('officerCode', ['assignedOfficerCode', 'officerCode']),
+        reportOfficerId: reportOwnerField(
+          'officerId',
+          ['assignedOfficerId', 'officerId', 'salesOfficerId', 'officerUserId', 'soId', 'asmId', 'rsmId']
+        ),
+        reportOfficerCode: reportOwnerField(
+          'officerCode',
+          ['assignedOfficerCode', 'officerCode', 'soCode', 'asmCode', 'rsmCode']
+        ),
         reportOfficerName: reportOwnerField('officerName', ['assignedOfficerName', 'officerName'])
       }
     },
+    { $set: { reportAmount } },
     {
       $group: {
         _id: {
@@ -396,7 +581,7 @@ export function paymentPipeline(match) {
           $sum: {
             $cond: [
               { $eq: ['$resolvedPaymentType', 'dealer_collection'] },
-              { $ifNull: ['$amount', 0] },
+              '$reportAmount',
               0
             ]
           }
@@ -405,7 +590,7 @@ export function paymentPipeline(match) {
           $sum: {
             $cond: [
               { $eq: ['$resolvedPaymentType', 'office_payment'] },
-              { $ifNull: ['$amount', 0] },
+              '$reportAmount',
               0
             ]
           }
@@ -414,7 +599,7 @@ export function paymentPipeline(match) {
           $sum: {
             $cond: [
               { $eq: ['$resolvedPaymentType', 'salary'] },
-              { $ifNull: ['$amount', 0] },
+              '$reportAmount',
               0
             ]
           }
@@ -423,7 +608,7 @@ export function paymentPipeline(match) {
           $sum: {
             $cond: [
               { $eq: ['$resolvedPaymentType', 'vehicle_rent'] },
-              { $ifNull: ['$amount', 0] },
+              '$reportAmount',
               0
             ]
           }
@@ -432,7 +617,7 @@ export function paymentPipeline(match) {
           $sum: {
             $cond: [
               { $eq: ['$resolvedPaymentType', 'lc_commission'] },
-              { $ifNull: ['$amount', 0] },
+              '$reportAmount',
               0
             ]
           }
@@ -443,23 +628,14 @@ export function paymentPipeline(match) {
 }
 
 function officerMatches(row, officer) {
-  const rowCode = normalizeOfficerCode(row.officerCode);
-  const officerCode = normalizeOfficerCode(officer.code || officer.officerCode);
-  return Boolean(
-    (row.officerId && String(row.officerId) === String(officer.id || officer.officerId))
-    || (rowCode && officerCode && rowCode === officerCode)
-    || (!row.officerId && !row.officerCode
-      && row.officerName && row.officerName === (officer.name || officer.officerName))
-  );
+  return officerRecordsMatch(row, officer);
 }
 
 function matchesHierarchyUser(officer, entry) {
-  return Boolean(
-    (entry.officerId && String(officer.id || officer.officerId || '') === String(entry.officerId))
-    || (entry.officerCode
-      && normalizeOfficerCode(officer.code || officer.officerCode) === normalizeOfficerCode(entry.officerCode))
-    || (entry.name && (officer.name || officer.officerName) === entry.name)
-  );
+  return officerRecordsMatch(officer, {
+    ...entry,
+    hierarchyUserId: entry._id || entry.id
+  });
 }
 
 export function addPaymentRows(groups, rows, { period, periodValue, periodRange, beforePeriod, scope }) {
@@ -489,7 +665,7 @@ export function addPaymentRows(groups, rows, { period, periodValue, periodRange,
     if (!matchesOfficerScope(payment, scope)) return;
     if (payment.sourceInvoiceId || /(?:invoice|চালান)\s*#/i.test(String(payment.reference || ''))) return;
     const owner = {
-      officerId: payment.officerId || '',
+      officerId: payment.officerId || payment.userId || payment.officerUserId || '',
       officerCode: payment.officerCode || '',
       officerName: payment.officerName || ''
     };
@@ -508,12 +684,24 @@ export function addPaymentRows(groups, rows, { period, periodValue, periodRange,
       fare: 0,
       lc: 0
     };
-    const amount = Number(payment.amount) || 0;
+    const namedAmount = (field) => Number(
+      payment[field] ?? payment.paymentAndExpense?.[field]
+    ) || 0;
     const type = resolvePaymentRecordType(payment)
+      || (namedAmount('officePayment') || namedAmount('officePay') ? 'office_payment' : '')
+      || (namedAmount('salary') ? 'salary' : '')
+      || (namedAmount('fare') ? 'vehicle_rent' : '')
+      || (namedAmount('lc') || namedAmount('l/c') ? 'lc_commission' : '')
       || (!getPaymentRecordTypeValue(payment) ? 'dealer_collection' : '');
+    const typeField = EXPENSE_FIELDS[type];
+    const typeAmount = type === 'office_payment'
+      ? namedAmount('officePayment') || namedAmount('officePay')
+      : namedAmount(typeField || '');
+    const amount = Number(payment.amount)
+      || Number(payment.totalAmount)
+      || typeAmount;
     if (RECEIPT_TYPES.has(type)) group.collection += amount;
-    const field = EXPENSE_FIELDS[type];
-    if (field) group[field] += amount;
+    if (typeField) group[typeField] += amount;
     groups.set(key, group);
   });
 }
@@ -534,8 +722,9 @@ export default async function handler(req, res) {
   );
   if (!user) return;
 
-  const period = String(req.query?.period || 'all');
-  const value = String(req.query?.value || (period === 'all' ? 'ALL' : ''));
+  const requestedPeriod = String(req.query?.period || 'all');
+  const requestedValue = String(req.query?.value || (requestedPeriod === 'all' ? 'ALL' : ''));
+  const { period, value } = normalizeReportPeriod(requestedPeriod, requestedValue);
   const periodRange = getPeriodRange(
     period,
     value,
@@ -548,11 +737,30 @@ export default async function handler(req, res) {
 
   try {
     const scope = await resolveHierarchyScope(user);
-    const scopedDealers = scope.global
-      ? []
-      : await Dealer.find(buildDealerOwnerFilter(scope))
-        .select('id officerCode')
-        .lean();
+    const dealerSource = await settleReportSources([[
+      'dealerRecords',
+      Dealer.find(scope.global ? {} : buildDealerOwnerFilter(scope))
+        .select('id code shopName phone mobile officerId assignedOfficerId officerCode assignedOfficerCode officerName assignedOfficerName salesOfficerId officerUserId soId soCode asmId asmCode rsmId rsmCode openingDue lastSessionDue previousDue previousDueDate previousDueSession previousDueOfficerId previousDueHistory')
+        .lean()
+    ]]);
+    const scopedDealers = dealerSource.values.dealerRecords;
+    const reportDealers = scopedDealers.map((dealer) => ({
+      ...dealer,
+      officerId: dealer.assignedOfficerId
+        || dealer.officerId
+        || dealer.salesOfficerId
+        || dealer.officerUserId
+        || dealer.soId
+        || dealer.asmId
+        || dealer.rsmId
+        || '',
+      officerCode: dealer.assignedOfficerCode
+        || dealer.officerCode
+        || dealer.soCode
+        || dealer.asmCode
+        || dealer.rsmCode
+        || ''
+    }));
     const scopedDealerIds = scopedDealers.map((dealer) => String(dealer.id || '')).filter(Boolean);
     const ownerMatch = buildOfficerOwnerFilter(scope);
     const reportOwnerMatch = buildReportOwnerMatch(scope, scopedDealerIds);
@@ -572,6 +780,12 @@ export default async function handler(req, res) {
         String(entry._id || entry.id) === asmFilter || String(entry.asmId || '') === asmFilter
       ))
       : scope.users;
+    const userRosterQuery = scope.global
+      ? User.find({
+          role: { $in: HIERARCHY_ROLE_VALUES },
+          status: { $in: ['active', 'একটিভ', 'এডমিন', 'সুপার এডমিন'] }
+        }).select('_id id userId name role officerId officerCode phone territory asmId rsmId').lean()
+      : Promise.resolve(scope.users);
     const periodMatch = period === 'all'
       ? reportOwnerMatch
       : period === 'session'
@@ -593,36 +807,59 @@ export default async function handler(req, res) {
         reportOwnerMatch
       ]
     };
-    const [officerRecords, salesOfficerRecords, periodInvoices, priorInvoices, invoiceIdentities, periodPayments, priorPayments, typedPayments, legacyRecords] = await Promise.all([
-      BusinessRecord.find({ type: 'officers' }).select('data').lean(),
-      SalesOfficer.find(ownerMatch).sort({ slNo: 1 }).lean(),
-      Invoice.aggregate(invoicePipeline(periodMatch, { openingBalance: period === 'all' })),
-      Invoice.aggregate(invoicePipeline(priorMatch)),
-      Invoice.find({ $or: [periodMatch, priorMatch] }).select('id invoiceNo').lean(),
-      Payment.aggregate(paymentPipeline(periodPaymentMatch)),
-      Payment.aggregate(paymentPipeline(priorMatch)),
-      Payment.find(reportOwnerMatch).select('id sourceInvoiceId').lean(),
-      BusinessRecord.find({ type: 'payments' }).select('data').lean()
+    const { values: reportSources, warnings: sourceWarnings } = await settleReportSources([
+      ['officerRecords', BusinessRecord.find({ type: 'officers' }).select('data').lean()],
+      ['salesOfficerRecords', SalesOfficer.find(ownerMatch).sort({ slNo: 1 }).lean()],
+      ['periodInvoices', Invoice.aggregate(invoicePipeline(periodMatch, { openingBalance: period === 'all' }))],
+      ['priorInvoices', Invoice.aggregate(invoicePipeline(priorMatch))],
+      ['invoiceIdentities', Invoice.find({ $or: [periodMatch, priorMatch] }).select('id invoiceNo').lean()],
+      ['periodPayments', Payment.aggregate(paymentPipeline(periodPaymentMatch))],
+      ['priorPayments', Payment.aggregate(paymentPipeline(priorMatch))],
+      ['typedPaymentIds', Payment.find(reportOwnerMatch).select('id sourceInvoiceId').lean()],
+      ['legacyPaymentRecords', BusinessRecord.find({
+        type: { $in: LEGACY_PAYMENT_RECORD_TYPES }
+      }).select('data').lean()],
+      ['userRecords', userRosterQuery]
     ]);
+    const officerRecords = reportSources.officerRecords;
+    const salesOfficerRecords = reportSources.salesOfficerRecords;
+    const periodInvoices = reportSources.periodInvoices;
+    const priorInvoices = reportSources.priorInvoices;
+    const invoiceIdentities = reportSources.invoiceIdentities;
+    const periodPayments = reportSources.periodPayments;
+    const priorPayments = reportSources.priorPayments;
+    const typedPayments = reportSources.typedPaymentIds;
+    const legacyRecords = reportSources.legacyPaymentRecords;
+    const userRecords = reportSources.userRecords;
     const excludedInvoiceIds = [...new Set(invoiceIdentities.flatMap((invoice) => (
       [invoice.id, invoice.invoiceNo].filter(Boolean).map(String)
     )))];
-    const [legacyPeriodInvoices, legacyPriorInvoices] = await Promise.all([
-      BusinessRecord.aggregate(legacyInvoicePipeline(
-        periodMatch,
-        { openingBalance: period === 'all' },
-        excludedInvoiceIds
-      )),
-      period === 'all'
-        ? Promise.resolve([])
-        : BusinessRecord.aggregate(legacyInvoicePipeline(priorMatch, {}, excludedInvoiceIds))
-    ]);
+    const legacyInvoiceSources = sourceWarnings.includes('invoiceIdentities')
+      ? { values: { legacyPeriodInvoices: [], legacyPriorInvoices: [] }, warnings: [] }
+      : await settleReportSources([
+          ['legacyPeriodInvoices', BusinessRecord.aggregate(legacyInvoicePipeline(
+            periodMatch,
+            { openingBalance: period === 'all' },
+            excludedInvoiceIds
+          ))],
+          ['legacyPriorInvoices', period === 'all'
+            ? Promise.resolve([])
+            : BusinessRecord.aggregate(legacyInvoicePipeline(priorMatch, {}, excludedInvoiceIds))]
+        ]);
+    const reportWarnings = [
+      ...dealerSource.warnings,
+      ...sourceWarnings,
+      ...legacyInvoiceSources.warnings
+    ];
+    const legacyPeriodInvoices = legacyInvoiceSources.values.legacyPeriodInvoices;
+    const legacyPriorInvoices = legacyInvoiceSources.values.legacyPriorInvoices;
     periodInvoices.push(...legacyPeriodInvoices);
     priorInvoices.push(...legacyPriorInvoices);
 
     const typedPaymentIds = new Set(typedPayments.map((payment) => String(payment.id)));
     const typedInvoiceSources = new Set(typedPayments.map((payment) => String(payment.sourceInvoiceId || '')).filter(Boolean));
-    const rawLegacyPayments = legacyRecords.map((record) => record.data).filter((payment) => (
+    const rawLegacyPayments = (sourceWarnings.includes('typedPaymentIds') ? [] : legacyRecords)
+      .map((record) => record.data).filter((payment) => (
       payment
       && !(payment.id && typedPaymentIds.has(String(payment.id)))
       && !(payment.sourceInvoiceId && typedInvoiceSources.has(String(payment.sourceInvoiceId)))
@@ -630,17 +867,51 @@ export default async function handler(req, res) {
     const legacyDealerIds = [...new Set(rawLegacyPayments
       .map((payment) => String(payment.dealerId || ''))
       .filter(Boolean))];
-    const legacyDealerRecords = scope.global && legacyDealerIds.length
-      ? await Dealer.find({ id: { $in: legacyDealerIds } }).select('id officerCode').lean()
-      : scopedDealers;
+    const legacyDealerIdSet = new Set(legacyDealerIds);
+    const legacyDealerRecords = reportDealers.filter((dealer) => (
+      legacyDealerIdSet.has(String(dealer.id || ''))
+    ));
     const legacyDealerCodes = new Map(legacyDealerRecords.map((dealer) => [
       String(dealer.id),
-      String(dealer.officerCode || '')
+      {
+        officerId: String(
+          dealer.assignedOfficerId
+          || dealer.officerId
+          || dealer.salesOfficerId
+          || dealer.officerUserId
+          || dealer.soId
+          || dealer.asmId
+          || dealer.rsmId
+          || ''
+        ),
+        officerCode: String(
+          dealer.assignedOfficerCode
+          || dealer.officerCode
+          || dealer.soCode
+          || dealer.asmCode
+          || dealer.rsmCode
+          || ''
+        ),
+        officerName: String(dealer.assignedOfficerName || dealer.officerName || '')
+      }
     ]));
     const legacyPayments = rawLegacyPayments.map((payment) => {
-      if (payment.officerId || payment.officerCode || payment.officerName) return payment;
-      const officerCode = legacyDealerCodes.get(String(payment.dealerId || ''));
-      return officerCode ? { ...payment, officerCode } : payment;
+      if (
+        payment.officerId
+        || payment.officerCode
+        || payment.officerName
+        || payment.userId
+        || payment.officerUserId
+      ) return payment;
+      const owner = legacyDealerCodes.get(String(payment.dealerId || ''));
+      return owner
+        ? {
+            ...payment,
+            officerId: owner.officerId,
+            officerCode: owner.officerCode,
+            officerName: owner.officerName
+          }
+        : payment;
     });
     const periodPaymentGroups = new Map();
     const priorPaymentGroups = new Map();
@@ -670,8 +941,10 @@ export default async function handler(req, res) {
       ...officerRecords.map((record) => record.data),
       ...salesOfficerRecords,
       ...activityRoster,
-      ...scope.users.map((entry) => ({
-        id: String(entry.officerId || ''),
+      ...userRecords.map((entry) => ({
+        id: String(entry.officerId || entry.id || entry.userId || entry._id || ''),
+        userId: String(entry.userId || entry._id || entry.id || ''),
+        hierarchyUserId: String(entry._id || entry.id || entry.userId || ''),
         officerId: String(entry.officerId || ''),
         code: normalizeOfficerCode(entry.officerCode),
         officerCode: entry.officerCode || '',
@@ -680,8 +953,7 @@ export default async function handler(req, res) {
         territory: entry.territory || '',
         role: entry.role,
         asmId: String(entry.asmId || ''),
-        rsmId: String(entry.rsmId || ''),
-        hierarchyUserId: String(entry._id || entry.id || '')
+        rsmId: String(entry.rsmId || '')
       }))
     ]);
 
@@ -776,6 +1048,46 @@ export default async function handler(req, res) {
       collectPayments(priorOfficerPayments, true);
       collectPayments(periodOfficerPayments, false);
 
+      const dueSession = period === 'session'
+        ? value
+        : period === 'session-range' || period === 'date-range'
+          ? getInvoiceSessionForDate(periodRange.start)
+          : period === 'year' ? `জানুয়ারি - জুন ${periodRange.start.slice(0, 4)}` : 'ALL';
+      const dueByDealer = getOfficerPreviousDueByDealer(reportDealers, {
+        officerIds: [
+          officer.id,
+          officer.officerId,
+          officer.userId,
+          officer.hierarchyUserId
+        ].filter(Boolean),
+        officerCode: officer.code || officer.officerCode,
+        designation: officer.designation
+      }, {
+        session: dueSession,
+        month: period === 'month' ? periodRange.start.slice(0, 7) : 'ALL',
+        openingBalance: period === 'all'
+      });
+      dueByDealer.forEach((due, dealerId) => {
+        const dealer = reportDealers.find((entry) => String(entry.id) === dealerId);
+        const party = partyMap.get(dealerId) || {
+          dealerId,
+          dealerName: dealer?.shopName || dealer?.code || 'নাম নেই',
+          mobileNo: dealer?.phone || dealer?.mobile || '',
+          previousDue: 0,
+          sales: 0,
+          returns: 0,
+          invoicePaid: 0,
+          invoiceCount: 0,
+          salary: 0,
+          officePayment: 0,
+          fare: 0,
+          lc: 0,
+          collection: 0
+        };
+        party.previousDue = roundAmount(due.amount);
+        partyMap.set(dealerId, party);
+      });
+
       const parties = [...partyMap.values()].map((party, partyIndex) => {
         const netSales = party.sales - party.returns;
         const expensesForParty = party.officePayment + party.salary + party.fare + party.lc;
@@ -801,25 +1113,32 @@ export default async function handler(req, res) {
       const totalNetSales = salesAmount - returnAmount;
       const derivedPreviousDue = parties.reduce((sum, party) => sum + party.previousDue, 0);
       const previousDue = period === 'all'
-        ? derivedPreviousDue
-        : derivedPreviousDue || roundAmount(officer.lastSessionDue);
+        ? derivedPreviousDue || roundAmount(officer.lastSessionDue)
+        : derivedPreviousDue;
       const previousPlusNetSales = previousDue + totalNetSales;
       const totalExpenses = Object.values(expenses).reduce((sum, amount) => sum + amount, 0);
       const actualCollections = parties.reduce(
-        (sum, party) => sum + party.invoicePaid + party.collection,
+        (sum, party) => sum + party.invoicePaid,
         0
       );
-      const dealerCollection = parties.reduce((sum, party) => sum + party.collection, 0);
+      const dealerCollection = periodOfficerPayments.reduce(
+        (sum, payment) => sum + roundAmount(payment.collection),
+        0
+      );
       const totalReceivedAmount = roundAmount(totalExpenses + actualCollections);
       const session = period === 'session'
         ? value
         : period === 'month'
-          ? getInvoiceSessionForDate(`${value}-01`)
+          ? getInvoiceSessionForDate(periodRange.start)
           : period === 'year' ? `জানুয়ারি - জুন ${value}` : '';
-      const allTargets = [...new Set([
+      const targetSessions = new Set([
         ...INVOICE_SESSIONS,
         ...Object.keys(officer.salesTargets || {})
-      ])].reduce((sum, entry) => sum + getOfficerSalesTarget(officer, entry), 0);
+      ].map(canonicalSession).filter(Boolean));
+      const allTargets = [...targetSessions].reduce(
+        (sum, entry) => sum + getOfficerSalesTarget(officer, entry),
+        0
+      );
       const sessionTarget = period === 'all'
         ? allTargets
         : period === 'session-range' || period === 'date-range'
@@ -828,7 +1147,7 @@ export default async function handler(req, res) {
             return Boolean(range && range.start >= periodRange.start && range.end <= periodRange.end);
           }).reduce((sum, entry) => sum + getOfficerSalesTarget(officer, entry), 0)
         : session ? getOfficerSalesTarget(officer, session) : 0;
-      const targetYear = value.match(/\d{4}/)?.[0] || String(new Date().getFullYear());
+      const targetYear = periodRange.start.match(/\d{4}/)?.[0] || String(new Date().getFullYear());
       const julyDecemberTarget = getOfficerSalesTarget(officer, `জুলাই - ডিসেম্বর ${targetYear}`);
       const yearlyTarget = period === 'all'
         ? allTargets
@@ -883,7 +1202,13 @@ export default async function handler(req, res) {
         officerCode: String(entry.officerCode || '')
       }))
       : [];
-    return res.status(200).json({ period, value, asms, officers: resultRows });
+    return res.status(200).json({
+      period,
+      value,
+      asms,
+      officers: resultRows,
+      warnings: [...new Set(reportWarnings)]
+    });
   } catch (error) {
     console.error('Dashboard report aggregation failed:', error);
     return res.status(500).json({ error: 'লাইভ ড্যাশবোর্ড রিপোর্ট তৈরি করা যায়নি।' });

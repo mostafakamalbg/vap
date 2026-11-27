@@ -1,11 +1,47 @@
 import { normalizeOfficerCode } from './codes.js';
 
+function normalizeName(value) {
+  return String(value || '')
+    .normalize('NFKC')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLocaleLowerCase();
+}
+
 function getIdentity(record) {
+  const ids = [...new Set([
+    record?._id,
+    record?.id,
+    record?.userId,
+    record?.hierarchyUserId,
+    record?.officerId
+  ].map((value) => String(value || '').trim()).filter(Boolean))];
+  const codes = [...new Set([
+    record?.code,
+    record?.officerCode
+  ].map((value) => (
+    normalizeOfficerCode(value, record?.designation)
+    || String(value || '').trim().toUpperCase()
+  )).filter(Boolean))];
   return {
-    id: String(record?.id || record?.officerId || '').trim(),
-    code: normalizeOfficerCode(record?.code || record?.officerCode, record?.designation),
-    name: String(record?.name || record?.officerName || '').trim()
+    id: String(record?.id || record?.officerId || record?.userId || record?._id || '').trim(),
+    ids,
+    code: codes[0] || '',
+    codes,
+    name: normalizeName(record?.name || record?.officerName),
+    displayName: String(record?.name || record?.officerName || '').trim()
   };
+}
+
+export function officerRecordsMatch(left, right) {
+  const leftIdentity = getIdentity(left);
+  const rightIdentity = getIdentity(right);
+  if (leftIdentity.ids.some((id) => rightIdentity.ids.includes(id))) return true;
+  if (leftIdentity.codes.some((code) => rightIdentity.codes.includes(code))) return true;
+  if (!leftIdentity.name || leftIdentity.name !== rightIdentity.name) return false;
+  if (leftIdentity.ids.length && rightIdentity.ids.length) return false;
+  if (leftIdentity.codes.length && rightIdentity.codes.length) return false;
+  return true;
 }
 
 function mergeRecords(previous, next) {
@@ -20,8 +56,13 @@ function mergeRecords(previous, next) {
     officerCode: String(
       previous.officerCode || next.officerCode || previousIdentity.code || nextIdentity.code
     ),
-    name: previousIdentity.name || nextIdentity.name,
-    officerName: String(previous.officerName || next.officerName || previousIdentity.name || nextIdentity.name),
+    name: previousIdentity.displayName || nextIdentity.displayName,
+    officerName: String(
+      previous.officerName
+      || next.officerName
+      || previousIdentity.displayName
+      || nextIdentity.displayName
+    ),
     phone: String(previous.phone || previous.mobileNo || next.phone || next.mobileNo || ''),
     mobileNo: String(previous.mobileNo || previous.phone || next.mobileNo || next.phone || '')
   };
@@ -35,13 +76,7 @@ function mergeRecords(previous, next) {
 }
 
 function areSameOfficer(left, right) {
-  const leftIdentity = getIdentity(left);
-  const rightIdentity = getIdentity(right);
-  if (leftIdentity.id && rightIdentity.id && leftIdentity.id === rightIdentity.id) return true;
-  if (leftIdentity.code && rightIdentity.code && leftIdentity.code === rightIdentity.code) return true;
-  return !leftIdentity.id && !rightIdentity.id
-    && !leftIdentity.code && !rightIdentity.code
-    && Boolean(leftIdentity.name && leftIdentity.name === rightIdentity.name);
+  return officerRecordsMatch(left, right);
 }
 
 export function mergeOfficerRecords(records = []) {

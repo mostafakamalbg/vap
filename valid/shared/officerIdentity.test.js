@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { mergeOfficerRecords } from './officerIdentity.js';
+import { mergeOfficerRecords, officerRecordsMatch } from './officerIdentity.js';
 
 test('officer records with matching code or ID merge without duplicate names', () => {
   const officers = mergeOfficerRecords([
@@ -22,4 +22,33 @@ test('same-name officers with separate identifiers remain distinct', () => {
   ]);
 
   assert.equal(officers.length, 2);
+});
+
+test('officer matching resolves account IDs, officer IDs, codes, and normalized names', () => {
+  assert.equal(officerRecordsMatch(
+    { _id: 'account-1', officerCode: 'SO-01', officerName: '  SALES   Officer ' },
+    { userId: 'account-1', code: 'SO-01', name: 'Sales Officer' }
+  ), true);
+  assert.equal(officerRecordsMatch(
+    { officerId: 'OFF-01', officerName: 'Sales Officer' },
+    { id: 'OFF-01', name: 'Other Name' }
+  ), true);
+  assert.equal(officerRecordsMatch(
+    { name: '  Sales   Officer ' },
+    { officerName: 'sales officer' }
+  ), true);
+  assert.equal(officerRecordsMatch(
+    { id: 'account-1', name: 'Sales Officer' },
+    { id: 'account-2', name: 'Sales Officer' }
+  ), false);
+});
+
+test('merging user and officer records preserves display capitalization and target data', () => {
+  const [officer] = mergeOfficerRecords([
+    { _id: 'account-1', name: 'Sales Officer', officerCode: 'SO-01' },
+    { userId: 'account-1', officerName: 'SALES OFFICER', salesTargets: { 'জুলাই - ডিসেম্বর 2026': 10 } }
+  ]);
+
+  assert.equal(officer.name, 'Sales Officer');
+  assert.equal(officer.salesTargets['জুলাই - ডিসেম্বর 2026'], 10);
 });

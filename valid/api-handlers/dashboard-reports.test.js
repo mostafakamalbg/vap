@@ -6,6 +6,7 @@ import {
   getActivityRoster,
   getPeriodRange,
   legacyInvoicePipeline,
+  normalizeReportPeriod,
   paymentPipeline,
   priorSessionCondition
 } from './dashboard-reports.js';
@@ -70,6 +71,21 @@ test('dashboard reports accept an all-session and all-month period', () => {
   });
 });
 
+test('all-session and all-month labels normalize to an unfiltered report period', () => {
+  assert.deepEqual(normalizeReportPeriod('session', 'সকল সেশন'), {
+    period: 'all',
+    value: 'ALL'
+  });
+  assert.deepEqual(normalizeReportPeriod('month', 'সকল মাস'), {
+    period: 'all',
+    value: 'ALL'
+  });
+  assert.deepEqual(normalizeReportPeriod('month', 'October 2026'), {
+    period: 'month',
+    value: 'October 2026'
+  });
+});
+
 test('session-prior queries follow explicit session keys and only date-fallback legacy rows', () => {
   const condition = priorSessionCondition('জানুয়ারি - জুন 2027');
   const priorSessions = condition.$or[0].session.$in;
@@ -99,6 +115,8 @@ test('owner filters include dealer-assigned invoices only when their officer ide
     officerId: { $in: ['', null] },
     officerCode: { $in: ['', null] },
     officerName: { $in: ['', null] },
+    userId: { $in: ['', null] },
+    officerUserId: { $in: ['', null] },
     dealerId: { $in: ['DL-1'] }
   });
 });
@@ -113,6 +131,31 @@ test('invoice and payment report pipelines fill missing officer identity from th
   assert.ok(JSON.stringify(invoiceOwnerStage).includes('$dealerProfile.officerCode'));
   assert.equal(invoiceGroup.$group._id.officerCode, '$reportOfficerCode');
   assert.ok(JSON.stringify(paymentOwnerStage).includes('$dealerProfile.officerCode'));
+  assert.ok(JSON.stringify(paymentOwnerStage).includes('$dealerProfile.soId'));
+});
+
+test('invoice aggregation excludes cancelled records without mutating their source data', () => {
+  const stages = legacyInvoicePipeline({});
+  const validity = JSON.stringify(stages.find((stage) => (
+    stage.$match?.$and?.some((condition) => condition.invoiceType)
+  )));
+
+  assert.match(validity, /invoiceType/);
+  assert.match(validity, /isCancelled/);
+  assert.match(validity, /cancelledAt/);
+  assert.match(JSON.stringify(stages), /cancel|void|delete/i);
+});
+
+test('payment aggregation supports totalAmount and named expense amount fields', () => {
+  const pipeline = paymentPipeline({});
+  const serializedPipeline = JSON.stringify(pipeline);
+
+  assert.match(serializedPipeline, /totalAmount/);
+  assert.match(serializedPipeline, /officePayment/);
+  assert.match(serializedPipeline, /officePay/);
+  assert.match(serializedPipeline, /fare/);
+  assert.match(serializedPipeline, /salary/);
+  assert.match(serializedPipeline, /lc_commission/);
 });
 
 test('legacy invoice pipeline reads scoped legacy records without overlapping typed invoices', () => {
@@ -173,6 +216,28 @@ test('all-session legacy expenses without a date are included, but not treated a
   assert.equal([...groups.values()][0].lc, 125);
   addPaymentRows(new Map(), rows, { ...options, beforePeriod: true });
   assert.equal(groups.size, 1);
+});
+
+test('legacy payment rows classify amount aliases and standalone expense fields', () => {
+  const groups = new Map();
+  addPaymentRows(groups, [
+    { session: 'জুলাই - ডিসেম্বর ২০২৬', officerId: 'SO-01', paymentType: 'L/C', totalAmount: 125 },
+    { session: 'জুলাই - ডিসেম্বর ২০২৬', officerId: 'SO-01', officePayment: 30 },
+    { session: 'জুলাই - ডিসেম্বর ২০২৬', officerId: 'SO-01', fare: 45 },
+    { session: 'জুলাই - ডিসেম্বর ২০২৬', officerId: 'SO-01', salary: 60 }
+  ], {
+    period: 'all',
+    periodValue: 'ALL',
+    periodRange: getPeriodRange('all', 'ALL'),
+    beforePeriod: false,
+    scope: { global: true }
+  });
+
+  const summary = [...groups.values()][0];
+  assert.equal(summary.lc, 125);
+  assert.equal(summary.officePayment, 30);
+  assert.equal(summary.fare, 45);
+  assert.equal(summary.salary, 60);
 });
 
 test('session-prior legacy payments use the explicit session instead of a conflicting date', () => {

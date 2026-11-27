@@ -31,6 +31,8 @@ test('hierarchy scope matches owner ids, legacy codes, and owner-name-only recor
   assert.equal(matchesOfficerScope({ officerId: 'S-1' }, scope), true);
   assert.equal(matchesOfficerScope({ officerCode: 'FSO-01' }, scope), true);
   assert.equal(matchesOfficerScope({ officerName: 'Sales' }, scope), true);
+  assert.equal(matchesOfficerScope({ officerName: '  sales ' }, scope), true);
+  assert.equal(matchesOfficerScope({ hierarchyUserId: 'so-1' }, scope), true);
   assert.equal(matchesOfficerScope({ officerId: 'S-2' }, scope), false);
   const ownerConditions = buildOfficerOwnerFilter(scope).$or;
   assert.ok(ownerConditions.some((condition) => condition.officerId));
