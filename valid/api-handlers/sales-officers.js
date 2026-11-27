@@ -9,7 +9,11 @@ import {
   hasOfficerSessionSalesTarget,
   mergeOfficerSalesTargets
 } from '../shared/officerSalesTargets.js';
-import { parseReportMonth, parseSessionDateRange } from '../shared/reportDateFilters.js';
+import {
+  dateRangeCondition,
+  parseReportMonth,
+  parseSessionDateRange
+} from '../shared/reportDateFilters.js';
 import { normalizeSessionText } from '../shared/sessions.js';
 import { ADMIN_ROLES, isAdminRole, LOGISTIC_OFFICER_ROLE } from '../shared/roles.js';
 import { HIERARCHY_ROLE_VALUES } from '../shared/roles.js';
@@ -68,6 +72,22 @@ function getOfficerSummaryFilter(officer) {
 
 function hasLegacyTarget(record, session) {
   return hasOfficerSessionSalesTarget(record, session);
+}
+
+export function buildOfficerPeriodFilters(month, date) {
+  const filters = [];
+  if (/^\d{4}-\d{2}$/.test(month)) {
+    const monthRange = parseReportMonth(month);
+    if (monthRange) filters.push(dateRangeCondition('date', monthRange));
+  }
+  if (date !== 'ALL') filters.push({ date });
+  return {
+    filters,
+    legacyFilters: filters.map((condition) => {
+      const [field, value] = Object.entries(condition)[0];
+      return { [`data.${field}`]: value };
+    })
+  };
 }
 
 async function setOfficerSessionTarget(record, { session, date, amount }) {
@@ -167,13 +187,21 @@ export default async function handler(req, res) {
 
       const scope = await resolveHierarchyScope(user);
       const ownerFilter = buildOfficerOwnerFilter(scope);
+      const withPeriodFilters = (filter, conditions) => (
+        conditions.length ? { $and: [filter, ...conditions] } : filter
+      );
+      const { filters: periodFilters, legacyFilters: legacyPeriodFilters } = (
+        buildOfficerPeriodFilters(month, date)
+      );
       const [storedRecords, officerRecords, invoices, typedPayments, legacyRecords] = await Promise.all([
         SalesOfficer.find(ownerFilter)
           .sort({ slNo: 1 }).lean(),
         BusinessRecord.find({ type: 'officers' }).select('data').lean(),
-        Invoice.find(ownerFilter).lean(),
-        Payment.find(ownerFilter).lean(),
-        BusinessRecord.find({ type: 'payments' }).select('data').lean()
+        Invoice.find(withPeriodFilters(ownerFilter, periodFilters)).lean(),
+        Payment.find(withPeriodFilters(ownerFilter, periodFilters)).lean(),
+        BusinessRecord.find(withPeriodFilters({ type: 'payments' }, legacyPeriodFilters))
+          .select('data')
+          .lean()
       ]);
       const knownIds = new Set(typedPayments.map((payment) => String(payment.id)));
       const knownInvoices = new Set(typedPayments.map((payment) => String(payment.sourceInvoiceId || '')).filter(Boolean));

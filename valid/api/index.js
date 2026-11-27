@@ -21,6 +21,7 @@ import farmerOpinions from '../api-handlers/farmer-opinions.js';
 import dealerLedger from '../api-handlers/dealer-ledger.js';
 import presence from '../api-handlers/presence.js';
 import officerPayments from '../api-handlers/officer-payments.js';
+import { MongoConnectionError } from '../lib/mongodb.js';
 
 const handlers = {
   backup,
@@ -46,6 +47,28 @@ const handlers = {
   presence,
   'officer-payments': officerPayments
 };
+
+export function getApiErrorResponse(error) {
+  const statusCode = Number(error?.statusCode);
+  if ([400, 401, 403, 404, 409, 422].includes(statusCode)) {
+    return {
+      statusCode,
+      message: error?.message || 'The request could not be completed.'
+    };
+  }
+  if (error instanceof MongoConnectionError
+    || ['MongoServerSelectionError', 'MongoNetworkError'].includes(error?.name)) {
+    return { statusCode: 503, message: 'Database is temporarily unavailable.' };
+  }
+  if (['CastError', 'ValidationError'].includes(error?.name)) {
+    return { statusCode: 400, message: 'Request data is invalid.' };
+  }
+  if (['MongoNetworkTimeoutError', 'MongoOperationTimeoutError', 'ETIMEDOUT'].includes(error?.name)
+    || error?.code === 'ETIMEDOUT') {
+    return { statusCode: 504, message: 'The request timed out. Please try again.' };
+  }
+  return { statusCode: 500, message: 'A server error occurred.' };
+}
 
 function requestPath(value) {
   if (typeof value !== 'string' || !value) return '';
@@ -99,12 +122,10 @@ export default async function handler(req, res) {
   } catch (error) {
     console.error(`Unhandled API failure for ${route}:`, error);
     if (res.headersSent || res.writableEnded) return;
-    const statusCode = [400, 403, 404, 409].includes(error?.statusCode)
-      ? error.statusCode
-      : 500;
+    const { statusCode, message } = getApiErrorResponse(error);
     return res.status(statusCode).json({
       success: false,
-      message: error?.message || 'A server error occurred.'
+      message
     });
   }
 }

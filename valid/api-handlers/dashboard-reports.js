@@ -129,6 +129,15 @@ export function getPeriodRange(period, value, startSession, endSession, startDat
   return null;
 }
 
+export function getLegacyPaymentFilter(period, periodRange) {
+  const filter = { type: { $in: LEGACY_PAYMENT_RECORD_TYPES } };
+  if (['month', 'year', 'date-range'].includes(period)) {
+    const dateFilter = dateRangeCondition('data.date', periodRange);
+    if (dateFilter) Object.assign(filter, dateFilter);
+  }
+  return filter;
+}
+
 function escapeRegex(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -841,9 +850,9 @@ export default async function handler(req, res) {
       ['periodPayments', Payment.aggregate(paymentPipeline(periodPaymentMatch))],
       ['priorPayments', Payment.aggregate(paymentPipeline(priorMatch))],
       ['typedPaymentIds', Payment.find(reportOwnerMatch).select('id sourceInvoiceId').lean()],
-      ['legacyPaymentRecords', BusinessRecord.find({
-        type: { $in: LEGACY_PAYMENT_RECORD_TYPES }
-      }).select('data').lean()],
+      ['legacyPaymentRecords', BusinessRecord.find(
+        getLegacyPaymentFilter(period, periodRange)
+      ).select('data').lean()],
       ['userRecords', userRosterQuery]
     ]);
     const officerRecords = reportSources.officerRecords;

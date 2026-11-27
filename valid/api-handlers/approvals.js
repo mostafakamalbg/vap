@@ -11,13 +11,13 @@ import {
   withTransactionFallback
 } from '../lib/transactions.js';
 import {
-  applyStockInRevisionChanges,
   assertStockInChallanSnapshot,
   assertStockInSnapshot,
   getStockInRecordData,
   loadStockInChallan,
   saveStockInRevision
 } from '../lib/stockInMutations.js';
+import { applyStockInRevisionChanges } from '../shared/stockInRevisions.js';
 
 function fail(statusCode, message) {
   const error = new Error(message);

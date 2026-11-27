@@ -4,6 +4,7 @@ import {
   addPaymentRows,
   buildReportOwnerMatch,
   getActivityRoster,
+  getLegacyPaymentFilter,
   getPeriodRange,
   legacyInvoicePipeline,
   normalizeReportPeriod,
@@ -62,6 +63,22 @@ test('dashboard reports accept inclusive date bounds for date ranges', () => {
     { start: '2025-01-01', end: '2025-01-02' }
   );
   assert.equal(getPeriodRange('date-range', '', '', '', '2025-02-01', '2025-01-31'), null);
+});
+
+test('live reports constrain legacy payment reads for calendar periods', () => {
+  assert.deepEqual(getLegacyPaymentFilter('month', {
+    start: '2026-03-01',
+    end: '2026-04-01'
+  }), {
+    type: { $in: ['payments', 'payment', 'expenses', 'expense', 'vouchers', 'voucher'] },
+    'data.date': { $gte: '2026-03-01', $lt: '2026-04-01' }
+  });
+  assert.deepEqual(getLegacyPaymentFilter('all', {
+    start: '0001-01-01',
+    end: '9999-12-31'
+  }), {
+    type: { $in: ['payments', 'payment', 'expenses', 'expense', 'vouchers', 'voucher'] }
+  });
 });
 
 test('dashboard reports accept an all-session and all-month period', () => {
