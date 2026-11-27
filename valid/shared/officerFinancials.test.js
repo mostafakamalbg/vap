@@ -55,6 +55,21 @@ test('officer summary combines legacy company, office and depot categories as of
   assert.equal(summary.totalExpenses, 349);
 });
 
+test('officer summary includes Fare aliases and named amount fallbacks in expenses and totals', () => {
+  const summary = calculateOfficerFinancials({
+    payments: [
+      { paymentType: 'travelFare', amount: 100 },
+      { purpose: 'journey', totalAmount: 50 },
+      { ভাড়া: '25' },
+      { paymentType: 'FARE', amount: 'invalid' }
+    ]
+  });
+
+  assert.equal(summary.paymentAndExpense.fare, 175);
+  assert.equal(summary.totalExpenses, 175);
+  assert.equal(summary.totalReceivedAmount, 175);
+});
+
 test('collected payments produce the expected ratio for a positive receivable', () => {
   const summary = calculateOfficerFinancials({
     invoices: [{ invoiceType: 'regular', grandTotal: 20 }],

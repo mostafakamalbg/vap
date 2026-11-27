@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   LEDGER_PAYMENT_TYPES,
   PAYMENT_TYPES,
+  getPaymentAmount,
   isDealerCollection,
   resolvePaymentRecordType,
   resolvePaymentType
@@ -49,9 +50,33 @@ test('legacy L/C and travel expense labels resolve to live report categories', (
   ['L/C', 'l_c', 'LC', 'L C'].forEach((label) => {
     assert.equal(resolvePaymentType(label), 'lc_commission');
   });
-  ['TA', 'travel', 'travel allowance', 'fare'].forEach((label) => {
+  [
+    'TA', 'travel', 'travel allowance', 'travelFare', 'journey', 'journeyFare',
+    'journey fare', 'fare', 'FARE', 'ভাড়া', 'যাতায়াত', 'ফেয়ার', 'ফেয়ার'
+  ].forEach((label) => {
     assert.equal(resolvePaymentType(label), 'vehicle_rent');
   });
+});
+
+test('Fare amount aliases identify and safely amount legacy payments', () => {
+  [
+    { travelFare: '125' },
+    { journey: '125' },
+    { ta: 125 },
+    { travel: 125 },
+    { ভাড়া: 125 },
+    { 'যাতায়াত': 125 },
+    { paymentAndExpense: { ফেয়ার: 125 } }
+  ].forEach((payment) => {
+    assert.equal(resolvePaymentRecordType(payment), 'vehicle_rent');
+    assert.equal(getPaymentAmount(payment), 125);
+  });
+  assert.equal(getPaymentAmount({ paymentType: 'fare', amount: 'invalid' }), 0);
+  assert.equal(getPaymentAmount({ paymentType: 'fare', totalAmount: '80' }), 80);
+  assert.equal(resolvePaymentRecordType({
+    category: 'unrecognized',
+    travelFare: 125
+  }), '');
 });
 
 test('the first recognized category wins and unknown populated categories are not defaulted', () => {

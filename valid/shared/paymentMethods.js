@@ -56,8 +56,22 @@ const PAYMENT_TYPE_ALIASES = new Map([
   ['বেতন', 'salary'],
   ['salary', 'salary'],
   ['fare', 'vehicle_rent'],
+  ['travelfare', 'vehicle_rent'],
+  ['travel fare', 'vehicle_rent'],
   ['গাড়ি ভাড়া', 'vehicle_rent'],
+  ['গাড়ি ভাড়া', 'vehicle_rent'],
   ['ভাড়া', 'vehicle_rent'],
+  ['ভাড়া', 'vehicle_rent'],
+  ['যাতায়াত', 'vehicle_rent'],
+  ['যাতায়াত', 'vehicle_rent'],
+  ['যাতায়াত ভাতা', 'vehicle_rent'],
+  ['যাতায়াত ভাতা', 'vehicle_rent'],
+  ['ফেয়ার', 'vehicle_rent'],
+  ['ফেয়ার', 'vehicle_rent'],
+  ['journey', 'vehicle_rent'],
+  ['journeyfare', 'vehicle_rent'],
+  ['journey fare', 'vehicle_rent'],
+  ['journey allowance', 'vehicle_rent'],
   ['ta', 'vehicle_rent'],
   ['travel', 'vehicle_rent'],
   ['travel allowance', 'vehicle_rent'],
@@ -72,12 +86,33 @@ const PAYMENT_TYPE_ALIASES = new Map([
 export const PAYMENT_TYPE_FIELDS = Object.freeze([
   'paymentType',
   'purpose',
+  'purposeName',
   'category',
+  'paymentCategory',
   'expenseType',
   'expenseCategory',
+  'expense',
+  'expenseName',
   'paymentPurpose',
   'transactionType',
+  'voucherType',
+  'voucherCategory',
   'type'
+]);
+
+export const FARE_AMOUNT_FIELDS = Object.freeze([
+  'fare',
+  'travelFare',
+  'journey',
+  'journeyFare',
+  'ta',
+  'travel',
+  'ভাড়া',
+  'ভাড়া',
+  'যাতায়াত',
+  'যাতায়াত',
+  'ফেয়ার',
+  'ফেয়ার'
 ]);
 
 function normalizePaymentTypeAlias(type) {
@@ -112,7 +147,19 @@ export function resolvePaymentRecordType(payment) {
     const resolved = resolvePaymentType(payment?.[field]);
     if (resolved) return resolved;
   }
+  if (!getPaymentRecordTypeValue(payment) && FARE_AMOUNT_FIELDS.some((field) => (
+    Number(payment?.[field] ?? payment?.paymentAndExpense?.[field]) > 0
+  ))) return 'vehicle_rent';
   return '';
+}
+
+export function getPaymentAmount(payment) {
+  const amount = Number(payment?.amount) || Number(payment?.totalAmount) || 0;
+  if (amount) return amount;
+  if (resolvePaymentRecordType(payment) !== 'vehicle_rent') return 0;
+  return FARE_AMOUNT_FIELDS.reduce((sum, field) => (
+    sum || Number(payment?.[field] ?? payment?.paymentAndExpense?.[field]) || 0
+  ), 0);
 }
 
 export function getPaymentRecordTypeValue(payment) {

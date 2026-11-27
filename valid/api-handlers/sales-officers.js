@@ -15,7 +15,7 @@ import { ADMIN_ROLES, isAdminRole, LOGISTIC_OFFICER_ROLE } from '../shared/roles
 import { HIERARCHY_ROLE_VALUES } from '../shared/roles.js';
 import { resolveHierarchyScope } from '../lib/hierarchy.js';
 import { buildOfficerOwnerFilter, matchesOfficerScope } from '../shared/hierarchy.js';
-import { mergeOfficerRecords } from '../shared/officerIdentity.js';
+import { mergeOfficerRecords, officerRecordsMatch } from '../shared/officerIdentity.js';
 
 const numericFields = [
   'salesTargetJulyDec2026',
@@ -199,13 +199,15 @@ export default async function handler(req, res) {
       }, scope));
 
       return summaries.map((record, index) => {
-        const officerCode = normalizeOfficerCode(record.officerCode);
-        const matchesOfficer = (entry) => (
-          (record.officerId && entry.officerId === record.officerId)
-          || (officerCode && normalizeOfficerCode(entry.officerCode) === officerCode)
-          || (!entry.officerId && !entry.officerCode
-            && record.officerName && entry.officerName === record.officerName)
-        );
+        const matchesOfficer = (entry) => officerRecordsMatch({
+          officerId: entry.officerId
+            || entry.userId
+            || entry.officerUserId
+            || entry.employeeId
+            || entry.createdBy,
+          officerCode: entry.officerCode || entry.code,
+          officerName: entry.officerName || entry.name
+        }, record);
         const officerInvoices = filterOfficerRecordsByPeriod(invoices.filter(matchesOfficer), { session, month, date });
         const officerPayments = filterOfficerRecordsByPeriod(payments.filter(matchesOfficer), { session, month, date });
         const financials = calculateOfficerFinancials({

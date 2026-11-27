@@ -1,7 +1,11 @@
 import { getInvoiceSalesAmount, roundCurrency } from './invoiceTotals.js';
 import { getInvoiceSessionForDate, normalizeSessionText } from './sessions.js';
 import { parseSessionDateRange, sessionsMatch } from './reportDateFilters.js';
-import { getPaymentRecordTypeValue, resolvePaymentRecordType } from './paymentMethods.js';
+import {
+  getPaymentAmount,
+  getPaymentRecordTypeValue,
+  resolvePaymentRecordType
+} from './paymentMethods.js';
 
 const SALES_EXCLUDED = new Set(['dealer_return', 'factory_damage', 'depot_factory_return']);
 const RECEIPTS = new Set(['dealer_collection']);
@@ -57,7 +61,7 @@ export function calculateOfficerFinancials({
   const paymentAndExpense = { officePayment: 0, fare: 0, salary: 0, lc: 0 };
   standalone.forEach((payment) => {
     const field = EXPENSE_FIELDS[resolvePaymentRecordType(payment)];
-    if (field) paymentAndExpense[field] += roundCurrency(payment.amount);
+    if (field) paymentAndExpense[field] += roundCurrency(getPaymentAmount(payment));
   });
   Object.keys(paymentAndExpense).forEach((key) => {
     paymentAndExpense[key] = roundCurrency(paymentAndExpense[key]);
@@ -69,7 +73,7 @@ export function calculateOfficerFinancials({
         ? 'dealer_collection'
         : ''));
     })
-    .reduce((sum, payment) => sum + (Number(payment.amount) || 0), 0)
+    .reduce((sum, payment) => sum + getPaymentAmount(payment), 0)
     + Object.values(paymentAndExpense).reduce((sum, value) => sum + value, 0));
   const totalExpenses = Object.values(paymentAndExpense).reduce((sum, value) => sum + value, 0);
   const previousPlusNetSales = roundCurrency(lastSessionDue) + totalNetSales;

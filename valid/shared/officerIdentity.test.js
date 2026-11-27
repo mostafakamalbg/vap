@@ -43,6 +43,21 @@ test('officer matching resolves account IDs, officer IDs, codes, and normalized 
   ), false);
 });
 
+test('createdBy is a fallback identity and owner names match when an ID is absent', () => {
+  assert.equal(officerRecordsMatch(
+    { createdBy: 'account-1' },
+    { _id: 'account-1', name: 'Sales Officer' }
+  ), true);
+  assert.equal(officerRecordsMatch(
+    { officerName: 'Sales Officer' },
+    { officerId: 'OFF-01', name: 'sales officer' }
+  ), true);
+  assert.equal(officerRecordsMatch(
+    { officerId: 'OFF-02', createdBy: 'account-1', officerName: 'Sales Officer' },
+    { officerId: 'OFF-01', name: 'Sales Officer' }
+  ), false);
+});
+
 test('merging user and officer records preserves display capitalization and target data', () => {
   const [officer] = mergeOfficerRecords([
     { _id: 'account-1', name: 'Sales Officer', officerCode: 'SO-01' },

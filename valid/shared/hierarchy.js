@@ -83,13 +83,22 @@ export function buildOfficerOwnerFilter(scope, {
 } = {}) {
   if (scope.global) return {};
   const conditions = [];
-  if (scope.officerIds.size) conditions.push({ [idField]: { $in: [...scope.officerIds] } });
+  const identityFields = [...new Set([
+    idField,
+    'userId',
+    'officerUserId',
+    'employeeId',
+    'createdBy'
+  ])];
+  if (scope.officerIds.size) {
+    identityFields.forEach((field) => {
+      conditions.push({ [field]: { $in: [...scope.officerIds] } });
+    });
+  }
   if (scope.userIds?.size) {
-    conditions.push(
-      { [idField]: { $in: [...scope.userIds] } },
-      { userId: { $in: [...scope.userIds] } },
-      { officerUserId: { $in: [...scope.userIds] } }
-    );
+    identityFields.forEach((field) => {
+      conditions.push({ [field]: { $in: [...scope.userIds] } });
+    });
   }
   [...scope.officerCodes].forEach((code) => {
     const escaped = code.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -105,7 +114,10 @@ export function buildOfficerOwnerFilter(scope, {
     conditions.push({
       [idField]: { $in: ['', null] },
       [codeField]: { $in: ['', null] },
-      [nameField]: { $in: namePatterns }
+      $or: [
+        { [nameField]: { $in: namePatterns } },
+        { name: { $in: namePatterns } }
+      ]
     });
   }
   return conditions.length ? { $or: conditions } : { _id: null };
@@ -113,18 +125,23 @@ export function buildOfficerOwnerFilter(scope, {
 
 export function matchesOfficerScope(record, scope) {
   if (scope.global) return true;
-  const ids = [...new Set([
-    record?._id,
-    record?.id,
+  const primaryIds = [
     record?.userId,
+    record?.employeeId,
     record?.hierarchyUserId,
     record?.officerId
+  ].map((value) => String(value || '').trim()).filter(Boolean);
+  if (!primaryIds.length && record?.createdBy) primaryIds.push(String(record.createdBy).trim());
+  const ids = [...new Set([
+    ...primaryIds,
+    record?._id,
+    record?.id
   ].map((value) => String(value || '').trim()).filter(Boolean))];
   const rawCode = record?.code || record?.officerCode;
   const code = normalizeOfficerCode(rawCode) || String(rawCode || '').trim().toUpperCase();
-  const name = normalizeName(record?.name || record?.officerName);
+  const name = normalizeName(record?.officerName || record?.name);
   return ids.some((id) => scope.officerIds.has(id) || scope.userIds?.has(id))
     || (code && scope.officerCodes.has(code))
-    || (!ids.length && !code && name
+    || (!primaryIds.length && !code && name
       && [...scope.officerNames].some((scopeName) => normalizeName(scopeName) === name));
 }

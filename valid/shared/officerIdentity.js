@@ -9,12 +9,20 @@ function normalizeName(value) {
 }
 
 function getIdentity(record) {
+  const primaryIds = [
+    record?.userId,
+    record?.hierarchyUserId,
+    record?.officerId,
+    record?.employeeId
+  ].map((value) => String(value || '').trim()).filter(Boolean);
   const ids = [...new Set([
     record?._id,
     record?.id,
     record?.userId,
+    record?.employeeId,
     record?.hierarchyUserId,
-    record?.officerId
+    record?.officerId,
+    ...(primaryIds.length ? [] : [record?.createdBy])
   ].map((value) => String(value || '').trim()).filter(Boolean))];
   const codes = [...new Set([
     record?.code,

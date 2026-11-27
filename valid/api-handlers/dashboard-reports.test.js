@@ -117,6 +117,7 @@ test('owner filters include dealer-assigned invoices only when their officer ide
     officerName: { $in: ['', null] },
     userId: { $in: ['', null] },
     officerUserId: { $in: ['', null] },
+    employeeId: { $in: ['', null] },
     dealerId: { $in: ['DL-1'] }
   });
 });
@@ -156,6 +157,29 @@ test('payment aggregation supports totalAmount and named expense amount fields',
   assert.match(serializedPipeline, /fare/);
   assert.match(serializedPipeline, /salary/);
   assert.match(serializedPipeline, /lc_commission/);
+});
+
+test('master payment aggregation resolves Fare aliases, amount fallbacks, and owner aliases', () => {
+  const pipeline = paymentPipeline({});
+  const serializedPipeline = JSON.stringify(pipeline);
+  for (const field of ['travelFare', 'journey', 'ta', 'যাতায়াত', 'ফেয়ার', 'employeeId', 'createdBy']) {
+    assert.ok(serializedPipeline.includes(field), `expected Fare support for ${field}`);
+  }
+
+  const groups = new Map();
+  addPaymentRows(groups, [
+    { id: 'p-1', employeeId: 'SO-01', paymentType: 'travelFare', amount: 100 },
+    { id: 'p-2', createdBy: 'SO-01', travelFare: '75' },
+    { id: 'p-3', officerId: 'SO-01', paymentType: 'ফেয়ার', amount: 'invalid', fare: '20' }
+  ], {
+    period: 'all',
+    periodValue: 'ALL',
+    periodRange: getPeriodRange('all', 'ALL'),
+    beforePeriod: false,
+    scope: { global: true }
+  });
+
+  assert.equal([...groups.values()].reduce((sum, group) => sum + group.fare, 0), 195);
 });
 
 test('legacy invoice pipeline reads scoped legacy records without overlapping typed invoices', () => {

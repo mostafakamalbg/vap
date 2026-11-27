@@ -4,6 +4,8 @@ import { authorize } from '../lib/auth.js';
 import { normalizeOfficerCode } from '../shared/codes.js';
 import { getOfficerSalesTarget } from '../shared/officerSalesTargets.js';
 import {
+  FARE_AMOUNT_FIELDS,
+  getPaymentAmount,
   getPaymentRecordTypeValue,
   getPaymentTypeAliases,
   PAYMENT_TYPE_FIELDS,
@@ -177,6 +179,7 @@ export function buildReportOwnerMatch(scope, dealerIds = []) {
         officerName: { $in: ['', null] },
         userId: { $in: ['', null] },
         officerUserId: { $in: ['', null] },
+        employeeId: { $in: ['', null] },
         dealerId: { $in: dealerIds }
       }
     ]
@@ -211,18 +214,6 @@ export function priorSessionCondition(value) {
   };
 }
 
-function ownerIsMissingExpression() {
-  return {
-    $and: [
-      { $eq: [{ $ifNull: ['$officerId', ''] }, ''] },
-      { $eq: [{ $ifNull: ['$officerCode', ''] }, ''] },
-      { $eq: [{ $ifNull: ['$officerName', ''] }, ''] },
-      { $eq: [{ $ifNull: ['$userId', ''] }, ''] },
-      { $eq: [{ $ifNull: ['$officerUserId', ''] }, ''] }
-    ]
-  };
-}
-
 function reportOwnerField(field, dealerFields) {
   const dealerValue = dealerFields.reduceRight(
     (value, dealerField) => ({
@@ -234,10 +225,15 @@ function reportOwnerField(field, dealerFields) {
     }),
     ''
   );
-  const directFields = field === 'officerId'
-    ? ['officerId', 'userId', 'officerUserId']
+  const strongFields = field === 'officerId'
+    ? ['officerId', 'userId', 'officerUserId', 'employeeId']
     : [field];
-  const directValue = directFields.reduceRight(
+  const weakFields = field === 'officerId'
+    ? ['createdBy']
+    : field === 'officerName'
+      ? ['name']
+      : [];
+  const fieldValue = (fields) => fields.reduceRight(
     (value, directField) => ({
       $cond: [
         { $ne: [{ $ifNull: [`$${directField}`, ''] }, ''] },
@@ -247,11 +243,19 @@ function reportOwnerField(field, dealerFields) {
     }),
     ''
   );
+  const strongValue = fieldValue(strongFields);
+  const weakValue = fieldValue(weakFields);
   return {
     $cond: [
-      ownerIsMissingExpression(),
-      dealerValue,
-      directValue
+      { $ne: [strongValue, ''] },
+      strongValue,
+      {
+        $cond: [
+          { $ne: [dealerValue, ''] },
+          dealerValue,
+          weakValue
+        ]
+      },
     ]
   };
 }
@@ -451,7 +455,6 @@ export function paymentPipeline(match) {
   const namedExpenseBranches = [
     ['office_payment', 'officePayment'],
     ['office_payment', 'officePay'],
-    ['vehicle_rent', 'fare'],
     ['salary', 'salary'],
     ['lc_commission', 'lc'],
     ['lc_commission', 'l/c']
@@ -461,6 +464,14 @@ export function paymentPipeline(match) {
     },
     then: type
   }));
+  FARE_AMOUNT_FIELDS.forEach((field) => {
+    namedExpenseBranches.push({
+      case: {
+        $gt: [namedFieldAmount(field), 0]
+      },
+      then: 'vehicle_rent'
+    });
+  });
   const resolvedPaymentType = {
     $switch: {
       branches: [...paymentTypeBranches, ...namedExpenseBranches],
@@ -487,6 +498,15 @@ export function paymentPipeline(match) {
         choosePositiveAmount(
           '$officePay',
           choosePositiveAmount('$paymentAndExpense.officePayment', '$paymentAndExpense.officePay')
+        )
+      );
+    }
+    if (field === 'fare') {
+      return FARE_AMOUNT_FIELDS.reduceRight(
+        (value, alias) => choosePositiveAmount(`$${alias}`, value),
+        FARE_AMOUNT_FIELDS.reduceRight(
+          (value, alias) => choosePositiveAmount(`$paymentAndExpense.${alias}`, value),
+          choosePositiveAmount('$fare', '$paymentAndExpense.fare')
         )
       );
     }
@@ -542,13 +562,13 @@ export function paymentPipeline(match) {
         resolvedPaymentType,
         reportOfficerId: reportOwnerField(
           'officerId',
-          ['assignedOfficerId', 'officerId', 'salesOfficerId', 'officerUserId', 'soId', 'asmId', 'rsmId']
+          ['assignedOfficerId', 'officerId', 'salesOfficerId', 'officerUserId', 'employeeId', 'soId', 'asmId', 'rsmId']
         ),
         reportOfficerCode: reportOwnerField(
           'officerCode',
           ['assignedOfficerCode', 'officerCode', 'soCode', 'asmCode', 'rsmCode']
         ),
-        reportOfficerName: reportOwnerField('officerName', ['assignedOfficerName', 'officerName'])
+        reportOfficerName: reportOwnerField('officerName', ['assignedOfficerName', 'officerName', 'name'])
       }
     },
     { $set: { reportAmount } },
@@ -665,9 +685,14 @@ export function addPaymentRows(groups, rows, { period, periodValue, periodRange,
     if (!matchesOfficerScope(payment, scope)) return;
     if (payment.sourceInvoiceId || /(?:invoice|চালান)\s*#/i.test(String(payment.reference || ''))) return;
     const owner = {
-      officerId: payment.officerId || payment.userId || payment.officerUserId || '',
+      officerId: payment.officerId
+        || payment.userId
+        || payment.officerUserId
+        || payment.employeeId
+        || payment.createdBy
+        || '',
       officerCode: payment.officerCode || '',
-      officerName: payment.officerName || ''
+      officerName: payment.officerName || payment.name || ''
     };
     const dealerKey = payment.dealerId || payment.dealerName || payment.dealerPhone || '';
     const key = `${owner.officerId}|${normalizeOfficerCode(owner.officerCode)}|${owner.officerName}|${dealerKey}`;
@@ -690,7 +715,7 @@ export function addPaymentRows(groups, rows, { period, periodValue, periodRange,
     const type = resolvePaymentRecordType(payment)
       || (namedAmount('officePayment') || namedAmount('officePay') ? 'office_payment' : '')
       || (namedAmount('salary') ? 'salary' : '')
-      || (namedAmount('fare') ? 'vehicle_rent' : '')
+      || (getPaymentAmount(payment) ? 'vehicle_rent' : '')
       || (namedAmount('lc') || namedAmount('l/c') ? 'lc_commission' : '')
       || (!getPaymentRecordTypeValue(payment) ? 'dealer_collection' : '');
     const typeField = EXPENSE_FIELDS[type];
@@ -699,7 +724,7 @@ export function addPaymentRows(groups, rows, { period, periodValue, periodRange,
       : namedAmount(typeField || '');
     const amount = Number(payment.amount)
       || Number(payment.totalAmount)
-      || typeAmount;
+      || (type === 'vehicle_rent' ? getPaymentAmount(payment) : typeAmount);
     if (RECEIPT_TYPES.has(type)) group.collection += amount;
     if (typeField) group[typeField] += amount;
     groups.set(key, group);
@@ -902,6 +927,7 @@ export default async function handler(req, res) {
         || payment.officerName
         || payment.userId
         || payment.officerUserId
+        || payment.employeeId
       ) return payment;
       const owner = legacyDealerCodes.get(String(payment.dealerId || ''));
       return owner
