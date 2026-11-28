@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Users,
   PlusCircle,
@@ -26,24 +26,200 @@ import {
   PAYMENT_METHODS,
   PAYMENT_TYPES,
   LEDGER_PAYMENT_TYPES,
+  isDealerBalanceCredit,
   normalizePaymentMethod,
   normalizePaymentType,
   resolvePaymentRecordType
 } from '../../../shared/paymentMethods';
 import { getDealerLedgerTransactions } from '../../../shared/dealerLedger';
+import { getInvoiceSalesAmount, roundCurrency } from '../../../shared/invoiceTotals';
 import CompanyLetterhead from './CompanyLetterhead';
 import { getBangladeshBusinessDate, getInvoiceSessionForDate, INVOICE_SESSIONS } from '../../../shared/sessions';
 import {
   LOGISTIC_OFFICER_ROLE,
   SUPER_ADMIN_ROLE,
-  isAdminRole
+  isAdminRole,
+  isSalesOfficerRole
 } from '../../../shared/roles';
 import { readJsonResponse } from '../../utils/api';
+import { mergeOfficerRecords } from '../../../shared/officerIdentity';
 
 const createPaymentEntries = () => LEDGER_PAYMENT_TYPES.map(({ value }) => ({
   paymentType: value,
   amount: '0'
 }));
+
+const OFFICER_REFERENCE_FIELDS = [
+  'userId',
+  'hierarchyUserId',
+  'officerId',
+  'soId',
+  'asmId',
+  'rsmId',
+  'assignedOfficerId',
+  'assignedOfficerUserId',
+  'ownerOfficerId'
+];
+const OFFICER_CODE_FIELDS = ['officerCode', 'assignedOfficerCode', 'code'];
+const OFFICER_RECORD_CODE_FIELDS = ['officerCode', 'assignedOfficerCode'];
+const OFFICER_NAME_FIELDS = ['officerName', 'assignedOfficerName', 'name'];
+const OFFICER_IDENTITY_FIELDS = [
+  '_id',
+  'id',
+  'userId',
+  'hierarchyUserId',
+  'officerId',
+  'soId',
+  'assignedOfficerId',
+  'assignedOfficerUserId',
+  'ownerOfficerId'
+];
+
+function normalizedReference(value) {
+  return String(value || '').normalize('NFKC').trim().toLocaleLowerCase();
+}
+
+function collectReferenceValues(record, fields) {
+  return fields.flatMap((field) => {
+    const value = record?.[field];
+    if (value == null || value === '') return [];
+    if (typeof value === 'object') {
+      return [
+        ...collectReferenceValues(value, ['_id', 'id', 'userId', 'hierarchyUserId', 'officerId', 'soId', 'asmId', 'rsmId']),
+        ...collectReferenceValues(value, OFFICER_CODE_FIELDS),
+        ...collectReferenceValues(value, OFFICER_NAME_FIELDS)
+      ];
+    }
+    return [String(value).trim()].filter(Boolean);
+  });
+}
+
+function getOfficerIds(record, includeIdentity = false) {
+  const ids = collectReferenceValues(
+    record,
+    includeIdentity ? OFFICER_IDENTITY_FIELDS : OFFICER_REFERENCE_FIELDS
+  );
+  const assignedOfficer = record?.assignedOfficer;
+  if (assignedOfficer && typeof assignedOfficer === 'object') {
+    ids.push(...collectReferenceValues(assignedOfficer, OFFICER_IDENTITY_FIELDS));
+  } else if (assignedOfficer != null && assignedOfficer !== '') {
+    ids.push(String(assignedOfficer).trim());
+  }
+  return ids.map(normalizedReference).filter(Boolean);
+}
+
+function getOfficerCodes(record, includeGenericCode = false) {
+  const codes = collectReferenceValues(
+    record,
+    includeGenericCode ? OFFICER_CODE_FIELDS : OFFICER_RECORD_CODE_FIELDS
+  );
+  const assignedOfficer = record?.assignedOfficer;
+  if (assignedOfficer && typeof assignedOfficer === 'object') {
+    codes.push(...collectReferenceValues(assignedOfficer, OFFICER_CODE_FIELDS));
+  } else if (assignedOfficer && normalizeOfficerCode(assignedOfficer)) {
+    codes.push(String(assignedOfficer));
+  }
+  return codes
+    .map((value) => normalizeOfficerCode(value) || normalizedReference(value))
+    .filter(Boolean);
+}
+
+function getOfficerNames(record) {
+  const names = collectReferenceValues(record, OFFICER_NAME_FIELDS);
+  const assignedOfficer = record?.assignedOfficer;
+  if (assignedOfficer && typeof assignedOfficer === 'object') {
+    names.push(...collectReferenceValues(assignedOfficer, OFFICER_NAME_FIELDS));
+  } else if (assignedOfficer && !normalizeOfficerCode(assignedOfficer)) {
+    names.push(String(assignedOfficer));
+  }
+  return names
+    .map((value) => normalizedReference(value).replace(/\s+/g, ' '))
+    .filter(Boolean);
+}
+
+function hasOfficerIdReference(record) {
+  return OFFICER_REFERENCE_FIELDS.some((field) => (
+    record?.[field] != null && record[field] !== ''
+  )) || Boolean(record?.assignedOfficer && typeof record.assignedOfficer === 'object'
+    && getOfficerIds(record.assignedOfficer, true).length);
+}
+
+function officerRecordsMatch(record, officer) {
+  if (!record || !officer) return false;
+  const recordIds = new Set(getOfficerIds(record));
+  const officerIds = getOfficerIds(officer, true);
+  if (officerIds.some((id) => recordIds.has(id))) return true;
+
+  const recordCodes = new Set(getOfficerCodes(record));
+  const officerCodes = getOfficerCodes(officer, true);
+  if (officerCodes.some((code) => recordCodes.has(code))) return true;
+
+  const recordNames = getOfficerNames(record);
+  const officerNames = getOfficerNames(officer);
+  return Boolean(recordNames.some((name) => officerNames.includes(name))
+    && (!hasOfficerIdReference(record) || !officerIds.length)
+    && (!recordCodes.size || !officerCodes.length));
+}
+
+function hasOfficerReference(record) {
+  return hasOfficerIdReference(record)
+    || Boolean(record?.assignedOfficer)
+    || OFFICER_RECORD_CODE_FIELDS.some((field) => Boolean(record?.[field]))
+    || OFFICER_NAME_FIELDS.some((field) => Boolean(record?.[field]));
+}
+
+function getOfficerOptionKey(officer) {
+  return String(
+    officer?.hierarchyUserId
+    || officer?.id
+    || officer?.officerId
+    || officer?._id
+    || officer?.code
+    || officer?.officerCode
+    || officer?.name
+    || ''
+  );
+}
+
+function createOfficerFilteredSummary(summary, officer) {
+  const belongsToOfficer = (record) => (
+    !hasOfficerReference(record) || officerRecordsMatch(record, officer)
+  );
+  const invoicesForOfficer = (summary.invoices || []).filter(belongsToOfficer);
+  const paymentsForOfficer = (summary.payments || []).filter(belongsToOfficer);
+  const regularInvoices = invoicesForOfficer.filter((invoice) => (
+    !['dealer_return', 'factory_damage', 'depot_factory_return'].includes(invoice.invoiceType)
+  ));
+  const returnInvoices = invoicesForOfficer.filter((invoice) => invoice.invoiceType === 'dealer_return');
+  const totalPurchases = roundCurrency(regularInvoices.reduce(
+    (total, invoice) => total + getInvoiceSalesAmount(invoice),
+    0
+  ));
+  const totalReturnCredits = roundCurrency(returnInvoices.reduce(
+    (total, invoice) => total + Math.abs(getInvoiceSalesAmount(invoice)),
+    0
+  ));
+  const totalPaid = roundCurrency(paymentsForOfficer
+    .filter(isDealerBalanceCredit)
+    .reduce((total, payment) => total + (Number(payment.amount) || 0), 0));
+  const previousDueOfficerId = summary.previousDueOfficerId
+    || summary.previousDueHistory?.[summary.previousDueHistory.length - 1]?.officerId;
+  const openingDue = previousDueOfficerId
+    && !officerRecordsMatch({ officerId: previousDueOfficerId }, officer)
+    ? 0
+    : summary.openingDue;
+  return {
+    ...summary,
+    openingDue,
+    lastSessionDue: openingDue,
+    totalPurchases,
+    totalReturnCredits,
+    totalPaid,
+    currentDue: openingDue + totalPurchases - totalReturnCredits - totalPaid,
+    invoices: invoicesForOfficer,
+    payments: paymentsForOfficer
+  };
+}
 
 const createPaymentForm = (dealerId = '', officerId = '') => ({
   date: getBangladeshBusinessDate(),
@@ -76,11 +252,7 @@ function findDealerOfficer(dealer, officers) {
   ));
   if (officerById) return officerById;
 
-  return officers.find((officer) => (
-    Boolean(dealer?.officerCode)
-    && normalizeOfficerCode(officer.code, officer.designation)
-      === normalizeOfficerCode(dealer.officerCode, officer.designation)
-  ));
+  return officers.find((officer) => officerRecordsMatch(dealer, officer));
 }
 
 function formatBalanceAmount(amount) {
@@ -138,32 +310,80 @@ export default function DealerLedger() {
   const [previousDueError, setPreviousDueError] = useState('');
   const [previousDueSaving, setPreviousDueSaving] = useState(false);
   const [previousDueConfirmation, setPreviousDueConfirmation] = useState(null);
-
-  const availableOfficers = officers;
-  const [selectedDealerForLedger, setSelectedDealerForLedger] = useState(null);
+  const [hierarchyOfficers, setHierarchyOfficers] = useState([]);
+  const [officerOptionsLoaded, setOfficerOptionsLoaded] = useState(false);
+  const [officerFilterError, setOfficerFilterError] = useState('');
+  const [selectedOfficerId, setSelectedOfficerId] = useState('');
+  const [selectedDealerForLedgerId, setSelectedDealerForLedgerId] = useState('');
   const ledgerTriggerRef = useRef(null);
   const wasLedgerOpenRef = useRef(false);
+  const officerScopeInitializedRef = useRef(false);
+  const officerSelectionTouchedRef = useRef(false);
   const [successMsg, setSuccessMsg] = useState('');
   const [paymentEdit, setPaymentEdit] = useState(null);
   const [paymentEditBusy, setPaymentEditBusy] = useState(false);
   const [paymentEditError, setPaymentEditError] = useState('');
-  const closeDealerLedger = () => setSelectedDealerForLedger(null);
+
+  const officerOptions = useMemo(() => (
+    isAdminRole(currentUser?.role) || currentUser?.role === LOGISTIC_OFFICER_ROLE
+      ? mergeOfficerRecords([...officers, ...hierarchyOfficers])
+      : mergeOfficerRecords([...hierarchyOfficers, currentUser])
+  ), [currentUser, hierarchyOfficers, officers]);
+  const availableOfficers = officerOptions;
+  const selectedOfficer = officerOptions.find(
+    (officer) => getOfficerOptionKey(officer) === selectedOfficerId
+  ) || null;
 
   useEffect(() => {
-    if (!selectedDealerForLedger) return undefined;
+    let cancelled = false;
+    fetch('/api/officers')
+      .then(readJsonResponse)
+      .then((records) => {
+        if (cancelled) return;
+        if (!Array.isArray(records)) throw new Error('অফিসারের তালিকা সঠিকভাবে পাওয়া যায়নি।');
+        setHierarchyOfficers(records);
+        setOfficerOptionsLoaded(true);
+        setOfficerFilterError('');
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setOfficerOptionsLoaded(true);
+          setOfficerFilterError(error.message);
+        }
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (!officerOptionsLoaded || officerScopeInitializedRef.current || !officerOptions.length) return;
+    officerScopeInitializedRef.current = true;
+    if (officerSelectionTouchedRef.current) return;
+    const ownOfficer = isSalesOfficerRole(currentUser?.role)
+      ? officerOptions.find((officer) => officerRecordsMatch(currentUser, officer))
+      : null;
+    if (ownOfficer && isSalesOfficerRole(currentUser?.role)) {
+      setSelectedOfficerId(getOfficerOptionKey(ownOfficer));
+    } else if (officerOptions.length === 1) {
+      setSelectedOfficerId(getOfficerOptionKey(officerOptions[0]));
+    }
+  }, [currentUser, officerOptions, officerOptionsLoaded]);
+  const closeDealerLedger = () => setSelectedDealerForLedgerId('');
+
+  useEffect(() => {
+    if (!selectedDealerForLedgerId) return undefined;
     wasLedgerOpenRef.current = true;
     const handleKeyDown = (event) => {
-      if (event.key === 'Escape') setSelectedDealerForLedger(null);
+      if (event.key === 'Escape') setSelectedDealerForLedgerId('');
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedDealerForLedger]);
+  }, [selectedDealerForLedgerId]);
 
   useEffect(() => {
-    if (selectedDealerForLedger || !wasLedgerOpenRef.current) return;
+    if (selectedDealerForLedgerId || !wasLedgerOpenRef.current) return;
     wasLedgerOpenRef.current = false;
     ledgerTriggerRef.current?.focus();
-  }, [selectedDealerForLedger]);
+  }, [selectedDealerForLedgerId]);
 
   // Payment Form State
   const [paymentForm, setPaymentForm] = useState(() => (
@@ -183,15 +403,51 @@ export default function DealerLedger() {
     lastSessionDue: 0
   });
 
-  // Calculate summaries for all dealers
-  const dealerSummaries = dealers.map((d) => getDealerSummary(d.id));
+  // Calculate summaries without changing the source dealer, invoice, or payment records.
+  const dealerSummaries = useMemo(
+    () => dealers.map((dealer) => getDealerSummary(dealer.id)).filter(Boolean),
+    [dealers, getDealerSummary]
+  );
+  const officerScopedSummaries = useMemo(() => {
+    if (!selectedOfficer) return dealerSummaries;
+    return dealerSummaries
+      .filter((summary) => officerRecordsMatch(summary, selectedOfficer))
+      .map((summary) => createOfficerFilteredSummary(summary, selectedOfficer));
+  }, [dealerSummaries, selectedOfficer]);
+  const filteredSummaries = officerScopedSummaries.filter((summary) => {
+    const normalizedSearch = searchTerm.toLowerCase();
+    return (
+      summary.shopName.toLowerCase().includes(normalizedSearch) ||
+      summary.proprietor.toLowerCase().includes(normalizedSearch) ||
+      formatDealerCode(summary.code).toLowerCase().includes(normalizedSearch) ||
+      (summary.zone && summary.zone.toLowerCase().includes(normalizedSearch)) ||
+      summary.phone.includes(searchTerm) ||
+      summary.address.toLowerCase().includes(normalizedSearch)
+    );
+  });
+  const selectedDealerForLedger = officerScopedSummaries.find(
+    (summary) => summary.id === selectedDealerForLedgerId
+  ) || null;
+  useEffect(() => {
+    if (selectedDealerForLedgerId && !selectedDealerForLedger) {
+      setSelectedDealerForLedgerId('');
+    }
+  }, [selectedDealerForLedger, selectedDealerForLedgerId]);
   const ledgerTransactions = selectedDealerForLedger
     ? getDealerLedgerTransactions(selectedDealerForLedger)
     : [];
   const previousDueHistory = selectedDealerForLedger
     ? selectedDealerForLedger.previousDueHistory?.length
-      ? [...selectedDealerForLedger.previousDueHistory].reverse()
+      ? [...selectedDealerForLedger.previousDueHistory]
+        .filter((entry) => !selectedOfficer || !hasOfficerReference(entry) || officerRecordsMatch(entry, selectedOfficer))
+        .reverse()
       : selectedDealerForLedger.previousDueDate
+        && (!selectedOfficer
+          || !selectedDealerForLedger.previousDueOfficerId
+          || officerRecordsMatch(
+            { officerId: selectedDealerForLedger.previousDueOfficerId },
+            selectedOfficer
+          ))
         ? [{
             date: selectedDealerForLedger.previousDueDate,
             session: selectedDealerForLedger.previousDueSession,
@@ -202,25 +458,12 @@ export default function DealerLedger() {
     : [];
 
   // Totals
-  const totalSalesToDealers = dealerSummaries.reduce((acc, curr) => acc + (curr?.totalPurchases || 0), 0);
-  const totalReturnCredits = dealerSummaries.reduce((acc, curr) => acc + (curr?.totalReturnCredits || 0), 0);
+  const totalSalesToDealers = officerScopedSummaries.reduce((acc, curr) => acc + (curr.totalPurchases || 0), 0);
+  const totalReturnCredits = officerScopedSummaries.reduce((acc, curr) => acc + (curr.totalReturnCredits || 0), 0);
   const totalNetSales = totalSalesToDealers - totalReturnCredits;
-  const totalPaidByDealers = dealerSummaries.reduce((acc, curr) => acc + (curr?.totalPaid || 0), 0);
-  const totalOutstandingDue = dealerSummaries.reduce((acc, curr) => acc + (curr?.currentDue || 0), 0);
-  const totalLastSessionDue = dealerSummaries.reduce((acc, curr) => acc + (curr?.lastSessionDue || 0), 0);
-
-  // Filter dealers
-  const filteredSummaries = dealerSummaries.filter((d) => {
-    if (!d) return false;
-    return (
-      d.shopName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      d.proprietor.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      formatDealerCode(d.code).toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (d.zone && d.zone.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      d.phone.includes(searchTerm) ||
-      d.address.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-  });
+  const totalPaidByDealers = officerScopedSummaries.reduce((acc, curr) => acc + (curr.totalPaid || 0), 0);
+  const totalOutstandingDue = officerScopedSummaries.reduce((acc, curr) => acc + (curr.currentDue || 0), 0);
+  const totalLastSessionDue = officerScopedSummaries.reduce((acc, curr) => acc + (curr.lastSessionDue || 0), 0);
 
   // Open Payment modal for specific dealer
   const handleOpenPayment = (dealerId) => {
@@ -378,7 +621,7 @@ export default function DealerLedger() {
         const updatedDealers = await refreshSharedRecords('dealers');
         const updatedDealer = updatedDealers.find((entry) => entry.id === previousDueForm.dealerId);
         if (updatedDealer && selectedDealerForLedger?.id === updatedDealer.id) {
-          setSelectedDealerForLedger(updatedDealer);
+          setSelectedDealerForLedgerId(updatedDealer.id);
         }
         setSuccessMsg('পূর্বের বকেয়া সংরক্ষিত হয়েছে এবং ডিলার লেজার হালনাগাদ হয়েছে।');
         setTimeout(() => setSuccessMsg(''), 4500);
@@ -438,7 +681,29 @@ export default function DealerLedger() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <label className="no-print flex items-center gap-2 text-xs font-semibold text-slate-600">
+            অফিসার ফিল্টার
+            <select
+              value={selectedOfficerId}
+              onChange={(event) => {
+                officerSelectionTouchedRef.current = true;
+                setSelectedOfficerId(event.target.value);
+              }}
+              disabled={isSalesOfficerRole(currentUser?.role)}
+              className="max-w-48 rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:bg-slate-100"
+            >
+              <option value="">সকল অফিসার</option>
+              {officerOptions.map((officer) => (
+                <option key={getOfficerOptionKey(officer)} value={getOfficerOptionKey(officer)}>
+                  {officer.name || officer.officerName || 'অফিসার'}
+                  {(officer.code || officer.officerCode)
+                    ? ` • ${formatOfficerCode(officer.code || officer.officerCode, officer.designation)}`
+                    : ''}
+                </option>
+              ))}
+            </select>
+          </label>
           {canSetPreviousDue && (
             <button
               type="button"
@@ -537,6 +802,11 @@ export default function DealerLedger() {
           <span className="font-semibold text-sm">{successMsg}</span>
         </div>
       )}
+      {officerFilterError && (
+        <p role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-800 no-print">
+          অফিসারের তালিকা লোড করা যায়নি: {officerFilterError}
+        </p>
+      )}
       {previousDueError && !showPreviousDueModal && (
         <p role="alert" className="rounded-lg bg-amber-50 p-3 text-sm font-semibold text-amber-800">{previousDueError}</p>
       )}
@@ -623,7 +893,7 @@ export default function DealerLedger() {
             </thead>
             <tbody className="divide-y divide-slate-200">
               {filteredSummaries.map((d) => {
-                const assignedOfficer = findDealerOfficer(d, officers);
+                const assignedOfficer = findDealerOfficer(d, availableOfficers);
                 const hasDue = d.currentDue > 0;
                 const hasAdvance = d.currentDue < 0;
 
@@ -696,7 +966,7 @@ export default function DealerLedger() {
                         <button
                           onClick={(event) => {
                             ledgerTriggerRef.current = event.currentTarget;
-                            setSelectedDealerForLedger(d);
+                            setSelectedDealerForLedgerId(d.id);
                           }}
                           title="বিস্তারিত খতিয়ান দেখুন"
                           className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-2 py-1 rounded text-xs font-semibold transition"
@@ -1187,7 +1457,7 @@ export default function DealerLedger() {
                       <tr key={`${entry.date}-${entry.postedAt || index}-${index}`}>
                         <td className="p-2 font-mono">{entry.date}</td>
                         <td className="p-2">{entry.session || '—'}</td>
-                        <td className="p-2">{officers.find((officer) => officer.id === entry.officerId)?.name || entry.officerId || '—'}</td>
+                        <td className="p-2">{availableOfficers.find((officer) => officer.id === entry.officerId)?.name || entry.officerId || '—'}</td>
                         <td className="p-2 text-right font-mono font-bold">৳{Number(entry.amount || 0).toLocaleString()}</td>
                       </tr>
                     ))}
